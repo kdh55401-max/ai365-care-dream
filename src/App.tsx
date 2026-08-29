@@ -13,6 +13,7 @@ import {
   CENTER_INSTRUCTION_OPTIONS,
   FIELD_ACTION_OPTIONS,
 } from './caseDraft'
+import { initAnalytics, trackEvent } from './analytics'
 import logo from './assets/logo.png'
 
 type Screen = 'idle' | 'input' | 'confirm' | 'questions' | 'result' | 'callLog' | 'caseDraft'
@@ -139,6 +140,14 @@ function App() {
   }, [screen])
 
   useEffect(() => {
+    initAnalytics()
+  }, [])
+
+  useEffect(() => {
+    trackEvent('screen_view', { screen_name: screen })
+  }, [screen])
+
+  useEffect(() => {
     return () => {
       recognitionRef.current?.abort()
     }
@@ -165,9 +174,11 @@ function App() {
       })
       setResult(res)
       setScreen('result')
+      trackEvent('risk_result', { risk_level: res.riskLevel })
     } catch (e) {
       setError(e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.')
       setScreen('input')
+      trackEvent('analysis_error')
     } finally {
       setLoading(false)
       setVoiceState('idle')
@@ -185,6 +196,7 @@ function App() {
     const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognitionCtor) {
       setScreen('input')
+      trackEvent('input_method', { method: 'manual_unsupported' })
       return
     }
 
@@ -237,6 +249,7 @@ function App() {
       }
       setSituation(text)
       setScreen('confirm')
+      trackEvent('input_method', { method: 'voice' })
     }
 
     try {
@@ -276,6 +289,7 @@ function App() {
 
     // 데모 규칙: 명확한 응급 표현이 있으면 추가 질문 없이 바로 우선 확인 필요로 이동.
     if (checkEmergency(text)) {
+      trackEvent('emergency_bypass')
       void submitSituation(text, { forcedTier: '우선 확인 필요' })
       return
     }
@@ -326,6 +340,7 @@ function App() {
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
+      trackEvent('copy_result')
       setTimeout(() => setCopied(false), 2000)
     } catch {
       setError('복사에 실패했습니다. 내용을 직접 선택해 복사해 주세요.')
@@ -363,6 +378,7 @@ function App() {
       await navigator.clipboard.writeText(text)
       setCaseCopied(true)
       setError(null)
+      trackEvent('copy_case_draft')
       setTimeout(() => setCaseCopied(false), 4000)
     } catch {
       setError('복사에 실패했습니다. 내용을 직접 선택해 복사해 주세요.')
@@ -624,6 +640,7 @@ function App() {
               <a
                 href="tel:119"
                 aria-label="119에 전화하기"
+                onClick={() => trackEvent('call_button_click', { type: '119' })}
                 className={`${CALL_BUTTON_BASE} bg-red-600 text-white shadow-lg hover:bg-red-700`}
               >
                 <PhoneIcon className="w-6 h-6" />
@@ -636,7 +653,10 @@ function App() {
                 <a
                   href={`tel:${CENTER_PHONE}`}
                   aria-label="센터에 전화하기"
-                  onClick={() => setCenterCallClicked(true)}
+                  onClick={() => {
+                    setCenterCallClicked(true)
+                    trackEvent('call_button_click', { type: 'center' })
+                  }}
                   className={
                     centerCallIsPrimary
                       ? `${CALL_BUTTON_BASE} bg-slate-900 text-white shadow-lg hover:bg-slate-800`
