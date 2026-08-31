@@ -108,6 +108,9 @@ const CENTER_PHONE = import.meta.env.VITE_CENTER_PHONE_NUMBER?.trim() || undefin
 const CALL_BUTTON_BASE =
   'flex items-center justify-center gap-2 w-full min-h-[52px] rounded-3xl text-xl font-bold py-4 transition'
 
+const ANALYSIS_FAILURE_MESSAGE =
+  '현재 AI 안내를 생성하지 못했습니다. 긴급한 상황이면 119 또는 기관에 즉시 연락하세요.'
+
 function App() {
   const [screen, setScreen] = useState<Screen>('idle')
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
@@ -132,6 +135,11 @@ function App() {
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const finalTranscriptRef = useRef('')
   const settledRef = useRef(false)
+  const lastSubmissionRef = useRef<{
+    text: string
+    forcedTier?: RiskLevel
+    qaSummary?: string
+  } | null>(null)
 
   useEffect(() => {
     if (screen === 'input' || screen === 'confirm') {
@@ -165,6 +173,7 @@ function App() {
       setScreen('input')
       return
     }
+    lastSubmissionRef.current = { text, forcedTier: context?.forcedTier, qaSummary: context?.qaSummary }
     setLoading(true)
     setError(null)
     try {
@@ -175,14 +184,21 @@ function App() {
       setResult(res)
       setScreen('result')
       trackEvent('risk_result', { risk_level: res.riskLevel })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.')
-      setScreen('input')
+    } catch {
+      setResult(null)
+      setError(ANALYSIS_FAILURE_MESSAGE)
+      setScreen('result')
       trackEvent('analysis_error')
     } finally {
       setLoading(false)
       setVoiceState('idle')
     }
+  }
+
+  const handleRetry = () => {
+    const last = lastSubmissionRef.current
+    if (!last) return
+    void submitSituation(last.text, { forcedTier: last.forcedTier, qaSummary: last.qaSummary })
   }
 
   const handleVoiceButtonClick = () => {
@@ -264,6 +280,7 @@ function App() {
 
   const handleReset = () => {
     recognitionRef.current?.abort()
+    lastSubmissionRef.current = null
     setSituation('')
     setResult(null)
     setError(null)
@@ -731,6 +748,65 @@ function App() {
                 다시 말하기
               </button>
             </div>
+          </div>
+        )}
+
+        {screen === 'result' && !result && (
+          <div className="flex flex-col gap-4 pt-4">
+            {loading ? (
+              <p className="flex items-center justify-center gap-2 text-slate-500 text-lg py-10">
+                <SpinnerIcon className="w-5 h-5" />
+                다시 분석하는 중...
+              </p>
+            ) : (
+              <>
+                <a
+                  href="tel:119"
+                  aria-label="119에 전화하기"
+                  onClick={() => trackEvent('call_button_click', { type: '119' })}
+                  className={`${CALL_BUTTON_BASE} bg-red-600 text-white shadow-lg hover:bg-red-700`}
+                >
+                  <PhoneIcon className="w-6 h-6" />
+                  지금 119에 전화하기
+                </a>
+
+                {CENTER_PHONE && (
+                  <a
+                    href={`tel:${CENTER_PHONE}`}
+                    aria-label="센터에 전화하기"
+                    onClick={() => {
+                      setCenterCallClicked(true)
+                      trackEvent('call_button_click', { type: 'center' })
+                    }}
+                    className={`${CALL_BUTTON_BASE} bg-white text-slate-900 border-2 border-slate-900 hover:bg-slate-50`}
+                  >
+                    <PhoneIcon className="w-6 h-6" />
+                    센터로 전화하기
+                  </a>
+                )}
+
+                <div className="rounded-3xl rounded-tl-lg bg-red-50 border border-red-100 p-5">
+                  <p className="text-red-700 text-lg leading-relaxed">{error}</p>
+                </div>
+
+                <div className="flex flex-col gap-3 mt-2">
+                  <button
+                    onClick={handleRetry}
+                    className="w-full min-h-[52px] rounded-full bg-teal-600 text-white text-xl
+                               font-bold py-4 hover:bg-teal-700 transition"
+                  >
+                    다시 시도
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="w-full rounded-full border border-slate-300 bg-white text-slate-700
+                               text-xl font-bold py-4 hover:bg-slate-50 transition"
+                  >
+                    처음으로
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

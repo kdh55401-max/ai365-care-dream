@@ -11,6 +11,9 @@ export interface CareResponse {
 
 const MODEL = 'gemini-3.6-flash'
 
+// 요청이 20초 안에 반드시 끝나도록(성공 또는 실패) 넉넉한 여유를 두고 끊는다.
+const REQUEST_TIMEOUT_MS = 18000
+
 // 스키마 enum에 한글을 넣으면 이 모델에서 깨진 값이 나오는 경우가 있어
 // 영문 코드로 받고 한글 라벨로 변환한다.
 const RISK_CODE_TO_LABEL: Record<string, RiskLevel> = {
@@ -118,44 +121,72 @@ export async function generateCareResponse(
       `그 위험도 수준에 맞는 즉시 행동·확인사항·보고 문장을 작성하라.`
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: userText }],
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  let res: Response
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: userText }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: RESPONSE_SCHEMA,
+            temperature: 0.2,
           },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-          temperature: 0.2,
-        },
-      }),
-    },
-  )
+        }),
+        signal: controller.signal,
+      },
+    )
+  } catch (e) {
+    if (controller.signal.aborted) {
+      throw new Error('AI 응답 시간이 초과되었습니다.')
+    }
+    throw new Error(e instanceof Error ? `네트워크 오류: ${e.message}` : '네트워크 오류가 발생했습니다.')
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!res.ok) {
-    const body = await res.text()
+    const body = await res.text().catch(() => '')
     throw new Error(`API 호출 실패 (${res.status}): ${body}`)
   }
 
-  const data = await res.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  let data: unknown
+  try {
+    data = await res.json()
+  } catch {
+    throw new Error('AI 응답을 해석하지 못했습니다.')
+  }
+
+  const text = (data as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
+    .candidates?.[0]?.content?.parts?.[0]?.text
   if (!text) {
     throw new Error('AI 응답에서 결과를 찾지 못했습니다.')
   }
 
-  const parsed = JSON.parse(text)
-  const riskLevel = options?.forcedRiskLevel ?? RISK_CODE_TO_LABEL[parsed.riskLevel]
-  if (!riskLevel) {
-    throw new Error(`알 수 없는 위험도 값입니다: ${parsed.riskLevel}`)
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('AI 응답 형식이 올바르지 않습니다.')
   }
 
-  return { ...parsed, riskLevel }
+  const riskLevel =
+    options?.forcedRiskLevel ?? RISK_CODE_TO_LABEL[parsed.riskLevel as string]
+  if (!riskLevel) {
+    throw new Error(`알 수 없는 위험도 값입니다: ${String(parsed.riskLevel)}`)
+  }
+
+  return { ...(parsed as object), riskLevel } as CareResponse
 }

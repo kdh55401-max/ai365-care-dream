@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "mvp-care-assistant-dev",
-      "runtimeExecutable": "C:\\Users\\USER\\Desktop\\mini apps\\mvp-care-assistant\\dev.cmd",
-      "runtimeArgs": [],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174"],
       "port": 5174
     }
   ]
