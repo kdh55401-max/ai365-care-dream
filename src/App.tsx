@@ -14,6 +14,7 @@ import {
   FIELD_ACTION_OPTIONS,
 } from './caseDraft'
 import { initAnalytics, trackEvent } from './analytics'
+import { navigate } from './router'
 import logo from './assets/logo.png'
 
 type Screen = 'idle' | 'input' | 'confirm' | 'questions' | 'result' | 'callLog' | 'caseDraft'
@@ -493,6 +494,27 @@ function App() {
                   성명·주소 등 개인정보는 말하지 마세요.
                 </p>
               </div>
+            )}
+
+            {voiceState === 'idle' && (
+              <button
+                onClick={() => {
+                  trackEvent('nav_safety_scanner')
+                  navigate('/safety-scanner')
+                }}
+                className="w-full rounded-3xl bg-white border border-slate-100 shadow-sm p-5 text-left
+                           hover:border-teal-300 hover:shadow-md transition flex items-center gap-4"
+              >
+                <ShieldIcon className="w-8 h-8 shrink-0 text-teal-600" />
+                <div>
+                  <p className="font-bold text-slate-900 text-lg">AI365 생활안전스캐너</p>
+                  <p className="text-slate-500 text-sm leading-relaxed mt-0.5">
+                    AI가 질문하면 생활지원사가 대화·관찰·사진으로 확인하고, 발견된 위험을
+                    기록합니다.
+                  </p>
+                  <p className="text-teal-600 text-sm font-bold mt-2">생활안전 점검 시작 →</p>
+                </div>
+              </button>
             )}
 
             {error && (
