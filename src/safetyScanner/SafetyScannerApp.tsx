@@ -378,9 +378,9 @@ function SafetyScannerApp() {
           className="pointer-events-none select-none absolute -top-6 left-1/2 -translate-x-1/2 -z-10 w-56 opacity-[0.06]"
         />
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/community')}
           className="absolute left-0 top-0 flex items-center gap-1 text-slate-400 hover:text-slate-600 text-sm py-1 px-1"
-          aria-label="AI365 CARE DREAM 홈으로"
+          aria-label="생활지원사 업무공간으로 돌아가기"
         >
           <BackIcon className="w-5 h-5" />
           <span>홈</span>
@@ -391,7 +391,7 @@ function SafetyScannerApp() {
 
       <main className="relative w-full max-w-md flex-1">
         {screen === 'start' && (
-          <StartScreen onStart={startScan} onBack={() => navigate('/')} />
+          <StartScreen onStart={startScan} onBack={() => navigate('/community')} />
         )}
 
         {screen === 'chat' && currentStep && (
@@ -459,7 +459,7 @@ function SafetyScannerApp() {
             finalized={resultFinalized}
             onFinalize={() => setResultFinalized(true)}
             onEdit={() => setScreen('actions')}
-            onHome={() => navigate('/')}
+            onHome={() => navigate('/community')}
             onNewScan={startScan}
           />
         )}
@@ -473,8 +473,8 @@ function StartScreen({ onStart, onBack }: { onStart: () => void; onBack: () => v
     <div className="flex flex-col gap-5 pt-4">
       <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6 flex flex-col gap-2">
         <p className="text-teal-600 font-bold text-sm tracking-wide">AI365 생활안전스캐너</p>
-        <h2 className="text-2xl font-bold text-slate-900">방문 기본스캔</h2>
-        <p className="text-slate-500 text-lg">예상 소요시간 2~3분</p>
+        <h2 className="text-2xl font-bold text-slate-900">기본 안전점검</h2>
+        <p className="text-slate-500 text-lg">방문 기본스캔 · 예상 소요시간 2~3분</p>
         <p className="text-slate-500 text-base mt-2">데모 대상자: 테스트 어르신</p>
         <div className="flex items-start gap-2 mt-3 bg-teal-50 border border-teal-100 rounded-2xl p-3">
           <ShieldIcon className="w-5 h-5 shrink-0 text-teal-600 mt-0.5" />
@@ -486,11 +486,15 @@ function StartScreen({ onStart, onBack }: { onStart: () => void; onBack: () => v
 
       <div className="flex flex-col gap-3">
         <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4 flex items-center justify-between opacity-60">
-          <span className="text-slate-500 text-lg font-bold">월간 정밀스캔</span>
+          <span className="text-slate-500 text-lg font-bold">월간 정기점검</span>
           <span className="text-slate-400 text-sm font-semibold">준비 중</span>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4 flex items-center justify-between opacity-60">
-          <span className="text-slate-500 text-lg font-bold">계절·상황스캔</span>
+          <span className="text-slate-500 text-lg font-bold">계절별 집중점검</span>
+          <span className="text-slate-400 text-sm font-semibold">준비 중</span>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4 flex items-center justify-between opacity-60">
+          <span className="text-slate-500 text-lg font-bold">특이사항 보고</span>
           <span className="text-slate-400 text-sm font-semibold">준비 중</span>
         </div>
       </div>

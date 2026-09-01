@@ -414,7 +414,7 @@ function App() {
       className={`relative min-h-screen bg-slate-50 flex flex-col items-center px-4 py-10 overflow-hidden
                   ${screen === 'idle' ? 'justify-center' : ''}`}
     >
-      <header className="relative mb-8 text-center">
+      <header className="relative mb-8 w-full max-w-md">
         <img
           src={logo}
           alt=""
@@ -422,10 +422,24 @@ function App() {
           className="pointer-events-none select-none absolute -top-6 left-1/2 -translate-x-1/2
                      -z-10 w-64 opacity-[0.06]"
         />
-        <p className="text-base font-semibold tracking-wide text-teal-600">
-          AI365 CARE DREAM
-        </p>
-        <h1 className="text-3xl font-bold text-slate-900 mt-1">
+        <div className="flex items-start justify-between gap-2">
+          <span className="w-14 shrink-0" aria-hidden="true" />
+          <div className="text-center flex-1 min-w-0">
+            <p className="text-base font-semibold tracking-wide text-teal-600">
+              AI365 CARE DREAM
+            </p>
+            <p className="text-teal-700 text-xs font-bold tracking-widest mt-0.5">COMMUNITY</p>
+          </div>
+          <button
+            onClick={() => navigate('/')}
+            className="w-14 shrink-0 text-right text-slate-400 hover:text-slate-600 text-sm py-1 leading-tight"
+          >
+            역할
+            <br />
+            전환
+          </button>
+        </div>
+        <h1 className="text-3xl font-bold text-slate-900 mt-1 text-center">
           현장 대응 도우미
         </h1>
       </header>
