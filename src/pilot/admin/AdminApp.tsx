@@ -7,7 +7,7 @@ import type { AdminRepo, ReportDetail, ReportListItem, StatsResponse } from '../
 import { realAdminRepo } from '../shared/adminRepo'
 import { isDemoMode } from '../shared/demoMode'
 import { demoAdminRepo } from '../demo/demoAdminRepo'
-import { resetDemoData, DEMO_ADMIN_PASSWORD } from '../demo/demoStore'
+import { resetDemoData, DEMO_ADMIN_ALIAS_PASSWORD } from '../demo/demoStore'
 import { computeRawInformativeness, type Fraction } from '../../../shared/statsCalc'
 import { BeforeAfterBarChart, CumulativeLineChart, type BeforeAfterMetric } from './charts'
 
@@ -116,7 +116,7 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (password: str
         <div className="text-center mb-2">
           <p className="text-teal-600 font-semibold">AI365 CARE DREAM</p>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">관리자 로그인</h1>
-          {demo && <p className="text-amber-600 text-xs mt-2 font-bold">데모 모드 — 비밀번호 {DEMO_ADMIN_PASSWORD}</p>}
+          {demo && <p className="text-amber-600 text-xs mt-2 font-bold">데모 모드 — 비밀번호 {DEMO_ADMIN_ALIAS_PASSWORD}</p>}
         </div>
         <input
           type="password"
@@ -291,7 +291,7 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
             />
             <StatCard
               big
-              label="바로 판단 가능률"
+              label="기관 활용 가능률"
               value={headlinePercent === null ? '평가 전' : `AI 적용 후 ${headlinePercent}%`}
               sub={
                 stats.beforeAfter.rawActionable.percent === null
@@ -300,12 +300,41 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
                       stats.beforeAfter.actionableDeltaPp !== null && stats.beforeAfter.actionableDeltaPp >= 0 ? '+' : ''
                     }${stats.beforeAfter.actionableDeltaPp ?? 0}%p 개선 · ${fmtPct(stats.coreHeadline)}`
               }
-              tip={<InfoTip title="바로 판단 가능률" formula="바로이해가능=예 & 추가확인필요=아니오 건수 ÷ 해당 단계 평가완료 건수 × 100" den={stats.coreHeadline.denominator} num={stats.coreHeadline.numerator} />}
+              tip={
+                <InfoTip
+                  title="기관 활용 가능률"
+                  formula="관리자가 추가 확인 없이 조치 여부를 판단할 수 있었던 보고 비율 (바로이해가능=예 & 추가확인필요=아니오) ÷ 해당 단계 평가완료 건수 × 100"
+                  den={stats.coreHeadline.denominator}
+                  num={stats.coreHeadline.numerator}
+                />
+              }
             />
             <StatCard
-              label="AI 사실오류"
-              value={stats.quality.inaccuracyEvaluatedCount === 0 ? '평가 전' : `${stats.quality.inaccuracyCount} / ${stats.quality.inaccuracyEvaluatedCount}건`}
+              label="AI 사실오류율"
+              value={stats.quality.inaccuracyEvaluatedCount === 0 ? '평가 전' : fmtPct(stats.quality.inaccuracyRate)}
               sub="관리자 평가에서 사실과 다른 내용이 확인된 건수"
+            />
+            <StatCard
+              label="구조화 완료율"
+              value={fmtPct(stats.quality.completionRate)}
+              sub="시작한 돌봄보고 중 최종 제출까지 끝낸 비율"
+              tip={<InfoTip title="구조화 완료율" formula="제출 완료(submitted) 건수 ÷ 시작한 전체 보고 건수 × 100" den={stats.quality.completionRate.denominator} num={stats.quality.completionRate.numerator} />}
+            />
+            <StatCard
+              label="AI 추가질문 발생률"
+              value={fmtPct(stats.quality.followupOccurredRate)}
+              sub="AI가 추가 질문을 던진 보고 비율"
+            />
+            <StatCard
+              label="추가정보 발견률"
+              value={fmtPct(stats.quality.infoAddedRate)}
+              sub="추가질문을 통해 새 관찰정보가 1개 이상 확보된 비율"
+            />
+            <StatCard
+              label="AI 초안 수정률"
+              value={fmtPct(stats.quality.aiDraftEditRate)}
+              sub="AI가 생성한 기록을 요양보호사가 수정 후 제출한 비율"
+              tip={<InfoTip title="AI 초안 수정률" formula="ai_generated_report ≠ caregiver_final_report(정규화 텍스트 비교) 건수 ÷ 제출 건수 × 100" den={stats.quality.aiDraftEditRate.denominator} num={stats.quality.aiDraftEditRate.numerator} />}
             />
           </div>
 
@@ -341,6 +370,20 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
           <section>
             <h3 className="font-bold text-slate-900 mb-2">"특이사항 없음" 대응 품질</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <StatCard
+                big
+                label="특이사항 없음 → 추가정보 발견률"
+                value={fmtPct(stats.noChangeFlow.noChangeToInfoFoundRate)}
+                sub={`특이사항 없음 최초입력 ${stats.noChangeFlow.noChangeInitialCount}건 중 AI 추가질문 후 추가정보 발견 ${stats.noChangeFlow.noChangeInfoFoundCount}건`}
+                tip={
+                  <InfoTip
+                    title="특이사항 없음 → 추가정보 발견률"
+                    formula="no_change_initial_input=true인 보고 중 information_added_count>0인 비율"
+                    den={stats.noChangeFlow.noChangeToInfoFoundRate.denominator}
+                    num={stats.noChangeFlow.noChangeToInfoFoundRate.numerator}
+                  />
+                }
+              />
               <StatCard label="무정보 보고 구체화율" value={fmtPct(stats.noChangeFlow.noInfoSpecificationRate)} />
               <StatCard label="평균 추가 관찰정보" value={stats.noChangeFlow.avgAddedDomains === null ? '측정 전' : `${stats.noChangeFlow.avgAddedDomains}개`} />
               <StatCard label="미확인 구분률" value={fmtPct(stats.noChangeFlow.unconfirmedSeparationRate)} />

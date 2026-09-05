@@ -21,6 +21,22 @@ export const DEMO_RECIPIENT_CODES = ['A01', 'A02', 'A03']
 export const DEMO_PIN = '1234'
 export const DEMO_ADMIN_PASSWORD = 'demo1234'
 
+/** 9/18 실증 시연용 별칭 로그인. 운영 인증(참여자별 PIN, 관리자 비밀번호 해시)은
+ * 전혀 바꾸지 않고, 데모 모드(?demo=1)에서만 "c1~c9 / 6003", "관리자 / 65036300"
+ * 같은 외우기 쉬운 값을 받아 내부적으로 기존 C01~C09 참여자로 그대로 로그인
+ * 시키는 얇은 별칭 계층이다. */
+export const DEMO_ALIAS_PASSWORD = '6003'
+export const DEMO_ADMIN_ALIAS_PASSWORD = '65036300'
+
+/** "c1", "C1", "c01", "C01" 등 다양한 표기를 기존 참여자 코드 형식(C01~C09)으로
+ * 정규화한다. 매칭되지 않으면 대문자로 트림한 원본을 그대로 돌려준다(기존
+ * 운영 코드 입력과의 호환을 위해). */
+export function canonicalizeParticipantCode(input: string): string {
+  const trimmed = input.trim().toUpperCase()
+  const match = trimmed.match(/^C0?([1-9])$/)
+  return match ? `C0${match[1]}` : trimmed
+}
+
 interface DemoParticipant {
   code: string
   active: boolean
@@ -91,8 +107,20 @@ export function subscribeDemoUpdates(onChange: () => void): () => void {
 // ── 참여자 세션 ───────────────────────────────────────────────────────
 export function demoCareLogin(code: string, pin: string): boolean {
   const db = readDb()
+  const trimmedPin = pin.trim()
+
+  if (trimmedPin === DEMO_ALIAS_PASSWORD) {
+    const canonical = canonicalizeParticipantCode(code)
+    const aliasParticipant = db.participants.find((x) => x.code === canonical && x.active)
+    if (aliasParticipant) {
+      db.careSession = canonical
+      writeDb(db)
+      return true
+    }
+  }
+
   const p = db.participants.find((x) => x.code === code && x.active)
-  if (!p || p.pin !== pin) return false
+  if (!p || p.pin !== trimmedPin) return false
   db.careSession = code
   writeDb(db)
   return true
@@ -109,7 +137,7 @@ export function demoCareSession(): string | null {
 }
 
 export function demoAdminLogin(password: string): boolean {
-  if (password !== DEMO_ADMIN_PASSWORD) return false
+  if (password !== DEMO_ADMIN_PASSWORD && password !== DEMO_ADMIN_ALIAS_PASSWORD) return false
   const db = readDb()
   db.adminSession = true
   writeDb(db)

@@ -7,7 +7,7 @@ import type { CareRepo } from '../shared/careRepo'
 import { realCareRepo } from '../shared/careRepo'
 import { isDemoMode } from '../shared/demoMode'
 import { demoCareRepo } from '../demo/demoCareRepo'
-import { resetDemoData, DEMO_PIN, DEMO_RECIPIENT_CODES } from '../demo/demoStore'
+import { resetDemoData, DEMO_ALIAS_PASSWORD, DEMO_RECIPIENT_CODES } from '../demo/demoStore'
 import {
   buildNoChangeReport,
   classifyDomainsFromText,
@@ -141,7 +141,7 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
           <p className="text-slate-500 text-base mt-2 leading-relaxed">오늘 돌봄 내용을 60초 안에 보고하세요.</p>
           {demo && (
             <p className="text-amber-600 text-xs mt-2 font-bold">
-              데모 모드 — 코드 C01~C09, PIN {DEMO_PIN}
+              데모 계정 c1 ~ c9 / 비밀번호 {DEMO_ALIAS_PASSWORD}
             </p>
           )}
         </div>
@@ -152,13 +152,13 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="예: C01"
+              placeholder={demo ? '예: c1' : '예: C01'}
               className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              autoCapitalize="characters"
+              autoCapitalize={demo ? 'none' : 'characters'}
             />
           </div>
           <div>
-            <label className="block font-bold text-slate-900 text-base mb-1">PIN</label>
+            <label className="block font-bold text-slate-900 text-base mb-1">{demo ? '비밀번호' : 'PIN'}</label>
             <input
               value={pin}
               onChange={(e) => setPin(e.target.value)}
@@ -328,8 +328,13 @@ function CareApp() {
 
   const handleLogin = async (code: string, pin: string) => {
     await repo.login(code, pin)
-    setParticipantCode(code)
-    await loadHome(code)
+    // 데모 모드 별칭 로그인(c1→C01 등)처럼 로그인에 쓴 입력과 실제 참여자
+    // 코드가 다를 수 있으므로, 로그인 직후 세션을 다시 조회해 정규화된
+    // 코드를 신뢰한다(직접 넘긴 code를 그대로 쓰지 않는다).
+    const session = await repo.getSession()
+    const resolvedCode = session.authenticated && session.participantCode ? session.participantCode : code
+    setParticipantCode(resolvedCode)
+    await loadHome(resolvedCode)
     setPhase('app')
   }
   const handleLogout = async () => {

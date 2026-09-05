@@ -1,4 +1,4 @@
-import { computeInformativeness, type CareReportRecord, type DomainEntry } from './careTypes.js'
+import { computeInformativeness, type CareReportRecord, type DomainEntry, type StructuredReport } from './careTypes.js'
 
 export interface Fraction {
   numerator: number
@@ -28,6 +28,17 @@ export function average(nums: number[]): number | null {
 
 function deepEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/** 공백 차이만으로 "수정함"으로 잘못 집계되지 않도록 각 필드를 정규화한다.
+ * 의미 유사도 판정(AI 비교)은 이번 범위에서 제외하고, 텍스트 정규화 비교만 한다. */
+function normalizeReportField(v: string | undefined | null): string {
+  return (v ?? '').trim().replace(/\s+/g, ' ')
+}
+
+function reportTextEquivalent(a: StructuredReport | null, b: StructuredReport | null): boolean {
+  const fields: Array<keyof StructuredReport> = ['change', 'action', 'result', 'escalation']
+  return fields.every((f) => normalizeReportField(a?.[f]) === normalizeReportField(b?.[f]))
 }
 
 const PARTICIPANT_CODES = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09']
@@ -189,6 +200,21 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   const noEditCount = submitted.filter((r) => deepEqual(r.ai_generated_report, r.caregiver_final_report)).length
   const completionRate = fraction(submitted.length, rows.length)
 
+  // AI 초안 수정률: AI가 만든 초안(ai_generated_report)과 요양보호사가 제출한
+  // 최종본(caregiver_final_report)을 정규화 텍스트로 비교해 "고쳐서 낸" 비율.
+  // 의미 유사도(AI) 판정은 이번 범위에서 제외하고 텍스트 정규화 비교만 한다.
+  const aiDraftEditedCount = submitted.filter((r) => !reportTextEquivalent(r.ai_generated_report, r.caregiver_final_report)).length
+  const aiDraftEditRate = fraction(aiDraftEditedCount, submitted.length)
+
+  // AI 추가질문 발생률 / 추가정보 발견률 (전체 제출 보고 기준)
+  const followupOccurredRate = fraction(submitted.filter((r) => r.followup_questions.length > 0).length, submitted.length)
+  const infoAddedRate = fraction(submitted.filter((r) => r.information_added_count > 0).length, submitted.length)
+
+  const inaccuracyRate = fraction(
+    aiEvaluated.filter((r) => r.ai_inaccuracy_detected === true).length,
+    aiEvaluated.length,
+  )
+
   // 현장보고 유형 분류 (평소와 다름 / 평소와 비슷 / 확인 필요 / 무정보 보고)
   const buckets: Record<InitialChoiceBucket, CareReportRecord[]> = { changed: [], similar: [], uncertain: [], noInfo: [] }
   for (const r of submitted) buckets[bucketOf(r)].push(r)
@@ -205,6 +231,12 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   const noChangeSpecified = noChangeInitial.filter((r) => r.final_information_count >= 1)
   const noInfoSpecificationRate = fraction(noChangeSpecified.length, noChangeInitial.length)
   const avgAddedDomains = average(noChangeInitial.map((r) => r.information_added_count))
+
+  // 이번 실증에서 가장 중요한 지표: "특이사항 없음"으로 시작했지만 AI 추가질문을
+  // 거쳐 실제로 새 관찰정보가 발견된 비율. 실증 데이터가 쌓이기 전에는 분모가
+  // 0이라 percent가 null로 나온다(가짜 숫자를 채우지 않는다).
+  const noChangeInfoFound = noChangeInitial.filter((r) => r.information_added_count > 0)
+  const noChangeToInfoFoundRate = fraction(noChangeInfoFound.length, noChangeInitial.length)
 
   // 미확인 구분률: "평소와 비슷했어요" 흐름에서 미확인 항목이 있었던 보고 중,
   // 확인된 항목과 미확인 항목을 실제로 구분해 함께 보여준 비율.
@@ -268,10 +300,14 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
       completionSecondsMedian: median(completionSeconds),
       voiceVsText: { voice: voiceCount, text: textCount },
       noEditRate: fraction(noEditCount, submitted.length),
+      aiDraftEditRate,
+      followupOccurredRate,
+      infoAddedRate,
       adminEvalCompletionRate: fraction(aiEvaluated.length, submitted.length),
       aiUsefulnessAvg: average(aiEvaluated.map((r) => r.ai_usefulness_score ?? 0)),
       inaccuracyCount: aiEvaluated.filter((r) => r.ai_inaccuracy_detected === true).length,
       inaccuracyEvaluatedCount: aiEvaluated.length,
+      inaccuracyRate,
     },
     beforeAfter: {
       rawActionable,
@@ -296,6 +332,9 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
     noChangeFlow: {
       noInfoSpecificationRate,
       avgAddedDomains,
+      noChangeInitialCount: noChangeInitial.length,
+      noChangeInfoFoundCount: noChangeInfoFound.length,
+      noChangeToInfoFoundRate,
       unconfirmedSeparationRate,
       repeatNoInfoParticipants,
       avgNoChangeFollowupCount,
