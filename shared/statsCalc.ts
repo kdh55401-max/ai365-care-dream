@@ -198,18 +198,35 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   )
 
   const noEditCount = submitted.filter((r) => deepEqual(r.ai_generated_report, r.caregiver_final_report)).length
+
+  // 구조화 완료율 = 분자: 최종 제출(status='submitted')된 보고 수 / 분모: 시작한
+  // 전체 보고(draft 포함) 수. rows.length가 0이면 fraction()이 percent=null을
+  // 돌려주므로 화면에서 "평가 전"으로 자연스럽게 표시된다(가짜 0% 아님).
   const completionRate = fraction(submitted.length, rows.length)
 
-  // AI 초안 수정률: AI가 만든 초안(ai_generated_report)과 요양보호사가 제출한
-  // 최종본(caregiver_final_report)을 정규화 텍스트로 비교해 "고쳐서 낸" 비율.
-  // 의미 유사도(AI) 판정은 이번 범위에서 제외하고 텍스트 정규화 비교만 한다.
+  // AI 초안 수정률 = 분자: ai_generated_report와 caregiver_final_report가 정규화
+  // 텍스트 기준으로 다른(=요양보호사가 고쳐서 낸) 보고 수 / 분모: 제출 보고 수.
+  // 의미 유사도(AI) 판정은 이번 범위에서 제외하고 공백만 다른 경우를 "안 고침"으로
+  // 잘못 세지 않도록 정규화(trim + 공백 압축) 텍스트 비교만 한다. submitted.length=0이면
+  // percent=null → "평가 전"으로 표시.
   const aiDraftEditedCount = submitted.filter((r) => !reportTextEquivalent(r.ai_generated_report, r.caregiver_final_report)).length
   const aiDraftEditRate = fraction(aiDraftEditedCount, submitted.length)
 
-  // AI 추가질문 발생률 / 추가정보 발견률 (전체 제출 보고 기준)
+  // AI 추가질문 발생률 = 분자: followup_questions.length>0인 제출 보고 수 / 분모: 제출
+  // 보고 수 전체. "특이사항 없음" 흐름의 질문(no_change_followup_count)은 이 필드에
+  // 안 들어가므로, 여기 잡히는 건 changed/uncertain 초기선택에서 AI가 실제로 던진
+  // 질문이 있는 보고만이다(의도된 범위 — 두 흐름의 질문 체계가 서로 다른 필드).
   const followupOccurredRate = fraction(submitted.filter((r) => r.followup_questions.length > 0).length, submitted.length)
+
+  // 추가정보 발견률 = 분자: information_added_count>0인 제출 보고 수(모든 초기선택
+  // 통틀어) / 분모: 제출 보고 수 전체. information_added_count는 "질문한 횟수"가
+  // 아니라 "흐름 시작 시점에는 없었던 새 changed 도메인 수"만 세도록 고쳤다(버그
+  // 수정 — computeInformationAddedCount 참고). changed 초기선택 보고는 이 필드를
+  // 건드리지 않아 기본값 0을 유지하므로 분모에는 포함되지만 분자에는 기여하지 않는다.
   const infoAddedRate = fraction(submitted.filter((r) => r.information_added_count > 0).length, submitted.length)
 
+  // AI 사실오류율 = 분자: ai_inaccuracy_detected=true / 분모: 관리자 2단계 평가가
+  // 끝난(ai_evaluated_at 존재) 보고 수. 평가 전이면 분모 0 → "평가 전" 표시.
   const inaccuracyRate = fraction(
     aiEvaluated.filter((r) => r.ai_inaccuracy_detected === true).length,
     aiEvaluated.length,
@@ -232,9 +249,13 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   const noInfoSpecificationRate = fraction(noChangeSpecified.length, noChangeInitial.length)
   const avgAddedDomains = average(noChangeInitial.map((r) => r.information_added_count))
 
-  // 이번 실증에서 가장 중요한 지표: "특이사항 없음"으로 시작했지만 AI 추가질문을
-  // 거쳐 실제로 새 관찰정보가 발견된 비율. 실증 데이터가 쌓이기 전에는 분모가
-  // 0이라 percent가 null로 나온다(가짜 숫자를 채우지 않는다).
+  // 특이사항 없음 → 추가정보 발견률 = 분자: no_change_initial_input=true인 보고 중
+  // information_added_count>0 / 분모: no_change_initial_input=true인 보고 수 전체.
+  // 이번 실증에서 가장 중요한 지표다. information_added_count는 도메인이 "언급된
+  // 횟수"가 아니라 "새로 changed로 밝혀진 도메인 수"만 세도록 고쳤으므로("평소와
+  // 같아요"류 답변은 0으로 유지), 이 비율이 실제로 "정말 새 사실이 나왔는가"를
+  // 반영한다. noChangeInitial.length=0(아직 이런 보고가 없음)이면 fraction()이
+  // percent=null을 돌려주고, 화면은 그걸 "평가 전"으로 표시한다 — 가짜 숫자 없음.
   const noChangeInfoFound = noChangeInitial.filter((r) => r.information_added_count > 0)
   const noChangeToInfoFoundRate = fraction(noChangeInfoFound.length, noChangeInitial.length)
 

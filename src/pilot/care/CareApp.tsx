@@ -11,6 +11,7 @@ import { resetDemoData, DEMO_ALIAS_PASSWORD, DEMO_RECIPIENT_CODES } from '../dem
 import {
   buildNoChangeReport,
   classifyDomainsFromText,
+  computeInformationAddedCount,
   detectNoChangePhrase,
   mergeDomainEntries,
   NO_CHANGE_QUESTION_1,
@@ -223,6 +224,10 @@ function CareApp() {
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const finalTranscriptRef = useRef('')
   const settledRef = useRef(false)
+  // "특이사항 없음" 흐름 시작 시점의 도메인 분류 스냅샷. information_added_count는
+  // 이 스냅샷과 최종 분류를 비교해 "새로 changed로 바뀐 도메인"만 세야 하므로,
+  // 매 답변마다 덮어써지는 noChangeEntries와는 별도로 고정해 둔다.
+  const initialNoChangeEntriesRef = useRef<DomainEntry[]>([])
 
   const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}` : null
 
@@ -234,7 +239,7 @@ function CareApp() {
         JSON.stringify({
           reportId, reportType, recipientCode, rawInput, initialChoice, followupHistory, currentQuestion,
           aiGeneratedReport, finalReport, screen, noChangeEntries, noChangeStep, noChangeAnswered, initialInfoCount,
-          noChangeInitialInput,
+          noChangeInitialInput, initialNoChangeEntries: initialNoChangeEntriesRef.current,
         }),
       )
     } catch {
@@ -284,6 +289,7 @@ function CareApp() {
           setNoChangeStep(draft.noChangeStep ?? 0)
           setNoChangeAnswered(draft.noChangeAnswered ?? 0)
           setInitialInfoCount(draft.initialInfoCount ?? 0)
+          initialNoChangeEntriesRef.current = draft.initialNoChangeEntries ?? []
           setNoChangeInitialInput(draft.noChangeInitialInput ?? false)
           setScreen(draft.screen)
           return
@@ -435,6 +441,7 @@ function CareApp() {
 
   const startNoChangeFlow = async (firstText: string) => {
     const entries = classifyDomainsFromText(firstText)
+    initialNoChangeEntriesRef.current = entries
     setNoChangeEntries(entries)
     setInitialInfoCount(entries.length)
     setNoChangeInitialInput(true)
@@ -461,13 +468,17 @@ function CareApp() {
     setAiGeneratedReport(report)
     setFinalReport(report)
     if (reportId) {
+      // "질문한 횟수"(askedCount, followup_questions와 별개 필드)와 "실제로 새로 발견한
+      // 정보의 수"는 서로 다른 값이다 — computeInformationAddedCount 참고.
+      const informationAddedCount = computeInformationAddedCount(initialNoChangeEntriesRef.current, entries)
+
       await repo.patchReport({
         id: reportId,
         aiGeneratedReport: report,
         noChangeFollowupCount: askedCount,
         noChangeFollowupAnswered: answeredCount,
         finalInformationCount: entries.length,
-        informationAddedCount: Math.max(0, entries.length - initialInfoCount),
+        informationAddedCount,
         noInformationReport: entries.length === 0,
       })
     }

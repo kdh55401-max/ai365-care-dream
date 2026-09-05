@@ -20,7 +20,10 @@ interface DomainRule {
 
 const DOMAIN_RULES: DomainRule[] = [
   { domain: 'meal_hydration', keywords: ['식사', '드시', '식욕', '수분', '물', '음식', '반찬'] },
-  { domain: 'mobility_fall', keywords: ['이동', '걷', '걸음', '걸어', '걸으', '보행', '휘청', '낙상', '넘어지', '일어나'] },
+  {
+    domain: 'mobility_fall',
+    keywords: ['이동', '걷', '걸음', '걸어', '걸으', '보행', '휘청', '낙상', '넘어지', '일어나', '어지럽', '어지러움', '현기증'],
+  },
   { domain: 'excretion', keywords: ['배설', '대변', '소변', '화장실', '기저귀', '변'] },
   { domain: 'cognition_communication', keywords: ['대화', '말씀', '인지', '기억', '의사소통', '알아'] },
   { domain: 'emotion_behavior', keywords: ['기분', '정서', '짜증', '불안', '행동', '표정'] },
@@ -32,7 +35,17 @@ const DOMAIN_RULES: DomainRule[] = [
 
 const NOT_OBSERVED_CUES = ['확인 못', '확인하지 못', '확인 안', '못 봤', '안 봤', '보지 못']
 const UNCERTAIN_CUES = ['모르겠', '잘 모르', '애매', '확실치 않', '확실하지 않']
-const CHANGED_CUES = ['변화', '달라', '줄었', '늘었', '불편', '안 좋', '나빠', '심해', '휘청', '넘어']
+// "낙상 없었어요"처럼 증상 단어와 부정 표현이 함께 나오면, 아래 CHANGED_CUES보다
+// 먼저 검사해서 "증상이 없었다(=평소와 같다)"는 뜻으로 해석한다. 부정 표현이
+// 없을 때만 증상 단어 자체가 변화 신호로 인정된다.
+const NEGATION_CUES = ['없었', '없으', '없어', '아니었', '않았', '않으']
+const CHANGED_CUES = [
+  '변화', '달라', '줄었', '늘었', '불편', '안 좋', '나빠', '심해', '휘청', '넘어',
+  // 언급 자체가 이례적인 증상/사고 단어 — 부정(NEGATION_CUES)이 없는 한 변화로 본다.
+  '어지럽', '어지러움', '현기증', '낙상', '통증', '아프', '아팠', '욕창',
+  // 사용자가 예시로 든 구체적 표현
+  '절반', '못 드시', '못 드셨', '거의 못', '불안정', '비틀', '누락', '거르', '잊으',
+]
 const USUAL_CUES = ['평소', '같았', '같아', '비슷', '괜찮', '정상', '여느 때']
 
 function windowAround(text: string, index: number, radius = 16): string {
@@ -42,6 +55,7 @@ function windowAround(text: string, index: number, radius = 16): string {
 function classifyWindow(w: string): DomainStatus {
   if (NOT_OBSERVED_CUES.some((c) => w.includes(c))) return 'not_observed'
   if (UNCERTAIN_CUES.some((c) => w.includes(c))) return 'uncertain'
+  if (NEGATION_CUES.some((c) => w.includes(c))) return 'same_as_usual'
   if (CHANGED_CUES.some((c) => w.includes(c))) return 'changed'
   if (USUAL_CUES.some((c) => w.includes(c))) return 'same_as_usual'
   // "평소와 비슷했어요" 흐름 안에서는 별다른 단서 없이 영역만 언급된 경우
@@ -74,6 +88,15 @@ export function mergeDomainEntries(...batches: DomainEntry[][]): DomainEntry[] {
     for (const e of batch) byDomain.set(e.domain, e.status)
   }
   return [...byDomain.entries()].map(([domain, status]) => ({ domain, status }))
+}
+
+/** information_added_count 계산: "질문한 횟수"가 아니라 "실제로 새로 발견한
+ * 의미 있는 정보의 수"다. 흐름 시작 시점(initialEntries)에는 없었던 changed
+ * 도메인만 센다 — "평소와 같아요"/"없어요" 같은 답변은 도메인이 언급돼도
+ * same_as_usual로 분류되므로 여기 포함되지 않는다. */
+export function computeInformationAddedCount(initialEntries: DomainEntry[], finalEntries: DomainEntry[]): number {
+  const initialChangedDomains = new Set(initialEntries.filter((e) => e.status === 'changed').map((e) => e.domain))
+  return finalEntries.filter((e) => e.status === 'changed' && !initialChangedDomains.has(e.domain)).length
 }
 
 export function splitDomainsByStatus(entries: DomainEntry[]) {
