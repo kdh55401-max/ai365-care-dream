@@ -328,7 +328,15 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
             <StatCard
               label="추가정보 발견률"
               value={fmtPct(stats.quality.infoAddedRate)}
-              sub="추가질문을 통해 새 관찰정보가 1개 이상 확보된 비율"
+              sub="추가질문을 통해 새로운 변화 영역이 1개 이상 발견된 비율"
+              tip={
+                <InfoTip
+                  title="추가정보 발견률"
+                  formula="information_added_count>0인 보고 ÷ 제출 보고 수. information_added_count는 발견된 '사실' 개수가 아니라 새로 changed로 확인된 도메인(식사·이동 등) 개수다 — 같은 영역에서 여러 사실이 나와도 1로 집계된다."
+                  den={stats.quality.infoAddedRate.denominator}
+                  num={stats.quality.infoAddedRate.numerator}
+                />
+              }
             />
             <StatCard
               label="AI 초안 수정률"
@@ -374,18 +382,22 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
                 big
                 label="특이사항 없음 → 추가정보 발견률"
                 value={fmtPct(stats.noChangeFlow.noChangeToInfoFoundRate)}
-                sub={`특이사항 없음 최초입력 ${stats.noChangeFlow.noChangeInitialCount}건 중 AI 추가질문 후 추가정보 발견 ${stats.noChangeFlow.noChangeInfoFoundCount}건`}
+                sub={`특이사항 없음 최초입력 ${stats.noChangeFlow.noChangeInitialCount}건 중 AI 추가질문 후 새로운 변화 영역 발견 ${stats.noChangeFlow.noChangeInfoFoundCount}건`}
                 tip={
                   <InfoTip
                     title="특이사항 없음 → 추가정보 발견률"
-                    formula="no_change_initial_input=true인 보고 중 information_added_count>0인 비율"
+                    formula="no_change_initial_input=true인 보고 중 information_added_count>0인 비율. 흐름 시작 시점엔 없었지만 새로 changed로 밝혀진 도메인이 하나라도 있으면 1건으로 센다(도메인 단위 — 같은 영역에서 여러 사실이 함께 나와도 1건)."
                     den={stats.noChangeFlow.noChangeToInfoFoundRate.denominator}
                     num={stats.noChangeFlow.noChangeToInfoFoundRate.numerator}
                   />
                 }
               />
               <StatCard label="무정보 보고 구체화율" value={fmtPct(stats.noChangeFlow.noInfoSpecificationRate)} />
-              <StatCard label="평균 추가 관찰정보" value={stats.noChangeFlow.avgAddedDomains === null ? '측정 전' : `${stats.noChangeFlow.avgAddedDomains}개`} />
+              <StatCard
+                label="평균 추가 관찰영역"
+                value={stats.noChangeFlow.avgAddedDomains === null ? '측정 전' : `${stats.noChangeFlow.avgAddedDomains}개`}
+                tip={<InfoTip title="평균 추가 관찰영역" formula="특이사항 없음 보고들의 information_added_count 평균 — '사실 개수'가 아니라 새로 changed로 확인된 돌봄 영역(도메인) 개수의 평균이다." />}
+              />
               <StatCard label="미확인 구분률" value={fmtPct(stats.noChangeFlow.unconfirmedSeparationRate)} />
               <StatCard label="정상보고 평균 추가질문" value={stats.noChangeFlow.avgNoChangeFollowupCount === null ? '측정 전' : `${stats.noChangeFlow.avgNoChangeFollowupCount}개`} />
               <StatCard label="추가질문 응답률" value={fmtPct(stats.noChangeFlow.noChangeFollowupAnswerRate, '회')} />

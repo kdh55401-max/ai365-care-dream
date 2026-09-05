@@ -228,6 +228,11 @@ function CareApp() {
   // 이 스냅샷과 최종 분류를 비교해 "새로 changed로 바뀐 도메인"만 세야 하므로,
   // 매 답변마다 덮어써지는 noChangeEntries와는 별도로 고정해 둔다.
   const initialNoChangeEntriesRef = useRef<DomainEntry[]>([])
+  // "특이사항 없음" 흐름에서 실제로 AI가 던진 질문·요양보호사의 답변 원문을
+  // changed 흐름과 같은 followup_questions/followup_answers 필드에 남기기 위한
+  // 임시 누적 버퍼. no_change_followup_count(질문 "횟수")는 그대로 유지하면서,
+  // 실제 문답 내용도 함께 기록해 관리자가 무슨 질문·답변이 오갔는지 볼 수 있게 한다.
+  const noChangeQaHistoryRef = useRef<FollowupItem[]>([])
 
   const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}` : null
 
@@ -442,6 +447,7 @@ function CareApp() {
   const startNoChangeFlow = async (firstText: string) => {
     const entries = classifyDomainsFromText(firstText)
     initialNoChangeEntriesRef.current = entries
+    noChangeQaHistoryRef.current = []
     setNoChangeEntries(entries)
     setInitialInfoCount(entries.length)
     setNoChangeInitialInput(true)
@@ -480,6 +486,11 @@ function CareApp() {
         finalInformationCount: entries.length,
         informationAddedCount,
         noInformationReport: entries.length === 0,
+        // changed 흐름과 동일한 필드에 실제 질문·답변 원문을 남긴다(스킵 분기처럼
+        // 질문 화면 자체가 안 뜬 경우는 빈 배열 — 실제로 안 물어본 걸 물어본 것처럼
+        // 기록하지 않는다).
+        followupQuestions: noChangeQaHistoryRef.current,
+        followupAnswers: noChangeQaHistoryRef.current,
       })
     }
     setScreen('reportReview')
@@ -489,6 +500,13 @@ function CareApp() {
     const text = answerText.trim()
     const newEntries = text ? mergeDomainEntries(noChangeEntries, classifyDomainsFromText(text)) : noChangeEntries
     const answered = noChangeAnswered + (text ? 1 : 0)
+    if (text) {
+      const questionText = noChangeStep === 1 ? NO_CHANGE_QUESTION_1 : NO_CHANGE_QUESTION_2
+      noChangeQaHistoryRef.current = [
+        ...noChangeQaHistoryRef.current,
+        { question: questionText, missingField: 'no_change_check', answer: text },
+      ]
+    }
     setNoChangeEntries(newEntries)
     setNoChangeAnswered(answered)
     setAnswerText('')

@@ -115,3 +115,51 @@ describe('computeInformationAddedCount — TEST A~C (특이사항 없음 → 추
     expect(entries.find((e) => e.domain === 'mobility_fall')?.status).toBe('same_as_usual')
   })
 })
+
+/** 발화 변형 Robustness 테스트 — 키워드 한두 개가 아니라 실제 요양보호사가 쓸 법한
+ * 여러 표현으로 분류가 안정적인지 검증한다. */
+describe('classifyDomainsFromText — 발화 변형 robustness', () => {
+  describe('정상/변화 없음 표현 → same_as_usual (또는 도메인 언급 자체가 없음)', () => {
+    const cases = ['별일 없어요', '평소랑 똑같아요', '괜찮으셨어요', '특별한 건 없었습니다', '오늘도 평소대로예요']
+    it.each(cases)('%s', (text) => {
+      const entries = classifyDomainsFromText(text)
+      expect(entries.every((e) => e.status === 'same_as_usual')).toBe(true)
+    })
+  })
+
+  describe('식사 변화 표현 → meal_hydration이 changed', () => {
+    const cases = [
+      '밥을 반밖에 못 드셨어요',
+      '몇 숟갈 안 드셨어요',
+      '오늘 식사를 거의 안 하셨어요',
+    ]
+    it.each(cases)('%s', (text) => {
+      const entries = classifyDomainsFromText(text)
+      expect(entries.find((e) => e.domain === 'meal_hydration')?.status).toBe('changed')
+    })
+
+    // "입맛이 없다고 하셨어요"는 식사 관련 키워드('식사'/'드시' 등)가 문장에 아예
+    // 없어서 현재 키워드 목록으로는 도메인 자체가 매칭되지 않는다 — 알려진 한계로
+    // 기록해 둔다(과도한 키워드 확장은 이번 범위 밖).
+    it('입맛이 없다고 하셨어요 (알려진 한계: 도메인 미매칭)', () => {
+      const entries = classifyDomainsFromText('입맛이 없다고 하셨어요.')
+      expect(entries.find((e) => e.domain === 'meal_hydration')).toBeUndefined()
+    })
+  })
+
+  describe('이동/낙상 변화 표현 → mobility_fall이 changed', () => {
+    const cases = ['일어나실 때 어지럽대요', '걸을 때 휘청거리셨어요', '넘어질 뻔했어요', '오늘 한 번 넘어지셨어요']
+    it.each(cases)('%s', (text) => {
+      const entries = classifyDomainsFromText(text)
+      expect(entries.find((e) => e.domain === 'mobility_fall')?.status).toBe('changed')
+    })
+  })
+
+  describe('부정 표현 → changed로 잘못 분류되지 않음', () => {
+    const cases = ['어지럽지는 않았어요', '넘어진 적 없어요', '통증 없으세요', '식사도 잘 하셨어요']
+    it.each(cases)('%s', (text) => {
+      const entries = classifyDomainsFromText(text)
+      expect(entries.some((e) => e.status === 'changed')).toBe(false)
+    })
+  })
+})
