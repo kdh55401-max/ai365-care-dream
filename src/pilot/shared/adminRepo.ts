@@ -1,5 +1,5 @@
-import { api } from './api'
-import type { CareReportRecord } from './types'
+import { api, ApiClientError } from './api'
+import type { CareReportRecord, StructuredReport } from './types'
 import type { StatsResult } from '../../../shared/statsCalc'
 
 export interface ParticipationCell {
@@ -44,6 +44,28 @@ export interface StatsResponse {
 export type ReportListItem = Partial<CareReportRecord> & { id: string }
 export type ReportDetail = CareReportRecord
 
+export interface ReviewReportInput {
+  id: string
+  reviewStatus: 'approved' | 'rejected'
+  reviewNote?: string
+  adminFinalReport: StructuredReport
+  /** CAS용: 관리자가 마지막으로 읽은 updated_at. 서버 값과 다르면 충돌(409)로 거부된다. */
+  expectedUpdatedAt?: string
+  /** 중복요청 방지용 idempotency key. 같은 값으로 재전송하면 중복 이력 없이 직전 결과를 그대로 반환. */
+  requestId?: string
+}
+
+/** 저장 실패 시(주로 CAS 충돌 409) 던져지는 에러. 최신 서버 데이터가 실려 있으면
+ * 호출부가 입력값을 지우지 않고 재조회를 안내할 수 있다. */
+export class ReviewConflictError extends Error {
+  latest?: ReportDetail
+  constructor(message: string, latest?: ReportDetail) {
+    super(message)
+    this.name = 'ReviewConflictError'
+    this.latest = latest
+  }
+}
+
 export interface AdminRepo {
   login(password: string): Promise<void>
   logout(): Promise<void>
@@ -53,8 +75,10 @@ export interface AdminRepo {
   getReport(id: string): Promise<ReportDetail>
   evaluateRaw(id: string, payload: Record<string, unknown>): Promise<ReportDetail>
   evaluateAi(id: string, payload: Record<string, unknown>): Promise<ReportDetail>
+  /** 관리자 검토(승인/반려) — 연구용 1/2단계 평가와 별개의 운영 워크플로우. */
+  reviewReport(input: ReviewReportInput): Promise<ReportDetail>
   deleteReport(id: string, reason: string): Promise<void>
-  listParticipants(): Promise<Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string }>>
+  listParticipants(): Promise<Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>>
   resetPin(code: string): Promise<{ code: string; pin: string }>
   exportCsv(type: 'summary' | 'full'): Promise<void>
 }
@@ -100,13 +124,33 @@ export const realAdminRepo: AdminRepo = {
     const res = await api.patch<{ report: ReportDetail }>('/api/admin/reports', { id, stage: 'ai', ...payload })
     return res.report
   },
+  async reviewReport(input) {
+    try {
+      const res = await api.patch<{ report: ReportDetail }>('/api/admin/reports', {
+        id: input.id,
+        stage: 'review',
+        reviewStatus: input.reviewStatus,
+        reviewNote: input.reviewNote,
+        adminFinalReport: input.adminFinalReport,
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        requestId: input.requestId,
+      })
+      return res.report
+    } catch (e) {
+      if (e instanceof ApiClientError && e.status === 409) {
+        const latest = e.body && typeof e.body === 'object' && 'report' in e.body ? (e.body as { report: ReportDetail | null }).report : null
+        throw new ReviewConflictError(e.message, latest ?? undefined)
+      }
+      throw e
+    }
+  },
   async deleteReport(id, reason) {
     await api.del(`/api/admin/reports?id=${id}&reason=${encodeURIComponent(reason)}`)
   },
   async listParticipants() {
-    const res = await api.get<{ participants: Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string }> }>(
-      '/api/admin/participants',
-    )
+    const res = await api.get<{
+      participants: Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>
+    }>('/api/admin/participants')
     return res.participants
   },
   async resetPin(code) {

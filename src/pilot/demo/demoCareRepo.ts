@@ -1,8 +1,8 @@
 import type { CareRepo } from '../shared/careRepo'
 import type { CareReportRecord } from '../../../shared/careTypes'
 import {
-  DEMO_RECIPIENT_CODES,
   demoAllReports,
+  demoAssignedRecipients,
   demoCareLogin,
   demoCareLogout,
   demoCareSession,
@@ -57,6 +57,7 @@ function newReportRecord(input: {
     no_information_report: false,
     report_source: input.reportSource,
     scenario_id: input.scenarioId,
+    emergency_flagged: false,
     raw_immediately_actionable: null,
     raw_followup_needed: null,
     raw_completeness_score: null,
@@ -71,6 +72,12 @@ function newReportRecord(input: {
     ai_eval_note: null,
     manager_status: null,
     ai_evaluated_at: null,
+    admin_final_report: null,
+    review_status: 'pending',
+    review_note: null,
+    reviewed_at: null,
+    review_history: [],
+    last_review_request_id: null,
     deleted: false,
     created_at: now,
     updated_at: now,
@@ -97,6 +104,7 @@ function patchToRecord(patch: Record<string, unknown>): Partial<CareReportRecord
     finalInformationCount: 'final_information_count',
     informationAddedCount: 'information_added_count',
     noInformationReport: 'no_information_report',
+    emergencyFlagged: 'emergency_flagged',
   }
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(patch)) {
@@ -116,7 +124,7 @@ export const demoCareRepo: CareRepo = {
   },
   async getSession() {
     const code = demoCareSession()
-    if (!code) return { authenticated: false, today: todayKst(), dailyReportToday: null, recipientCodes: DEMO_RECIPIENT_CODES }
+    if (!code) return { authenticated: false, today: todayKst(), dailyReportToday: null, recipientCodes: [] }
     const today = todayKst()
     const daily = demoAllReports().find(
       (r) => r.participant_code === code && r.report_date === today && r.report_type === 'daily' && r.report_source === 'live',
@@ -126,7 +134,9 @@ export const demoCareRepo: CareRepo = {
       participantCode: code,
       today,
       dailyReportToday: daily ? { id: daily.id, status: daily.status } : null,
-      recipientCodes: DEMO_RECIPIENT_CODES,
+      // 로그인한 요양보호사에게 배정된 수급자만 돌려준다 — 다른 요양보호사의
+      // 수급자로 폴백하지 않는다(배정이 없으면 빈 배열 그대로).
+      recipientCodes: demoAssignedRecipients(code),
     }
   },
   async listReports() {
@@ -144,6 +154,9 @@ export const demoCareRepo: CareRepo = {
   async createReport(input) {
     const code = demoCareSession()
     if (!code) throw Object.assign(new Error('로그인이 필요합니다.'), { status: 401 })
+    if (!demoAssignedRecipients(code).includes(input.recipientCode)) {
+      throw Object.assign(new Error('배정되지 않은 수급자입니다.'), { status: 403 })
+    }
     const reportSource = input.reportSource ?? 'live'
     const scenarioId = input.scenarioId ?? null
 
@@ -190,7 +203,7 @@ export const demoCareRepo: CareRepo = {
     if (!updated) throw new Error('보고를 저장하지 못했습니다.')
     return updated
   },
-  async aiTurn(rawInput, history) {
-    return runDemoAiTurn(rawInput, history)
+  async aiTurn(rawInput, history, forceFinalize) {
+    return runDemoAiTurn(rawInput, history, forceFinalize)
   },
 }

@@ -72,6 +72,31 @@ describe('buildNoChangeReport', () => {
     const report = buildNoChangeReport([])
     expect(report.change.split('.').filter(Boolean).length).toBeGreaterThanOrEqual(2)
   })
+
+  it('rawTexts를 안 넘기면 caregiverNote는 빈 문자열(기존 호출부 하위호환)', () => {
+    const report = buildNoChangeReport([])
+    expect(report.caregiverNote).toBe('')
+  })
+
+  it('시나리오 D: "특이사항 없는데 힘들어요"류 — 어르신은 정상 처리, caregiverNote는 보존', () => {
+    const firstText = '어르신은 오늘 특이사항 없는데, 제가 너무 지쳐서 도움을 받고 싶어요.'
+    const entries = classifyDomainsFromText(firstText)
+    const report = buildNoChangeReport(entries, [firstText])
+    // 어르신에 대해 새로 발견된 변화는 없어야 한다(무근거로 상태변화를 만들지 않음).
+    expect(entries.some((e) => e.status === 'changed')).toBe(false)
+    // 요양보호사 본인의 어려움·지원요청은 caregiverNote에 그대로 남아야 한다.
+    expect(report.caregiverNote).not.toBe('')
+    expect(report.caregiverNote).toContain('지쳐서')
+  })
+
+  it('특이사항없음 흐름의 추가답변에서 나온 어려움 호소도 caregiverNote에 보존된다', () => {
+    const firstText = '평소와 비슷했어요'
+    const entries = classifyDomainsFromText(firstText)
+    const answer = '식사, 이동은 평소와 같았어요. 그런데 오늘 제가 너무 힘들었어요.'
+    const report = buildNoChangeReport(entries, [firstText, answer])
+    expect(report.caregiverNote).not.toBe('')
+    expect(report.caregiverNote).toContain('힘들었어요')
+  })
 })
 
 /** 핵심 버그 회귀 테스트: information_added_count가 "질문한 횟수/언급된 도메인 수"가

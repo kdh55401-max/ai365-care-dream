@@ -1,4 +1,5 @@
 import { DOMAIN_LABELS, type DomainEntry, type DomainKey, type DomainStatus, type StructuredReport } from './careTypes.js'
+import { extractCaregiverNote } from './caregiverNote.js'
 
 /** "특이사항 없음" 계열 발화를 감지해 평소와 비슷했어요 흐름으로 자동 연결하기 위한 패턴.
  * 규칙 기반(비-AI)이라 Gemini 키 없이도, 서버 왕복 없이도 항상 동작한다. */
@@ -99,10 +100,14 @@ export function mergeDomainEntries(...batches: DomainEntry[][]): DomainEntry[] {
   return [...byDomain.entries()].map(([domain, status]) => ({ domain, status }))
 }
 
-/** information_added_count 계산: "질문한 횟수"가 아니라 "실제로 새로 발견한
- * 의미 있는 정보의 수"다. 흐름 시작 시점(initialEntries)에는 없었던 changed
- * 도메인만 센다 — "평소와 같아요"/"없어요" 같은 답변은 도메인이 언급돼도
- * same_as_usual로 분류되므로 여기 포함되지 않는다. */
+/** information_added_count 계산: "질문한 횟수"가 아니라 "흐름 시작 시점에는
+ * changed로 분류되지 않았던 도메인이 새로 changed로 바뀐 개수"다. 이것이 이 값의
+ * 정확한 범위이며, "새로 확보된 모든 세부정보의 양"을 재는 값이 아니다 — 예를 들어
+ * 이미 changed로 분류된 도메인(예: 식사)에 대해 후속 답변에서 "한 공기에서 반
+ * 공기로 줄었어요"처럼 더 구체적인 세부사실이 추가돼도, 그 도메인은 이미
+ * initialEntries에서 changed였으므로 이 카운트는 늘지 않는다. 그 세부사실 자체는
+ * 사라지지 않고 followup_answers에 원문 그대로 남는다 — 다만 이 숫자에는 반영되지
+ * 않는다는 뜻이다. 과거 데이터 호환을 위해 이 공식 자체는 바꾸지 않는다. */
 export function computeInformationAddedCount(initialEntries: DomainEntry[], finalEntries: DomainEntry[]): number {
   const initialChangedDomains = new Set(initialEntries.filter((e) => e.status === 'changed').map((e) => e.domain))
   return finalEntries.filter((e) => e.status === 'changed' && !initialChangedDomains.has(e.domain)).length
@@ -135,10 +140,16 @@ function joinLabels(entries: DomainEntry[]): string {
 }
 
 /** "평소와 비슷했어요" 흐름의 최종 보고문을 만든다. AI 자유생성이 아니라 규칙 기반
- * 템플릿이라 사실을 지어낼 여지가 없다 — 실제로 분류된 도메인만 문장에 들어간다. */
-export function buildNoChangeReport(entries: DomainEntry[]): StructuredReport {
+ * 템플릿이라 사실을 지어낼 여지가 없다 — 실제로 분류된 도메인만 문장에 들어간다.
+ *
+ * rawTexts: 이 흐름에서 실제로 오간 원문들(최초 입력 + 각 답변). 어르신은
+ * 특이사항이 없어도 요양보호사 본인이 힘들거나 지원이 필요하다고 말했을 수 있으므로
+ * "특이사항없음 흐름은 어려움 호소를 다루지 않는다"고 가정하지 않고, 여기서도
+ * extractCaregiverNote로 항상 확인한다(무조건 빈 문자열로 두지 않음). */
+export function buildNoChangeReport(entries: DomainEntry[], rawTexts: string[] = []): StructuredReport {
   const { same, changed, notObserved, uncertain } = splitDomainsByStatus(entries)
   const unclear = [...notObserved, ...uncertain]
+  const caregiverNote = extractCaregiverNote(rawTexts.join(' '))
 
   if (same.length === 0 && changed.length === 0 && unclear.length === 0) {
     return {
@@ -146,6 +157,7 @@ export function buildNoChangeReport(entries: DomainEntry[]): StructuredReport {
       action: '특이사항이 없어 별도 조치 없음.',
       result: '확인되지 않음',
       escalation: '센터가 별도로 확인할 사항 없음. 다음 방문에서 일반 관찰을 지속함.',
+      caregiverNote,
     }
   }
 
@@ -163,5 +175,6 @@ export function buildNoChangeReport(entries: DomainEntry[]): StructuredReport {
       unclear.length > 0
         ? `다음 방문 시 ${joinLabels(unclear)} 상태 확인 필요.`
         : '센터가 별도로 확인할 사항 없음.',
+    caregiverNote,
   }
 }

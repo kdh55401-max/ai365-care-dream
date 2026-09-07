@@ -16,6 +16,7 @@ export interface CareStructuredReport {
   action: string
   result: string
   escalation: string
+  caregiverNote: string
 }
 
 export interface CareTurnResult {
@@ -55,8 +56,14 @@ const RESPONSE_SCHEMA = {
         action: { type: 'STRING', description: '현장에서 한 조치: 요양보호사가 한 행동, 연락 여부.' },
         result: { type: 'STRING', description: '현재 상태: 조치 후 지금 상태, 지속/호전/확인 필요 여부.' },
         escalation: { type: 'STRING', description: '센터 확인사항: 센터가 무엇을 확인·조치해야 하는지.' },
+        caregiverNote: {
+          type: 'STRING',
+          description:
+            '요양보호사 본인이 표현한 어려움·지원요청(change와 분리). 어르신에 대한 관찰이 아니라 ' +
+            '요양보호사 자신의 경험/부담/도움 요청일 때만 적는다. 없으면 빈 문자열.',
+        },
       },
-      required: ['change', 'action', 'result', 'escalation'],
+      required: ['change', 'action', 'result', 'escalation', 'caregiverNote'],
     },
   },
   required: ['needFollowup', 'question', 'missingField', 'report'],
@@ -70,6 +77,11 @@ const SYSTEM_PROMPT = `너는 장기요양 방문요양 요양보호사의 돌�
 - action(현장에서 한 조치): 현장에서 어떤 조치를 했는가, 센터·보호자·119 등에 연락했는가
 - result(현재 상태): 조치 후 현재 상태는 어떠한가, 증상이 계속되는가/호전됐는가/확인이 필요한가
 - escalation(센터 확인사항): 센터가 무엇을 확인해야 하는가, 추가 연락·관찰·보호자 확인 등이 필요한가
+- caregiverNote(요양보호사 상황·지원요청): 요양보호사 본인이 힘들다/지쳤다/도움이 필요하다고 표현한
+  내용. change(어르신에 대한 관찰 사실)와 반드시 분리한다. "어르신이 거절하셔서 힘들었어요"처럼
+  어려움 표현이 있어도, 그것만으로 어르신의 상태가 악화됐다거나 새로운 증상이 생겼다고 change에
+  적지 마라 — change에는 실제로 관찰된 사실만, caregiverNote에는 요양보호사 본인의 경험만 담는다.
+  표현이 없으면 빈 문자열로 둔다.
 
 질문 규칙 (반드시 지킬 것):
 1. 정보가 부족할 때만 질문한다. 이미 충분하면 바로 최종 보고문을 만든다.
@@ -85,6 +97,12 @@ const SYSTEM_PROMPT = `너는 장기요양 방문요양 요양보호사의 돌�
     질문을 반복하지 말고 "금일 서비스 중 평소와 다른 상태변화는 관찰되지 않음"과 같이 짧게
     정리한다. 단, 실제로 언급되지 않은 식사·이동·의사소통 상태를 임의로 정상이라고 적지 말고
     "별도 확인하지 않음"으로 처리하거나 보고문에서 제외한다.
+11. 요양보호사가 자신의 어려움이나 감정을 표현해도(예: "너무 힘들었어요"), 그 표현만으로
+    어르신에게 상태변화나 질환이 생겼다고 추정하지 않는다. 어르신에 대한 실제 관찰 사실이
+    별도로 언급됐을 때만 change에 적는다.
+12. 요양보호사가 "그만할게요"/"여기까지 할게요"처럼 종료 의사를 밝히면 즉시 needFollowup=false로
+    최종 보고문을 만든다. 지금까지 실제로 들은 내용은 반영하되, 그 시점까지 확인 못 한 항목은
+    "확인되지 않음"으로 남기고 억지로 채우지 않는다.
 
 너는 응급도를 진단하거나 위험등급을 만들지 않는다. 그 역할은 이 시스템에 없다.
 모든 텍스트는 한국어로 작성하고, 반드시 지정된 JSON 스키마로만 답한다.`
@@ -112,14 +130,18 @@ function fallbackReport(rawInput: string, history: FollowupTurn[]): CareStructur
     action: '확인되지 않음',
     result: '확인되지 않음',
     escalation: '센터가 원문을 직접 확인해 추가 조치 필요 여부를 판단해야 함 (AI 보고문 생성 실패로 원문만 제공됨).',
+    caregiverNote: '',
   }
 }
 
 export async function runCareReportTurn(
   rawInput: string,
   history: FollowupTurn[],
+  clientForceFinalize = false,
 ): Promise<CareTurnResult> {
-  const forceFinalize = history.length >= MAX_FOLLOWUPS
+  // clientForceFinalize: 요양보호사가 "그만할게요"류 종료 의사를 밝혀 화면에서
+  // 직접 조기종료를 트리거한 경우. 3회 상한 도달과 같은 방식으로 처리한다.
+  const forceFinalize = clientForceFinalize || history.length >= MAX_FOLLOWUPS
   const userText = buildUserMessage(rawInput, history, forceFinalize)
 
   const controller = new AbortController()
@@ -181,13 +203,16 @@ export async function runCareReportTurn(
     throw new ApiError(502, 'AI 응답 스키마가 올바르지 않습니다.')
   }
 
-  // 서버 측 안전장치: 3회를 넘겨 질문하지 못하게 강제한다.
+  // 서버 측 안전장치: 3회를 넘겼거나(또는 클라이언트가 조기종료를 요청했거나) 질문하지 못하게 강제한다.
   if (forceFinalize && parsed.needFollowup) {
     return {
       needFollowup: false,
       question: null,
       missingField: null,
-      report: parsed.report && isValidReport(parsed.report) ? parsed.report : fallbackReport(rawInput, history),
+      report:
+        parsed.report && isValidReport(parsed.report)
+          ? { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' }
+          : fallbackReport(rawInput, history),
     }
   }
 
@@ -206,7 +231,12 @@ export async function runCareReportTurn(
   if (!parsed.report || !isValidReport(parsed.report)) {
     return { needFollowup: false, question: null, missingField: null, report: fallbackReport(rawInput, history) }
   }
-  return { needFollowup: false, question: null, missingField: null, report: parsed.report }
+  return {
+    needFollowup: false,
+    question: null,
+    missingField: null,
+    report: { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' },
+  }
 }
 
 function isValidReport(v: unknown): v is CareStructuredReport {
@@ -216,6 +246,7 @@ function isValidReport(v: unknown): v is CareStructuredReport {
     typeof r.change === 'string' &&
     typeof r.action === 'string' &&
     typeof r.result === 'string' &&
-    typeof r.escalation === 'string'
+    typeof r.escalation === 'string' &&
+    (r.caregiverNote === undefined || typeof r.caregiverNote === 'string')
   )
 }

@@ -32,7 +32,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       answer: h.answer,
     }))
 
-    const result = await runCareReportTurn(rawInput, history)
+    const forceFinalize = body.forceFinalize === true
+    const result = await runCareReportTurn(rawInput, history, forceFinalize)
     sendJson(res, 200, result)
   })
 }

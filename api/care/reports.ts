@@ -16,6 +16,7 @@ interface StructuredReport {
   action: string
   result: string
   escalation: string
+  caregiverNote?: string
 }
 
 interface DomainEntry {
@@ -30,8 +31,13 @@ function isStructuredReport(v: unknown): v is StructuredReport {
     typeof r.change === 'string' &&
     typeof r.action === 'string' &&
     typeof r.result === 'string' &&
-    typeof r.escalation === 'string'
+    typeof r.escalation === 'string' &&
+    (r.caregiverNote === undefined || typeof r.caregiverNote === 'string')
   )
+}
+
+function normalizeStructuredInput(v: StructuredReport): StructuredReport {
+  return { ...v, caregiverNote: v.caregiverNote ?? '' }
 }
 
 function isDomainEntryArray(v: unknown): v is DomainEntry[] {
@@ -83,6 +89,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (reportSource === 'scenario' && !STANDARD_SCENARIOS.some((s) => s.id === scenarioId)) {
         throw new ApiError(400, '표준상황 코드를 확인해 주세요.')
       }
+
+      // 수급자가 활성 상태인지 뿐 아니라, 이 요양보호사에게 실제로 배정된
+      // 수급자인지도 확인한다 — 배정되지 않은 수급자에게는 보고를 시작할 수 없다.
+      const { data: assignment } = await supabase
+        .from('caregiver_assignments')
+        .select('recipient_code')
+        .eq('caregiver_code', session.participantCode)
+        .eq('recipient_code', recipientCode)
+        .eq('active', true)
+        .maybeSingle()
+      if (!assignment) throw new ApiError(403, '배정되지 않은 수급자입니다.')
 
       const { data: recipient } = await supabase
         .from('recipients')
@@ -157,11 +174,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (Array.isArray(body.followupQuestions)) update.followup_questions = body.followupQuestions
     if (Array.isArray(body.followupAnswers)) update.followup_answers = body.followupAnswers
     if (body.aiGeneratedReport && isStructuredReport(body.aiGeneratedReport)) {
-      update.ai_generated_report = body.aiGeneratedReport
+      update.ai_generated_report = normalizeStructuredInput(body.aiGeneratedReport)
     }
     if (body.caregiverFinalReport && isStructuredReport(body.caregiverFinalReport)) {
-      update.caregiver_final_report = body.caregiverFinalReport
+      update.caregiver_final_report = normalizeStructuredInput(body.caregiverFinalReport)
     }
+    if (typeof body.emergencyFlagged === 'boolean') update.emergency_flagged = body.emergencyFlagged
 
     // 특이사항 없음 흐름 필드
     if (body.initialStatusChoice === 'changed' || body.initialStatusChoice === 'similar' || body.initialStatusChoice === 'uncertain') {

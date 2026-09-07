@@ -1,9 +1,12 @@
 /** 파일럿(/care, /admin) 공통 fetch 래퍼. 항상 same-origin 쿠키를 포함해 세션을 유지한다. */
 export class ApiClientError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** 서버가 에러와 함께 돌려준 응답 본문 전체(예: 409 충돌 시의 최신 report). */
+  body?: unknown
+  constructor(status: number, message: string, body?: unknown) {
     super(message)
     this.status = status
+    this.body = body
   }
 }
 
@@ -30,7 +33,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
       data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string'
         ? (data as { error: string }).error
         : `요청에 실패했습니다 (${res.status})`
-    throw new ApiClientError(res.status, message)
+    throw new ApiClientError(res.status, message, data)
   }
 
   return data as T

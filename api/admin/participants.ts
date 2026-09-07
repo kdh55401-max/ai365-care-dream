@@ -18,12 +18,26 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .select('code, active, pin_hash, updated_at')
         .order('code', { ascending: true })
       if (error) throw new ApiError(500, '참여자 목록을 불러오지 못했습니다.')
+
+      // 요양보호사(C코드)별 배정된 수급자(A코드) 목록도 함께 내려준다 — 관리자
+      // 화면에서 C-A 매칭 관계를 확인할 수 있어야 한다.
+      const { data: assignments } = await supabase
+        .from('caregiver_assignments')
+        .select('caregiver_code, recipient_code')
+        .eq('active', true)
+        .order('recipient_code', { ascending: true })
+      const assignmentMap: Record<string, string[]> = {}
+      for (const a of (assignments ?? []) as Array<{ caregiver_code: string; recipient_code: string }>) {
+        ;(assignmentMap[a.caregiver_code] ??= []).push(a.recipient_code)
+      }
+
       sendJson(res, 200, {
         participants: (data ?? []).map((p: { code: string; active: boolean; pin_hash: string; updated_at: string }) => ({
           code: p.code,
           active: p.active,
           pinSet: p.pin_hash !== 'unset',
           updatedAt: p.updated_at,
+          recipientCodes: assignmentMap[p.code] ?? [],
         })),
       })
       return

@@ -7,7 +7,7 @@ import type { CareRepo } from '../shared/careRepo'
 import { realCareRepo } from '../shared/careRepo'
 import { isDemoMode } from '../shared/demoMode'
 import { demoCareRepo } from '../demo/demoCareRepo'
-import { resetDemoData, DEMO_ALIAS_PASSWORD, DEMO_RECIPIENT_CODES } from '../demo/demoStore'
+import { resetDemoData, DEMO_ALIAS_PASSWORD } from '../demo/demoStore'
 import {
   buildNoChangeReport,
   classifyDomainsFromText,
@@ -19,12 +19,18 @@ import {
   shouldSkipSecondQuestion,
 } from '../../../shared/noChangeEngine'
 import { STANDARD_SCENARIOS } from '../../../shared/statsCalc'
+import { detectEmergencyPhrase } from '../../../shared/emergency'
+import { detectStopRequest } from '../../../shared/stopRequest'
+import { extractCaregiverNote } from '../../../shared/caregiverNote'
+
+const CENTER_PHONE = import.meta.env.VITE_CENTER_PHONE_NUMBER?.trim() || undefined
 
 type Screen =
   | 'home'
   | 'scenarioSelect'
   | 'statusChoice'
   | 'record'
+  | 'emergency'
   | 'noChangeQuestion'
   | 'question'
   | 'reportReview'
@@ -35,10 +41,19 @@ type ReportType = 'daily' | 'additional'
 type InitialChoice = 'changed' | 'similar' | 'uncertain' | null
 
 const DRAFT_KEY_PREFIX = 'ai365_care_pilot_draft_'
+const CURRENT_RECIPIENT_KEY_PREFIX = 'ai365_care_current_recipient_'
 const REPORT_TYPE_LABEL: Record<ReportType, string> = { daily: '기본', additional: '추가' }
 
+/** 이 기기에서 이 요양보호사가 마지막으로 선택한(=현재 서비스 중인) 수급자 코드를
+ * 기억해 두는 키. 실제 서비스에서는 방문 세션/NFC가 이 역할을 대신하지만, 그
+ * 정보가 없는 지금은 "마지막으로 고른 대상자"를 현재 방문으로 간주해 재로그인 시
+ * 다시 고르지 않게 한다. */
+function currentRecipientKey(demo: boolean, participantCode: string) {
+  return `${CURRENT_RECIPIENT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}`
+}
+
 function emptyReport(): StructuredReport {
-  return { change: '', action: '', result: '', escalation: '' }
+  return { change: '', action: '', result: '', escalation: '', caregiverNote: '' }
 }
 
 function SpinnerIcon({ className }: { className?: string }) {
@@ -64,12 +79,26 @@ function CheckIcon({ className }: { className?: string }) {
     </svg>
   )
 }
+function PhoneIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
 
 const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
   { key: 'change', label: '관찰한 변화' },
   { key: 'action', label: '현장에서 한 조치' },
   { key: 'result', label: '현재 상태' },
   { key: 'escalation', label: '센터 확인사항' },
+  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청' },
 ]
 
 function DemoBanner({ onReset }: { onReset: () => void }) {
@@ -182,6 +211,67 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
   )
 }
 
+/** 현재 서비스 중인 수급자를 보여주는 작은 카드. 수급자 코드 선택을 메인 절차로
+ * 만들지 않기 위해, 큰 드롭다운 대신 이미 연결된 대상자를 카드로만 보여주고
+ * "대상자 변경"은 배정된 대상자가 2명 이상일 때만 노출되는 보조 동작이다. */
+function CurrentRecipientCard({
+  recipientCode,
+  recipientCodes,
+  showPicker,
+  onTogglePicker,
+  onSelect,
+}: {
+  recipientCode: string
+  recipientCodes: string[]
+  showPicker: boolean
+  onTogglePicker: () => void
+  onSelect: (code: string) => void
+}) {
+  if (recipientCodes.length === 0) {
+    return (
+      <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
+        <p className="font-bold text-amber-800">배정된 수급자가 없습니다.</p>
+        <p className="text-amber-700 text-sm mt-1">관리자에게 문의해 주세요.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-slate-400 text-xs font-bold">현재 방문</p>
+          <p className="text-slate-900 text-2xl font-bold mt-0.5">{recipientCode}</p>
+          <p className="text-teal-700 text-sm font-bold mt-1">방문요양 · 서비스 진행 중</p>
+        </div>
+        {recipientCodes.length > 1 && (
+          <button onClick={onTogglePicker} className="text-slate-400 text-sm font-bold underline shrink-0">
+            대상자 변경
+          </button>
+        )}
+      </div>
+      {showPicker && recipientCodes.length > 1 && (
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
+          <p className="text-slate-500 text-xs">내가 담당하는 수급자만 표시됩니다.</p>
+          {recipientCodes.map((c) => (
+            <button
+              key={c}
+              onClick={() => onSelect(c)}
+              className={`text-left rounded-2xl border px-4 py-2.5 font-bold transition ${
+                c === recipientCode
+                  ? 'border-teal-500 bg-teal-50 text-teal-800'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CareApp() {
   const demo = isDemoMode()
   const repo: CareRepo = demo ? demoCareRepo : realCareRepo
@@ -216,6 +306,7 @@ function CareApp() {
   const [noChangeInitialInput, setNoChangeInitialInput] = useState(false)
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null)
   const [scenarioSubmittedCount, setScenarioSubmittedCount] = useState(0)
+  const [showRecipientPicker, setShowRecipientPicker] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -233,6 +324,12 @@ function CareApp() {
   // 임시 누적 버퍼. no_change_followup_count(질문 "횟수")는 그대로 유지하면서,
   // 실제 문답 내용도 함께 기록해 관리자가 무슨 질문·답변이 오갔는지 볼 수 있게 한다.
   const noChangeQaHistoryRef = useRef<FollowupItem[]>([])
+  // "특이사항 없음" 흐름에서 실제로 오간 원문(최초 입력 + 답변들). caregiverNote는
+  // 이 흐름도 어려움 호소를 다룰 수 있어("특이사항 없는데 힘들어요") 매번 이 전체
+  // 원문에서 새로 추출한다 — 흐름 시작 시 무조건 빈 문자열로 두지 않는다.
+  const noChangeRawTextsRef = useRef<string[]>([])
+  // 응급 화면으로 넘어오기 직전 화면(뒤로가기용) — 정보 손실 없이 돌아갈 수 있게.
+  const [emergencyDraftText, setEmergencyDraftText] = useState('')
 
   const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}` : null
 
@@ -267,7 +364,23 @@ function CareApp() {
     const session = await repo.getSession()
     setToday(session.today)
     setDailySubmitted(session.dailyReportToday?.status === 'submitted')
-    setRecipientCodes(session.recipientCodes.length ? session.recipientCodes : DEMO_RECIPIENT_CODES)
+    // 로그인한 요양보호사에게 배정된 수급자만 표시한다 — 배정이 없으면 빈 목록
+    // 그대로 둔다(다른 요양보호사의 수급자로 대체하지 않는다).
+    const assigned = session.recipientCodes
+    setRecipientCodes(assigned)
+    if (assigned.length > 0) {
+      const key = currentRecipientKey(demo, code)
+      let current = assigned[0]
+      try {
+        const saved = localStorage.getItem(key)
+        if (saved && assigned.includes(saved)) current = saved
+      } catch {
+        // 저장 공간을 쓸 수 없어도 첫 번째 배정 대상으로 진행한다.
+      }
+      setRecipientCode(current)
+    } else {
+      setRecipientCode('')
+    }
     const list = await repo.listReports()
     setRecentReports(list)
     setScenarioSubmittedCount(list.filter((r) => r.report_source === 'scenario' && r.status === 'submitted').length)
@@ -358,6 +471,18 @@ function CareApp() {
     window.location.reload()
   }
 
+  const selectRecipient = (code: string) => {
+    setRecipientCode(code)
+    setShowRecipientPicker(false)
+    if (participantCode) {
+      try {
+        localStorage.setItem(currentRecipientKey(demo, participantCode), code)
+      } catch {
+        // 저장 공간을 쓸 수 없어도 화면 진행은 막지 않는다.
+      }
+    }
+  }
+
   const resetFlow = () => {
     clearDraft()
     setReportId(null)
@@ -374,13 +499,14 @@ function CareApp() {
     setInitialInfoCount(0)
     setNoChangeInitialInput(false)
     setActiveScenarioId(null)
+    setEmergencyDraftText('')
     setError(null)
     setScreen(homeScreenName)
   }
 
   const startReport = async (type: ReportType) => {
     if (!recipientCode) {
-      setError('수급자 코드를 먼저 선택해 주세요.')
+      setError('배정된 수급자가 없습니다. 관리자에게 문의해 주세요.')
       return
     }
     setError(null)
@@ -393,7 +519,13 @@ function CareApp() {
       setFollowupHistory(res.report.followup_answers ?? [])
       setAiGeneratedReport(res.report.ai_generated_report)
       setFinalReport(res.report.caregiver_final_report ?? emptyReport())
-      setScreen('statusChoice')
+      // 기본 돌봄보고는 "버튼 한 번 → AI와 대화"가 핵심 동선이므로 상황선택 메뉴를
+      // 거치지 않고 바로 대화(record) 화면으로 간다. "특이사항 없음" 계열 발화는
+      // handleSubmitRaw의 detectNoChangePhrase가 자유발화 안에서 그대로 감지한다.
+      // 추가 상태변화 보고는 명시적으로 변화를 짚어보는 보고이므로 기존 상황선택
+      // 메뉴를 그대로 유지한다.
+      setInitialChoice(null)
+      setScreen(type === 'daily' ? 'record' : 'statusChoice')
     } catch (e) {
       setError(e instanceof ApiClientError || e instanceof Error ? e.message : '보고를 시작하지 못했습니다.')
     } finally {
@@ -448,6 +580,7 @@ function CareApp() {
     const entries = classifyDomainsFromText(firstText)
     initialNoChangeEntriesRef.current = entries
     noChangeQaHistoryRef.current = []
+    noChangeRawTextsRef.current = [firstText]
     setNoChangeEntries(entries)
     setInitialInfoCount(entries.length)
     setNoChangeInitialInput(true)
@@ -470,7 +603,7 @@ function CareApp() {
   }
 
   const finalizeNoChangeFlow = async (entries: DomainEntry[], askedCount: number, answeredCount: number) => {
-    const report = buildNoChangeReport(entries)
+    const report = buildNoChangeReport(entries, noChangeRawTextsRef.current)
     setAiGeneratedReport(report)
     setFinalReport(report)
     if (reportId) {
@@ -496,8 +629,13 @@ function CareApp() {
     setScreen('reportReview')
   }
 
-  const handleNoChangeAnswer = async () => {
+  const handleNoChangeAnswer = async (stopRequested = false) => {
     const text = answerText.trim()
+    // 이 답변에서도 응급 신호가 나올 수 있다 — 최초 발화뿐 아니라 추가답변도 검사한다.
+    if (text && detectEmergencyPhrase(text)) {
+      await enterEmergencyScreen(text)
+      return
+    }
     const newEntries = text ? mergeDomainEntries(noChangeEntries, classifyDomainsFromText(text)) : noChangeEntries
     const answered = noChangeAnswered + (text ? 1 : 0)
     if (text) {
@@ -506,10 +644,19 @@ function CareApp() {
         ...noChangeQaHistoryRef.current,
         { question: questionText, missingField: 'no_change_check', answer: text },
       ]
+      noChangeRawTextsRef.current = [...noChangeRawTextsRef.current, text]
     }
     setNoChangeEntries(newEntries)
     setNoChangeAnswered(answered)
     setAnswerText('')
+
+    // "그만할게요"류 종료 의사(버튼 또는 답변 문장 안)면 남은 질문을 건너뛰고 바로
+    // 정리한다 — newEntries(방금 계산한 값)를 그대로 쓴다. state(noChangeEntries)를
+    // 곧바로 읽으면 아직 갱신 전 값을 볼 수 있어 로컬 변수를 직접 넘긴다.
+    if (stopRequested || (text && detectStopRequest(text))) {
+      await finalizeNoChangeFlow(newEntries, noChangeStep, answered)
+      return
+    }
 
     if (noChangeStep === 1 && !shouldSkipSecondQuestion(newEntries)) {
       setNoChangeStep(2)
@@ -518,14 +665,14 @@ function CareApp() {
     await finalizeNoChangeFlow(newEntries, noChangeStep, answered)
   }
 
-  const runAiTurn = async (history: FollowupItem[], seedInput?: string) => {
+  const runAiTurn = async (history: FollowupItem[], seedInput?: string, forceFinalize = false) => {
     if (!reportId) return
     const text = seedInput ?? rawInput
     setLoading(true)
     setError(null)
     try {
       await repo.patchReport({ id: reportId, rawInput: text, inputMethod, followupQuestions: history, followupAnswers: history })
-      const result: AiTurnResult = await repo.aiTurn(text, history)
+      const result: AiTurnResult = await repo.aiTurn(text, history, forceFinalize)
       if (result.needFollowup && result.question) {
         setCurrentQuestion({ question: result.question, missingField: result.missingField ?? 'other' })
         setAnswerText('')
@@ -543,9 +690,52 @@ function CareApp() {
     }
   }
 
+  // 응급 신호 감지 시: 나머지 절차(추가질문 등)를 건너뛰고 119/센터 연락 화면으로
+  // 전환한다. draft 상태에서도 즉시 emergency_flagged를 patch해 사람이 중간에
+  // 멈춰도 신호는 남게 하되, 이것 자체를 "관리자 알림 도착"으로 표현하지 않는다 —
+  // 저장만 하고, 제출(submit) 전까지는 "미제출·확인 전 주의 신호"로만 다룬다.
+  const enterEmergencyScreen = async (text: string) => {
+    setEmergencyDraftText(text)
+    if (reportId) {
+      await repo.patchReport({ id: reportId, rawInput: text, inputMethod, emergencyFlagged: true }).catch(() => undefined)
+    }
+    setScreen('emergency')
+  }
+
+  // 119/센터 연락 버튼을 누른 것과 실제 통화·신고·조치 완료는 다른 사실이다 —
+  // 여기서는 저장만 하고, 완료됐다고 단정하는 문구를 넣지 않는다.
+  const handleEmergencyContinue = async () => {
+    if (!reportId) return
+    const text = emergencyDraftText.trim() || rawInput.trim()
+    setLoading(true)
+    setError(null)
+    try {
+      const report: StructuredReport = {
+        change: text || '확인되지 않음',
+        action: '확인되지 않음',
+        result: '확인되지 않음',
+        escalation: '우선 확인 필요 — 응급 신호로 보이는 표현이 있었습니다. 119/센터 연락 여부와 현재 상태를 확인해 주세요.',
+        caregiverNote: extractCaregiverNote(text),
+      }
+      setAiGeneratedReport(report)
+      setFinalReport(report)
+      await repo.patchReport({ id: reportId, rawInput: text, aiGeneratedReport: report, emergencyFlagged: true })
+      setScreen('reportReview')
+    } catch (e) {
+      setError(e instanceof ApiClientError || e instanceof Error ? e.message : '저장에 실패했습니다. 다시 시도해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSubmitRaw = () => {
     const text = rawInput.trim()
     if (!text) return
+    // 응급 신호는 흐름 분기(특이사항없음/일반)보다 항상 먼저 확인한다.
+    if (detectEmergencyPhrase(text)) {
+      void enterEmergencyScreen(text)
+      return
+    }
     // "직접 말하기"로 들어왔거나(initialChoice=null) 이미 changed/uncertain을 골랐어도,
     // 실제로 "특이사항 없음" 계열 표현이면 평소와 비슷했어요 흐름으로 자동 연결한다.
     if (initialChoice !== 'changed' && initialChoice !== 'uncertain' && detectNoChangePhrase(text)) {
@@ -557,13 +747,36 @@ function CareApp() {
 
   const handleAnswerQuestion = () => {
     if (!currentQuestion || !answerText.trim()) return
-    const nextHistory = [
-      ...followupHistory,
-      { question: currentQuestion.question, missingField: currentQuestion.missingField, answer: answerText.trim() },
-    ]
+    const text = answerText.trim()
+    if (detectEmergencyPhrase(text)) {
+      void enterEmergencyScreen(text)
+      return
+    }
+    const nextHistory = [...followupHistory, { question: currentQuestion.question, missingField: currentQuestion.missingField, answer: text }]
     setFollowupHistory(nextHistory)
     setCurrentQuestion(null)
-    void runAiTurn(nextHistory)
+    setAnswerText('')
+    // nextHistory(로컬 변수)를 그대로 넘긴다 — 방금 계산한 값이라 state가 아직
+    // 반영 전이어도(stale closure) 문제되지 않는다. "그만할게요"류 표현이 답변
+    // 문장 안에 있으면(정보는 남긴 채) 추가질문 없이 바로 정리한다.
+    void runAiTurn(nextHistory, undefined, detectStopRequest(text))
+  }
+
+  // "여기까지 말씀드릴게요" 버튼 — 답변칸이 비어있어도 동작한다(입력 강제 안 함).
+  const handleStopQuestion = () => {
+    const text = answerText.trim()
+    if (text && detectEmergencyPhrase(text)) {
+      void enterEmergencyScreen(text)
+      return
+    }
+    const nextHistory =
+      text && currentQuestion
+        ? [...followupHistory, { question: currentQuestion.question, missingField: currentQuestion.missingField, answer: text }]
+        : followupHistory
+    setFollowupHistory(nextHistory)
+    setCurrentQuestion(null)
+    setAnswerText('')
+    void runAiTurn(nextHistory, undefined, true)
   }
 
   const handleSubmitReport = async () => {
@@ -675,27 +888,37 @@ function CareApp() {
             {dailySubmitted ? '오늘의 돌봄보고를 완료했습니다.' : '오늘의 돌봄보고를 아직 작성하지 않았습니다.'}
           </div>
 
-          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
-            <label className="block font-bold text-slate-900 text-base mb-2">수급자 코드</label>
-            <select
-              value={recipientCode}
-              onChange={(e) => setRecipientCode(e.target.value)}
-              className="w-full text-lg border border-slate-300 rounded-2xl p-3 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="">선택해 주세요</option>
-              {recipientCodes.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
+          <CurrentRecipientCard
+            recipientCode={recipientCode}
+            recipientCodes={recipientCodes}
+            showPicker={showRecipientPicker}
+            onTogglePicker={() => setShowRecipientPicker((v) => !v)}
+            onSelect={selectRecipient}
+          />
 
           {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
 
-          <PrimaryButton onClick={() => void startReport('daily')} disabled={loading || dailySubmitted || !recipientCode}>
-            {loading ? '준비 중...' : '오늘 돌봄보고 시작'}
-          </PrimaryButton>
+          {recipientCodes.length > 0 && !dailySubmitted && (
+            <div className="flex flex-col items-center gap-2 mt-1">
+              <h2 className="text-lg font-bold text-slate-900 text-center">오늘 어르신은 어떠셨나요?</h2>
+              <button
+                onClick={() => void startReport('daily')}
+                disabled={loading || !recipientCode}
+                aria-label="AI와 대화 시작"
+                className="w-40 h-40 rounded-full text-white flex flex-col items-center justify-center gap-2
+                           bg-gradient-to-b from-teal-500 to-slate-900 shadow-xl transition
+                           hover:scale-105 hover:brightness-110 active:scale-100
+                           disabled:opacity-50 disabled:hover:scale-100"
+              >
+                <MicIcon className="w-9 h-9" />
+                <span className="text-base font-bold">{loading ? '준비 중...' : 'AI와 대화 시작'}</span>
+              </button>
+              <p className="text-slate-400 text-xs text-center leading-relaxed">
+                버튼을 누르고 평소처럼 말씀해 주세요.
+              </p>
+            </div>
+          )}
+
           <SecondaryButton onClick={() => void startReport('additional')} disabled={loading || !recipientCode}>
             추가 상태변화 보고
           </SecondaryButton>
@@ -718,21 +941,13 @@ function CareApp() {
             지금까지 {scenarioSubmittedCount}/2건 완료
           </p>
 
-          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
-            <label className="block font-bold text-slate-900 text-base mb-2">수급자 코드</label>
-            <select
-              value={recipientCode}
-              onChange={(e) => setRecipientCode(e.target.value)}
-              className="w-full text-lg border border-slate-300 rounded-2xl p-3 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="">선택해 주세요</option>
-              {recipientCodes.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
+          <CurrentRecipientCard
+            recipientCode={recipientCode}
+            recipientCodes={recipientCodes}
+            showPicker={showRecipientPicker}
+            onTogglePicker={() => setShowRecipientPicker((v) => !v)}
+            onSelect={selectRecipient}
+          />
 
           {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
 
@@ -852,6 +1067,13 @@ function CareApp() {
           <PrimaryButton onClick={() => void handleNoChangeAnswer()} disabled={loading}>
             다음
           </PrimaryButton>
+          <button
+            onClick={() => void handleNoChangeAnswer(true)}
+            disabled={loading}
+            className="text-slate-400 text-sm underline self-center disabled:opacity-50"
+          >
+            여기까지 말씀드릴게요
+          </button>
         </div>
       )}
 
@@ -880,6 +1102,55 @@ function CareApp() {
               '다음'
             )}
           </PrimaryButton>
+          <button onClick={handleStopQuestion} disabled={loading} className="text-slate-400 text-sm underline self-center disabled:opacity-50">
+            여기까지 말씀드릴게요
+          </button>
+        </div>
+      )}
+
+      {screen === 'emergency' && (
+        <div className="flex flex-col gap-4 pt-2">
+          <div className="rounded-3xl bg-red-50 border-2 border-red-200 p-5 text-center">
+            <p className="text-red-700 font-bold text-lg">우선 확인이 필요한 내용이 있어요</p>
+            <p className="text-red-600 text-sm mt-1 leading-relaxed">
+              지금 하신 말씀에 응급 상황일 수 있는 표현이 있었습니다. 필요하면 먼저 119나 센터에 연락해 주세요.
+            </p>
+            <p className="text-red-400 text-xs mt-2">
+              이 안내는 정해진 표현을 기계적으로 찾은 것으로, 의학적 판단이 아닙니다. 실제 상황은 직접 확인해 주세요.
+            </p>
+          </div>
+          <a
+            href="tel:119"
+            className="flex items-center justify-center gap-2 w-full min-h-[52px] rounded-3xl text-xl font-bold py-4 bg-red-600 text-white shadow-lg hover:bg-red-700 transition"
+          >
+            <PhoneIcon className="w-6 h-6" />
+            119에 전화하기
+          </a>
+          {CENTER_PHONE && (
+            <a
+              href={`tel:${CENTER_PHONE}`}
+              className="flex items-center justify-center gap-2 w-full min-h-[52px] rounded-3xl text-lg font-bold py-4 bg-white text-slate-900 border-2 border-slate-900 hover:bg-slate-50 transition"
+            >
+              <PhoneIcon className="w-5 h-5" />
+              센터로 전화하기
+            </a>
+          )}
+          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
+            <label className="block font-bold text-slate-900 text-base mb-1">지금까지 하신 말씀 (필요하면 더 적어주세요)</label>
+            <textarea
+              value={emergencyDraftText}
+              onChange={(e) => setEmergencyDraftText(e.target.value)}
+              rows={5}
+              className="w-full text-base text-slate-900 leading-relaxed focus:outline-none resize-none"
+            />
+          </div>
+          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          <PrimaryButton onClick={() => void handleEmergencyContinue()} disabled={loading}>
+            {loading ? '확인하는 중...' : '이 내용으로 우선확인 요청 저장하기'}
+          </PrimaryButton>
+          <SecondaryButton onClick={resetFlow} disabled={loading}>
+            취소
+          </SecondaryButton>
         </div>
       )}
 

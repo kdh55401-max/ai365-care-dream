@@ -28,8 +28,8 @@ function row(overrides: Partial<CareReportRecord>): CareReportRecord {
     raw_input: '오늘 특이사항 없었어요',
     followup_questions: [],
     followup_answers: [],
-    ai_generated_report: { change: 'a', action: 'b', result: 'c', escalation: 'd' },
-    caregiver_final_report: { change: 'a', action: 'b', result: 'c', escalation: 'd' },
+    ai_generated_report: { change: 'a', action: 'b', result: 'c', escalation: 'd', caregiverNote: '' },
+    caregiver_final_report: { change: 'a', action: 'b', result: 'c', escalation: 'd', caregiverNote: '' },
     initial_status_choice: null,
     no_change_initial_input: false,
     observed_domains_json: [],
@@ -44,6 +44,7 @@ function row(overrides: Partial<CareReportRecord>): CareReportRecord {
     no_information_report: false,
     report_source: 'live',
     scenario_id: null,
+    emergency_flagged: false,
     raw_immediately_actionable: null,
     raw_followup_needed: null,
     raw_completeness_score: null,
@@ -58,6 +59,12 @@ function row(overrides: Partial<CareReportRecord>): CareReportRecord {
     ai_eval_note: null,
     manager_status: null,
     ai_evaluated_at: null,
+    admin_final_report: null,
+    review_status: 'pending',
+    review_note: null,
+    reviewed_at: null,
+    review_history: [],
+    last_review_request_id: null,
     deleted: false,
     created_at: '2026-09-07T00:00:00Z',
     updated_at: '2026-09-07T00:00:00Z',
@@ -117,8 +124,8 @@ describe('computeStats — 실제 현장보고(live)만 집계하고 scenario는
         raw_followup_needed: true,
         raw_completeness_score: 2,
         raw_evaluated_at: '2026-09-07T01:00:00Z',
-        ai_generated_report: { change: '휘청거림 관찰됨', action: '부축함', result: '현재 안정적', escalation: '센터 확인 필요' },
-        caregiver_final_report: { change: '휘청거림 관찰됨', action: '부축함', result: '현재 안정적', escalation: '센터 확인 필요' },
+        ai_generated_report: { change: '휘청거림 관찰됨', action: '부축함', result: '현재 안정적', escalation: '센터 확인 필요', caregiverNote: '' },
+        caregiver_final_report: { change: '휘청거림 관찰됨', action: '부축함', result: '현재 안정적', escalation: '센터 확인 필요', caregiverNote: '' },
         ai_immediately_actionable: true,
         ai_followup_needed: false,
         ai_completeness_score: 5,
@@ -186,12 +193,12 @@ describe('표준상황 연습 (scenario) — 실제 통계와 분리', () => {
     const good = row({
       report_source: 'scenario',
       scenario_id: 'scenario_1',
-      caregiver_final_report: { change: '점심을 절반만 드심, 휘청거림 관찰됨', action: '앉아서 쉬게 함', result: '현재 안정적', escalation: '경과 관찰' },
+      caregiver_final_report: { change: '점심을 절반만 드심, 휘청거림 관찰됨', action: '앉아서 쉬게 함', result: '현재 안정적', escalation: '경과 관찰', caregiverNote: '' },
     })
     const bad = row({
       report_source: 'scenario',
       scenario_id: 'scenario_1',
-      caregiver_final_report: { change: '낙상 의심, 골절 가능성', action: '119 신고', result: '응급실 이송', escalation: '즉시 확인' },
+      caregiver_final_report: { change: '낙상 의심, 골절 가능성', action: '119 신고', result: '응급실 이송', escalation: '즉시 확인', caregiverNote: '' },
     })
     const goodGrade = gradeScenarioReport(good)!
     const badGrade = gradeScenarioReport(bad)!

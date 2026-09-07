@@ -23,6 +23,22 @@ create table if not exists recipients (
   created_at timestamptz not null default now()
 );
 
+-- ── 요양보호사-수급자 배정 관계 ────────────────────────────────────────
+-- 요양보호사(C코드)는 자신에게 배정된 수급자(A코드)만 조회/보고할 수 있다.
+-- 모든 C코드에서 모든 A코드가 보이면 안 되므로, 이 표가 그 배정 관계의
+-- 유일한 근거가 된다(recipients 테이블 자체에는 담당자 정보를 두지 않는다 —
+-- 한 수급자를 여러 요양보호사가 교대로 담당할 수 있으므로 다대다 관계).
+create table if not exists caregiver_assignments (
+  caregiver_code text not null references participants(code),
+  recipient_code text not null references recipients(code),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  primary key (caregiver_code, recipient_code)
+);
+
+create index if not exists caregiver_assignments_caregiver_idx
+  on caregiver_assignments (caregiver_code) where active = true;
+
 -- ── 돌봄보고 ──────────────────────────────────────────────────────────
 create table if not exists reports (
   id uuid primary key default gen_random_uuid(),
@@ -70,6 +86,19 @@ create table if not exists reports (
   no_information_report boolean not null default false,
   report_source text not null default 'live' check (report_source in ('live', 'scenario')),
   scenario_id text,
+
+  -- 응급 신호(정규식 기반, 임상 검증 아님) 즉시감지 플래그. draft 상태에서도 즉시
+  -- 기록되며 status(제출여부)와 무관 — "전달 성공"/"검토완료" 집계에는 포함하지 않는다.
+  emergency_flagged boolean not null default false,
+
+  -- 관리자 검토(승인/반려) — 아래 1/2단계 연구용 평가와 별개의 운영 워크플로우.
+  -- 이 앱은 공유 관리자 비밀번호뿐이라 개별 검토자 신원은 저장하지 않는다.
+  admin_final_report jsonb,
+  review_status text not null default 'pending' check (review_status in ('pending', 'approved', 'rejected')),
+  review_note text,
+  reviewed_at timestamptz,
+  review_history jsonb not null default '[]'::jsonb,
+  last_review_request_id text,
 
   -- 관리자 평가 1단계: 최초 원문만 보고 평가 (AI 결과 공개 전)
   raw_immediately_actionable boolean,
@@ -120,6 +149,13 @@ alter table reports add column if not exists information_added_count smallint no
 alter table reports add column if not exists no_information_report boolean not null default false;
 alter table reports add column if not exists report_source text not null default 'live';
 alter table reports add column if not exists scenario_id text;
+alter table reports add column if not exists emergency_flagged boolean not null default false;
+alter table reports add column if not exists admin_final_report jsonb;
+alter table reports add column if not exists review_status text not null default 'pending';
+alter table reports add column if not exists review_note text;
+alter table reports add column if not exists reviewed_at timestamptz;
+alter table reports add column if not exists review_history jsonb not null default '[]'::jsonb;
+alter table reports add column if not exists last_review_request_id text;
 
 -- ── 관리자 감사 로그 (열람/평가/다운로드/PIN초기화/삭제) ──────────────
 create table if not exists admin_audit_log (
@@ -160,11 +196,24 @@ select code, true
 from unnest(array['A01','A02','A03','A04','A05','A06','A07','A08','A09']) as code
 on conflict (code) do nothing;
 
+-- ── 초기 배정: 요양보호사 1명당 수급자 1~2명 (실제 배정은 관리자가 조정) ──
+insert into caregiver_assignments (caregiver_code, recipient_code)
+values
+  ('C01', 'A01'), ('C01', 'A02'),
+  ('C02', 'A03'),
+  ('C03', 'A04'), ('C03', 'A05'),
+  ('C04', 'A06'),
+  ('C05', 'A07'),
+  ('C06', 'A08'),
+  ('C07', 'A09')
+on conflict (caregiver_code, recipient_code) do nothing;
+
 -- ── Row Level Security ───────────────────────────────────────────────
 -- 모든 접근은 서버(Vercel 서버리스 함수)가 Service Role 키로만 수행한다.
 -- 브라우저는 이 테이블에 직접 접근하지 않으므로 anon 키에 대해서는 전부 차단한다.
 alter table participants enable row level security;
 alter table recipients enable row level security;
+alter table caregiver_assignments enable row level security;
 alter table reports enable row level security;
 alter table admin_audit_log enable row level security;
 -- (정책을 추가하지 않으면 기본적으로 모든 접근이 거부된다. Service Role 키는

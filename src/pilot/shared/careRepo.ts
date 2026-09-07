@@ -18,7 +18,7 @@ export interface CareRepo {
   getReport(id: string): Promise<CareReportDetail>
   createReport(input: CareReportCreateInput): Promise<{ report: CareReportDetail; resumed: boolean }>
   patchReport(input: CareReportPatchInput): Promise<CareReportDetail>
-  aiTurn(rawInput: string, history: FollowupItem[]): Promise<AiTurnResult>
+  aiTurn(rawInput: string, history: FollowupItem[], forceFinalize?: boolean): Promise<AiTurnResult>
 }
 
 export const realCareRepo: CareRepo = {
@@ -47,7 +47,7 @@ export const realCareRepo: CareRepo = {
     const res = await api.patch<{ report: CareReportDetail }>('/api/care/reports', input)
     return res.report
   },
-  async aiTurn(rawInput, history) {
-    return api.post<AiTurnResult>('/api/care/ai-turn', { rawInput, history })
+  async aiTurn(rawInput, history, forceFinalize) {
+    return api.post<AiTurnResult>('/api/care/ai-turn', { rawInput, history, forceFinalize })
   },
 }

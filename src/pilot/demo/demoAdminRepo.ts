@@ -1,5 +1,6 @@
 import type { AdminRepo, ReportDetail, ReportListItem, StatsResponse } from '../shared/adminRepo'
-import { triggerDownload } from '../shared/adminRepo'
+import { ReviewConflictError, triggerDownload } from '../shared/adminRepo'
+import type { CareReportRecord } from '../../../shared/careTypes'
 import {
   buildCumulativeSeries,
   buildParticipationGrid,
@@ -14,6 +15,7 @@ import {
   demoAdminLogout,
   demoAdminSession,
   demoAllReports,
+  demoAssignedRecipients,
   demoDeleteReport,
   demoGetReport,
   demoListParticipants,
@@ -96,11 +98,64 @@ export const demoAdminRepo: AdminRepo = {
     })
     return updated as ReportDetail
   },
+  async reviewReport(input) {
+    const existing = demoGetReport(input.id)
+    if (!existing) throw Object.assign(new Error('보고를 찾을 수 없습니다.'), { status: 404 })
+    if (existing.status !== 'submitted') {
+      throw Object.assign(new Error('제출된 보고만 검토할 수 있습니다.'), { status: 409 })
+    }
+    // 중복요청(같은 요청 식별자 재전송): 이력을 다시 쌓지 않고 현재 상태 그대로 반환.
+    if (input.requestId && existing.last_review_request_id === input.requestId) {
+      return existing as ReportDetail
+    }
+    if (input.reviewStatus === 'rejected' && !(input.reviewNote ?? '').trim()) {
+      throw Object.assign(new Error('반려 사유를 입력해 주세요.'), { status: 400 })
+    }
+    const history =
+      existing.review_status && existing.review_status !== 'pending'
+        ? [
+            ...existing.review_history,
+            {
+              at: existing.reviewed_at as string,
+              review_status: existing.review_status,
+              review_note: existing.review_note,
+              admin_final_report: existing.admin_final_report,
+            },
+          ]
+        : existing.review_history
+    const adminFinalReport = { ...input.adminFinalReport, caregiverNote: input.adminFinalReport.caregiverNote ?? '' }
+    const reviewNote = input.reviewStatus === 'rejected' ? (input.reviewNote ?? '').trim() : (input.reviewNote ?? '').trim() || null
+    // 주의: localStorage의 읽고→비교→쓰기는 진짜 원자적 CAS가 아니다(탭 간 락 없음) —
+    // 아래는 "예상값 불일치 시 거부"라는 계약만 모의로 구현한 것이다.
+    const updated = demoUpdateReport(
+      input.id,
+      {
+        review_status: input.reviewStatus,
+        review_note: reviewNote,
+        reviewed_at: new Date().toISOString(),
+        admin_final_report: adminFinalReport,
+        review_history: history,
+        last_review_request_id: input.requestId ?? null,
+      } as Partial<CareReportRecord>,
+      input.expectedUpdatedAt,
+    )
+    if (!updated) {
+      const latest = demoGetReport(input.id)
+      throw new ReviewConflictError('다른 곳에서 먼저 저장된 내용이 있습니다. 최신 내용을 다시 불러와 주세요.', latest as ReportDetail | undefined)
+    }
+    return updated as ReportDetail
+  },
   async deleteReport(id, reason) {
     demoDeleteReport(id, reason)
   },
   async listParticipants() {
-    return demoListParticipants().map((p) => ({ code: p.code, active: p.active, pinSet: true, updatedAt: '' }))
+    return demoListParticipants().map((p) => ({
+      code: p.code,
+      active: p.active,
+      pinSet: true,
+      updatedAt: '',
+      recipientCodes: demoAssignedRecipients(p.code),
+    }))
   },
   async resetPin(code) {
     const pin = randomPin()

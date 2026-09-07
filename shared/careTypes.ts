@@ -6,6 +6,11 @@ export interface StructuredReport {
   action: string
   result: string
   escalation: string
+  /** 요양보호사 본인이 표현한 어려움·지원 요청. 어르신에 대한 관찰 사실(change)과
+   * 분리해서 담는다 — "제가 힘들었어요"와 "어르신이 힘들어하셨어요"를 섞지 않기 위함.
+   * 규칙 기반 추출이 애매하면 "[주체 확인 필요] " 접두어를 붙여 원문을 그대로
+   * 보존한다(임의로 버리거나 어르신 상태변화로 바꾸지 않는다). */
+  caregiverNote: string
 }
 
 export interface FollowupItem {
@@ -93,6 +98,11 @@ export interface CareReportRecord {
   report_source: ReportSource
   scenario_id: string | null
 
+  /** 응급 신호(정규식 기반, 임상적으로 검증된 판정 아님) 감지 시 true. draft 상태에서도
+   * 즉시 기록되며, 제출 여부(status)와 별개다 — "전달 성공"/"검토완료" 집계에는 포함하지
+   * 않고 관리자 화면에 "미제출·확인 전 주의 신호"로만 별도 표시한다. */
+  emergency_flagged: boolean
+
   // 관리자 1단계(원문) 평가
   raw_immediately_actionable: boolean | null
   raw_followup_needed: boolean | null
@@ -111,9 +121,55 @@ export interface CareReportRecord {
   manager_status: 'confirmed' | 'needs_followup' | 'called' | 'closed' | null
   ai_evaluated_at: string | null
 
+  // 관리자 검토(승인/반려) — 위 1/2단계 연구용 평가와는 별개의, 실제 운영 워크플로우.
+  // 이 앱은 공유 관리자 비밀번호 하나뿐이라 개별 검토자 신원은 기록하지 않는다
+  // ("누가 검토했는지"는 확인 불가 — 행위주체 범위만 이력에 남긴다).
+  /** 관리자가 승인/반려 시 폼에 있던 내용을 그대로 기록(수정 안 했어도 caregiver_final_report를
+   * 복사해 채운다) — "확정본 없음"과 "미검토"를 같은 뜻으로 만들지 않기 위함.
+   * review_status가 유일한 진실 소스이고, 이 필드는 그 시점의 내용 스냅샷일 뿐이다. */
+  admin_final_report: StructuredReport | null
+  review_status: ReviewStatus
+  review_note: string | null
+  reviewed_at: string | null
+  review_history: ReviewHistoryEntry[]
+  /** 검토 요청 중복방지용 클라이언트 요청 식별자. 화면에는 노출하지 않는다. */
+  last_review_request_id: string | null
+
   deleted: boolean
   created_at: string
   updated_at: string
+}
+
+export type ReviewStatus = 'pending' | 'approved' | 'rejected'
+
+export interface ReviewHistoryEntry {
+  at: string
+  review_status: ReviewStatus
+  review_note: string | null
+  admin_final_report: StructuredReport | null
+}
+
+const EMPTY_STRUCTURED_REPORT: StructuredReport = { change: '', action: '', result: '', escalation: '', caregiverNote: '' }
+
+/** 저장소(로컬스토리지/DB) 경계에서 한 번만 적용하는 하위호환 정규화. 새 필드가 없는
+ * 옛 레코드(캐어기버노트/응급플래그/검토 필드 도입 이전)를 화면이 그대로 다룰 수 있게
+ * 기본값을 채운다 — 옛 데이터를 지우거나 바꾸지 않고 읽을 때만 보정한다. */
+export function normalizeReportRecord<T extends Partial<CareReportRecord>>(raw: T): T & CareReportRecord {
+  const r = raw as Partial<CareReportRecord>
+  const normalizeStructured = (s: StructuredReport | null | undefined): StructuredReport | null =>
+    s ? { ...EMPTY_STRUCTURED_REPORT, ...s } : s ?? null
+  return {
+    ...raw,
+    ai_generated_report: normalizeStructured(r.ai_generated_report),
+    caregiver_final_report: normalizeStructured(r.caregiver_final_report),
+    emergency_flagged: r.emergency_flagged ?? false,
+    admin_final_report: normalizeStructured(r.admin_final_report),
+    review_status: r.review_status ?? 'pending',
+    review_note: r.review_note ?? null,
+    reviewed_at: r.reviewed_at ?? null,
+    review_history: Array.isArray(r.review_history) ? r.review_history : [],
+    last_review_request_id: r.last_review_request_id ?? null,
+  } as T & CareReportRecord
 }
 
 export interface AiTurnResult {

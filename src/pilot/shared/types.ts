@@ -10,6 +10,8 @@ export type {
   ReportSource,
   ReportStatus,
   ReportType,
+  ReviewHistoryEntry,
+  ReviewStatus,
   StructuredReport,
 } from '../../../shared/careTypes.js'
 export { computeInformativeness, DOMAIN_LABELS, DOMAIN_KEYS } from '../../../shared/careTypes.js'
@@ -31,7 +33,18 @@ export type CareReportListItem = Pick<
   Partial<
     Pick<
       CareReportRecord,
-      'initial_status_choice' | 'no_information_report' | 'report_source' | 'scenario_id' | 'ai_inaccuracy_detected' | 'raw_evaluated_at' | 'ai_evaluated_at' | 'participant_code'
+      | 'initial_status_choice'
+      | 'no_information_report'
+      | 'report_source'
+      | 'scenario_id'
+      | 'ai_inaccuracy_detected'
+      | 'raw_evaluated_at'
+      | 'ai_evaluated_at'
+      | 'participant_code'
+      | 'emergency_flagged'
+      | 'review_status'
+      | 'reviewed_at'
+      | 'updated_at'
     >
   >
 
@@ -59,6 +72,7 @@ export interface CareReportPatchInput {
   finalInformationCount?: number
   informationAddedCount?: number
   noInformationReport?: boolean
+  emergencyFlagged?: boolean
   submit?: boolean
 }
 

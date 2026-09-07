@@ -4,7 +4,7 @@ import { SafetyFooter } from '../shared/SafetyNotice'
 import type { FollowupItem, StructuredReport } from '../shared/types'
 import { computeInformativeness } from '../shared/types'
 import type { AdminRepo, ReportDetail, ReportListItem, StatsResponse } from '../shared/adminRepo'
-import { realAdminRepo } from '../shared/adminRepo'
+import { realAdminRepo, ReviewConflictError } from '../shared/adminRepo'
 import { isDemoMode } from '../shared/demoMode'
 import { demoAdminRepo } from '../demo/demoAdminRepo'
 import { resetDemoData, DEMO_ADMIN_ALIAS_PASSWORD } from '../demo/demoStore'
@@ -506,7 +506,12 @@ const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
   { key: 'action', label: '현장에서 한 조치' },
   { key: 'result', label: '현재 상태' },
   { key: 'escalation', label: '센터 확인사항' },
+  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청' },
 ]
+
+function emptyStructuredReport(): StructuredReport {
+  return { change: '', action: '', result: '', escalation: '', caregiverNote: '' }
+}
 
 function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; id: string; onBack: () => void; onChanged: () => void }) {
   const [report, setReport] = useState<ReportDetail | null>(null)
@@ -527,6 +532,13 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
   const [aiNote, setAiNote] = useState('')
   const [managerStatus, setManagerStatus] = useState('confirmed')
 
+  // 관리자 검토(승인/반려) — 위 1/2단계 연구용 평가와 별개의 운영 워크플로우.
+  const [reviewDraft, setReviewDraft] = useState<StructuredReport>(emptyStructuredReport())
+  const [reviewNote, setReviewNote] = useState('')
+  const [showRejectNote, setShowRejectNote] = useState(false)
+  const [reviewSaving, setReviewSaving] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+
   const load = async () => {
     const r = await repo.getReport(id)
     setReport(r)
@@ -542,6 +554,11 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
     if (r.ai_inaccuracy_detected !== null) setInaccurate(r.ai_inaccuracy_detected)
     setAiNote(r.ai_eval_note ?? '')
     if (r.manager_status) setManagerStatus(r.manager_status)
+    // 검토 폼은 관리자 확정본이 있으면 그걸, 없으면 요양보호사 확인본/AI 초안 순으로 채운다.
+    setReviewDraft(r.admin_final_report ?? r.caregiver_final_report ?? r.ai_generated_report ?? emptyStructuredReport())
+    setReviewNote(r.review_status === 'rejected' ? (r.review_note ?? '') : '')
+    setShowRejectNote(false)
+    setReviewError(null)
   }
 
   useEffect(() => {
@@ -603,6 +620,39 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
     }
   }
 
+  const submitReview = async (reviewStatus: 'approved' | 'rejected') => {
+    if (reviewStatus === 'rejected' && !reviewNote.trim()) {
+      setReviewError('반려 사유를 입력해 주세요.')
+      return
+    }
+    setReviewSaving(true)
+    setReviewError(null)
+    try {
+      const updated = await repo.reviewReport({
+        id,
+        reviewStatus,
+        reviewNote: reviewNote.trim() || undefined,
+        adminFinalReport: reviewDraft,
+        expectedUpdatedAt: report.updated_at,
+        requestId: `${id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      })
+      setReport(updated)
+      setReviewDraft(updated.admin_final_report ?? reviewDraft)
+      setShowRejectNote(false)
+      onChanged()
+    } catch (e) {
+      if (e instanceof ReviewConflictError) {
+        // 저장 실패/충돌 시 관리자가 작성 중이던 내용(reviewDraft)은 그대로 둔다 —
+        // 서버 최신값으로 자동 덮어쓰지 않는다. 필요하면 사람이 직접 새로고침한다.
+        setReviewError('다른 곳에서 먼저 저장된 내용이 있습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.')
+      } else {
+        setReviewError(e instanceof ApiClientError || e instanceof Error ? e.message : '검토 결과를 저장하지 못했습니다.')
+      }
+    } finally {
+      setReviewSaving(false)
+    }
+  }
+
   const handleDelete = async () => {
     const reason = window.prompt('삭제 사유를 입력해 주세요.')
     if (!reason || !reason.trim()) return
@@ -645,6 +695,11 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
         <h2 className="text-lg font-bold text-slate-900">
           {report.participant_code} · {report.recipient_code} · {report.report_type === 'daily' ? '기본' : '추가'}
           {report.report_source === 'scenario' && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">표준상황</span>}
+          {report.emergency_flagged && (
+            <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+              🔴 {report.status === 'submitted' ? '응급신호 감지' : '미제출·확인 전 주의 신호'}
+            </span>
+          )}
         </h2>
         <button onClick={() => void handleDelete()} className="text-red-500 text-xs font-semibold">
           삭제
@@ -655,6 +710,102 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
         {report.initial_status_choice === 'changed' ? '평소와 다름' : report.initial_status_choice === 'similar' ? '평소와 비슷' : report.initial_status_choice === 'uncertain' ? '확인 필요' : '-'}
         {report.no_information_report && ' · 무정보 보고'}
       </p>
+
+      {report.status !== 'submitted' ? (
+        <section className="rounded-2xl bg-amber-50 border border-amber-200 p-4">
+          <p className="text-amber-700 font-bold text-sm">아직 제출 전(임시저장)입니다 — 검토할 수 없습니다.</p>
+          <p className="text-amber-600 text-xs mt-1">
+            {report.emergency_flagged
+              ? '응급 신호가 감지된 채로 저장만 된 상태입니다. 이 자체는 관리자 알림이 아니며, 이 화면을 직접 열어야 보입니다.'
+              : '요양보호사가 아직 확인·제출하지 않았습니다.'}
+          </p>
+        </section>
+      ) : (
+        <section className="rounded-2xl bg-white border border-slate-100 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-bold text-slate-900">관리자 검토</h3>
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                report.review_status === 'approved'
+                  ? 'bg-teal-100 text-teal-700'
+                  : report.review_status === 'rejected'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {report.review_status === 'approved' ? '승인됨' : report.review_status === 'rejected' ? '반려됨' : '검토 대기'}
+            </span>
+          </div>
+
+          {report.review_status !== 'pending' && report.admin_final_report && (
+            <div className={`rounded-xl p-3 mb-3 text-sm ${report.review_status === 'approved' ? 'bg-teal-50' : 'bg-red-50 border border-red-100'}`}>
+              <p className={`text-xs font-bold mb-1 ${report.review_status === 'approved' ? 'text-teal-600' : 'text-red-600'}`}>
+                {report.review_status === 'approved' ? '승인본 (활용 가능 기록)' : '반려 시 검토본 (재작업 필요 — 활용 가능 기록 아님)'}
+              </p>
+              {FIELD_LABELS.map(({ key, label }) => (
+                <p key={key} className="text-slate-700">
+                  <span className="text-slate-400">{label}: </span>
+                  {report.admin_final_report?.[key] || '-'}
+                </p>
+              ))}
+              {report.review_status === 'rejected' && report.review_note && <p className="text-red-700 mt-1">반려 사유: {report.review_note}</p>}
+              <p className="text-slate-400 text-[11px] mt-1">{report.reviewed_at}</p>
+            </div>
+          )}
+
+          <p className="text-slate-500 text-xs mb-2">필요하면 아래 내용을 수정한 뒤 승인 또는 반려하세요.</p>
+          {FIELD_LABELS.map(({ key, label }) => (
+            <div key={key} className="mb-2">
+              <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
+              <textarea
+                value={reviewDraft[key]}
+                onChange={(e) => setReviewDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                rows={2}
+                className="w-full border border-slate-200 rounded-lg p-2 text-sm"
+              />
+            </div>
+          ))}
+
+          {showRejectNote && (
+            <textarea
+              value={reviewNote}
+              onChange={(e) => setReviewNote(e.target.value)}
+              placeholder="반려 사유를 입력해 주세요 (필수)"
+              rows={2}
+              className="w-full border border-red-200 rounded-lg p-2 text-sm mt-1"
+            />
+          )}
+          {reviewError && <p className="text-red-700 text-xs mt-2">{reviewError}</p>}
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => void submitReview('approved')}
+              disabled={reviewSaving}
+              className="flex-1 min-h-[44px] rounded-full bg-teal-600 text-white font-bold hover:bg-teal-700 disabled:bg-slate-300"
+            >
+              {reviewSaving ? '저장 중...' : '승인'}
+            </button>
+            <button
+              onClick={() => (showRejectNote ? void submitReview('rejected') : setShowRejectNote(true))}
+              disabled={reviewSaving}
+              className="flex-1 min-h-[44px] rounded-full border-2 border-red-500 text-red-600 font-bold hover:bg-red-50 disabled:opacity-50"
+            >
+              {showRejectNote ? '반려 확정' : '반려'}
+            </button>
+          </div>
+
+          {report.review_history.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500 flex flex-col gap-1">
+              <p className="font-bold text-slate-600">검토 이력 (공유 관리자 접근 — 개인 식별 불가)</p>
+              {report.review_history.map((h, i) => (
+                <p key={i}>
+                  {h.at} · {h.review_status === 'approved' ? '승인' : h.review_status === 'rejected' ? '반려' : '대기'}
+                  {h.review_note ? ` · ${h.review_note}` : ''}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="rounded-2xl bg-white border border-slate-100 p-4">
         <h3 className="font-bold text-slate-900 mb-2">1단계 · 최초 원문 평가 (AI 결과 비공개)</h3>
@@ -788,8 +939,37 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
       .finally(() => setLoading(false))
   }, [repo, source])
 
+  // 관리자 기본 3수치. statsCalc.ts의 연구용 KPI와 별개다 — 여기 넣지 않는다.
+  // ① 저장된 돌봄기록 수(=대화 시작 건수라고 표현하지 않는다: 일간보고는 draft
+  //   재사용이라 정확히 같다고 단정 못함) ② 전달 성공(status=submitted)
+  //   ③ 검토완료(제출된 것 중 review_status가 approved/rejected인 것만).
+  const savedCount = reports.length
+  const deliveredCount = reports.filter((r) => r.status === 'submitted').length
+  const reviewedReports = reports.filter((r) => r.status === 'submitted' && (r.review_status === 'approved' || r.review_status === 'rejected'))
+  const approvedCount = reviewedReports.filter((r) => r.review_status === 'approved').length
+  const rejectedCount = reviewedReports.filter((r) => r.review_status === 'rejected').length
+
   return (
     <div className="flex flex-col gap-3">
+      {source === 'live' && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-2xl bg-white border border-slate-100 p-3">
+            <p className="text-xl font-bold text-slate-900">{savedCount}</p>
+            <p className="text-slate-400 text-[11px] mt-0.5">저장된 돌봄기록 수</p>
+          </div>
+          <div className="rounded-2xl bg-white border border-slate-100 p-3">
+            <p className="text-xl font-bold text-slate-900">{deliveredCount}</p>
+            <p className="text-slate-400 text-[11px] mt-0.5">전달 성공(제출)</p>
+          </div>
+          <div className="rounded-2xl bg-white border border-slate-100 p-3">
+            <p className="text-xl font-bold text-slate-900">
+              {reviewedReports.length}
+              <span className="text-xs text-slate-400 font-normal"> ({approvedCount}승인/{rejectedCount}반려)</span>
+            </p>
+            <p className="text-slate-400 text-[11px] mt-0.5">검토 완료</p>
+          </div>
+        </div>
+      )}
       <div className="flex gap-2">
         <button onClick={() => setSource('live')} className={`px-3 py-1.5 rounded-full text-xs font-bold ${source === 'live' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
           실제 현장보고
@@ -831,6 +1011,16 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
             {r.raw_evaluated_at && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">원문평가</span>}
             {r.ai_evaluated_at && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-white">AI평가완료</span>}
             {r.no_information_report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">무정보</span>}
+            {r.emergency_flagged && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">🔴 응급신호</span>}
+            {r.status === 'submitted' && r.review_status === 'approved' && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">승인됨</span>
+            )}
+            {r.status === 'submitted' && r.review_status === 'rejected' && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">반려됨</span>
+            )}
+            {r.status === 'submitted' && (!r.review_status || r.review_status === 'pending') && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">검토 대기</span>
+            )}
           </div>
         </button>
       ))}
@@ -839,7 +1029,9 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
 }
 
 function ParticipantsPanel({ repo }: { repo: AdminRepo }) {
-  const [participants, setParticipants] = useState<Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string }>>([])
+  const [participants, setParticipants] = useState<
+    Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>
+  >([])
   const [issuedPin, setIssuedPin] = useState<{ code: string; pin: string } | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -882,6 +1074,9 @@ function ParticipantsPanel({ repo }: { repo: AdminRepo }) {
           <div>
             <p className="font-bold text-slate-900">{p.code}</p>
             <p className="text-xs text-slate-400">{p.pinSet ? 'PIN 설정됨' : 'PIN 미설정'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              담당 수급자: {p.recipientCodes.length > 0 ? p.recipientCodes.join(', ') : '배정 없음'}
+            </p>
           </div>
           <button onClick={() => void resetPin(p.code)} className="min-h-[40px] px-4 rounded-full border-2 border-slate-900 text-slate-900 font-bold text-sm hover:bg-slate-50">
             PIN 초기화
