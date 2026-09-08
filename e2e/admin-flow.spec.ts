@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { answerAllFollowups, loginAdmin, loginCare, resetDemo, startReport, submitChangedReport } from './helpers'
+import { answerAllFollowups, loginAdmin, loginCare, openResearchKpiDetails, resetDemo, startReport, submitChangedReport } from './helpers'
 
 test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영', () => {
   test.beforeEach(async ({ page }) => {
@@ -26,11 +26,15 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
 
   test('처음에는 실제 참여자 0명·누적 보고 0건이다', async ({ page }) => {
     await loginAdmin(page)
+    await openResearchKpiDetails(page)
     await expect(page.getByText('0 / 9명')).toBeVisible()
     await expect(page.getByText('0 / 90건')).toBeVisible()
   })
 
   test('다른 탭에서 C01이 보고를 제출하면 관리자 화면에 참여자 1명·보고 1건이 반영되고, 평가 후 지표가 바뀐다', async ({ context, page: adminPage }) => {
+    // 이 테스트는 보고 2건 제출 + 2단계 평가 + 대시보드 재조회까지 한 번에
+    // 거치는 무거운 시나리오라 기본 30초 제한에 여유가 없다.
+    test.setTimeout(60_000)
     await loginAdmin(adminPage)
 
     const carePage = await context.newPage()
@@ -43,7 +47,9 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     // 관리자는 재접속(새로고침)해서 최신 폴링 결과를 즉시 확인한다 (3초 폴링).
+    // 새로고침하면 네이티브 <details>는 항상 닫힌 상태로 돌아가므로 다시 연다.
     await adminPage.reload()
+    await openResearchKpiDetails(adminPage)
     await expect(adminPage.getByText('1 / 9명')).toBeVisible()
     await expect(adminPage.getByText('1 / 90건')).toBeVisible()
 
@@ -55,8 +61,14 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
 
+    // 재사용률은 "첫 제출일이 오늘보다 이전인" 참여자만 분모로 센다(다시 쓸 기회가
+    // 아직 없었을 수 있는 당일 첫 제출자는 "관찰 중"으로 분리) — C01의 두 보고가
+    // 모두 오늘 제출됐으므로 아직 퍼센트가 아니라 "관찰 중"으로 표시된다.
     await adminPage.reload()
-    await expect(adminPage.getByText('실제 참여자 1명 중 1명이 2회 이상 사용')).toBeVisible()
+    await openResearchKpiDetails(adminPage)
+    // "관찰 중"은 카드 값과 보조 설명 문구 둘 다에 나타나므로 값 쪽만 정확히 짚는다.
+    await expect(adminPage.getByText('관찰 중', { exact: true })).toBeVisible()
+    await expect(adminPage.getByText(/첫 제출이 오늘인 1명은 관찰 중/)).toBeVisible()
 
     // 원문 평가 → AI 보고 평가 → 지표 변경
     await adminPage.getByRole('button', { name: '보고 목록' }).click()
@@ -77,6 +89,7 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await expect(adminPage.getByText('이 건의 변화')).toBeVisible()
 
     await adminPage.getByRole('button', { name: '대시보드' }).click()
+    await openResearchKpiDetails(adminPage)
     await expect(adminPage.getByText(/AI 적용 후 \d+%/)).toBeVisible()
   })
 

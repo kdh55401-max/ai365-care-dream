@@ -492,12 +492,19 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
           </div>
 
           <section>
-            <h3 className="font-bold text-slate-900 mb-2">현장보고 유형</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <h3 className="font-bold text-slate-900 mb-2">
+              현장보고 유형
+              <InfoTip
+                title="현장보고 유형"
+                formula="요양보호사가 실제로 선택하거나 확인된 상태별 비율. '미분류'는 '이야기 시작'/'글로 입력하기'로 곧바로 말해 평소와 다름·비슷함·확인필요 중 아무것도 고르지 않은 보고 — 아직 어떤 상태인지 확인되지 않았다는 뜻이며 '평소와 비슷함(정상 확인됨)'과 다르다."
+              />
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <StatCard label="평소와 다른 점 있음" value={fmtPct(stats.reportTypeBreakdown.changed)} />
               <StatCard label="평소와 비슷함" value={fmtPct(stats.reportTypeBreakdown.similar)} />
               <StatCard label="확인 필요" value={fmtPct(stats.reportTypeBreakdown.uncertain)} />
               <StatCard label="무정보 보고" value={fmtPct(stats.reportTypeBreakdown.noInfo)} />
+              <StatCard label="미분류" value={fmtPct(stats.reportTypeBreakdown.unclassified)} sub="평소와 다름/비슷함/확인필요를 선택하지 않은 보고" />
             </div>
           </section>
 

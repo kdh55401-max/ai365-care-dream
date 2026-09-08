@@ -137,13 +137,22 @@ export function buildCumulativeSeries(
   })
 }
 
-type InitialChoiceBucket = 'changed' | 'similar' | 'uncertain' | 'noInfo'
+type InitialChoiceBucket = 'changed' | 'similar' | 'uncertain' | 'noInfo' | 'unclassified'
 
+/** "평소와 비슷함"은 요양보호사가 실제로 그렇게 선택했거나(initial_status_choice
+ * ==='similar') 특이사항없음 흐름을 실제로 거친 보고만을 뜻해야 한다. "이야기
+ * 시작"/"글로 입력하기"로 곧바로 자유발화한 기본 돌봄보고는 이 선택 자체를 거치지
+ * 않아 initial_status_choice가 null로 남는데, 이를 "평소와 비슷함"으로 흘려보내면
+ * 실제로는 분류되지 않은 보고가 마치 정상 상태로 확인된 것처럼 집계된다("미분류"와
+ * "정상 확인됨"은 서로 다른 사실이다). 그래서 null은 changed/similar/uncertain
+ * 어디에도 넣지 않고 별도 unclassified로 분리한다 — 과거 데이터의 실제 상태를
+ * 추정해서 채우지 않는다. */
 function bucketOf(r: CareReportRecord): InitialChoiceBucket {
   if (r.no_information_report) return 'noInfo'
   if (r.initial_status_choice === 'changed') return 'changed'
+  if (r.initial_status_choice === 'similar') return 'similar'
   if (r.initial_status_choice === 'uncertain') return 'uncertain'
-  return 'similar'
+  return 'unclassified'
 }
 
 export function computeStats(allRows: CareReportRecord[], todayDate: string) {
@@ -290,14 +299,17 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
     aiEvaluated.length,
   )
 
-  // 현장보고 유형 분류 (평소와 다름 / 평소와 비슷 / 확인 필요 / 무정보 보고)
-  const buckets: Record<InitialChoiceBucket, CareReportRecord[]> = { changed: [], similar: [], uncertain: [], noInfo: [] }
+  // 현장보고 유형 분류 (평소와 다름 / 평소와 비슷 / 확인 필요 / 무정보 보고 / 미분류)
+  const buckets: Record<InitialChoiceBucket, CareReportRecord[]> = {
+    changed: [], similar: [], uncertain: [], noInfo: [], unclassified: [],
+  }
   for (const r of submitted) buckets[bucketOf(r)].push(r)
   const reportTypeBreakdown = {
     changed: fraction(buckets.changed.length, submitted.length),
     similar: fraction(buckets.similar.length, submitted.length),
     uncertain: fraction(buckets.uncertain.length, submitted.length),
     noInfo: fraction(buckets.noInfo.length, submitted.length),
+    unclassified: fraction(buckets.unclassified.length, submitted.length),
   }
 
   // 무정보 보고 구체화율: 최초 입력이 "특이사항 없음"이었던 건 중 최종적으로

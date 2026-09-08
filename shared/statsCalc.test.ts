@@ -154,7 +154,7 @@ describe('computeStats — 실제 현장보고(live)만 집계하고 scenario는
     expect(stats.noChangeFlow.noInfoSpecificationRate).toEqual({ numerator: 1, denominator: 2, percent: 50 })
   })
 
-  it('현장보고 유형 4분류가 서로 배타적이며 합이 전체와 같다', () => {
+  it('현장보고 유형 5분류가 서로 배타적이며 합이 전체와 같다', () => {
     const rows = [
       row({ initial_status_choice: 'changed' }),
       row({ initial_status_choice: 'similar' }),
@@ -163,8 +163,23 @@ describe('computeStats — 실제 현장보고(live)만 집계하고 scenario는
     ]
     const stats = computeStats(rows, '2026-09-07')
     const b = stats.reportTypeBreakdown
-    expect(b.changed.numerator + b.similar.numerator + b.uncertain.numerator + b.noInfo.numerator).toBe(4)
+    expect(b.changed.numerator + b.similar.numerator + b.uncertain.numerator + b.noInfo.numerator + b.unclassified.numerator).toBe(4)
     expect(b.noInfo.numerator).toBe(1)
+    expect(b.unclassified.numerator).toBe(0)
+  })
+
+  it('initial_status_choice가 없는(미선택) 보고는 "평소와 비슷함"이 아니라 "미분류"로 집계된다', () => {
+    // "이야기 시작"/"글로 입력하기"로 곧바로 자유발화한 기본 돌봄보고는 평소와
+    // 다른점/비슷함/확인필요 선택 화면을 거치지 않아 initial_status_choice가
+    // null로 남는다. 이걸 "평소와 비슷함(정상 확인됨)"으로 잘못 세면 안 된다.
+    const rows = [
+      row({ initial_status_choice: null }),
+      row({ initial_status_choice: 'similar' }),
+    ]
+    const stats = computeStats(rows, '2026-09-07')
+    const b = stats.reportTypeBreakdown
+    expect(b.unclassified).toEqual({ numerator: 1, denominator: 2, percent: 50 })
+    expect(b.similar).toEqual({ numerator: 1, denominator: 2, percent: 50 })
   })
 
   it('구조화 완료율: 방금 시작한(1시간 이내) draft는 실패로 세지 않고 "진행 중"으로 분리한다', () => {

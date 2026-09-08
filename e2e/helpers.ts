@@ -29,6 +29,14 @@ export async function loginAdmin(page: Page, password = 'demo1234') {
   await expect(page.getByText('관리자 검증 화면')).toBeVisible()
 }
 
+/** 대시보드의 "실제 참여자"/"누적 돌봄보고" 등 연구용 KPI 그리드는 우선순위
+ * 요약(센터가 확인할 돌봄) 아래 <details>로 접혀 있다 — 열어야 그 안의 값(예:
+ * "0 / 9명")을 확인할 수 있다. 네이티브 <details>는 페이지 새로고침 시 항상
+ * 닫힌 상태로 되돌아가므로, 새로고침 후 다시 열어야 한다. */
+export async function openResearchKpiDetails(page: Page) {
+  await page.getByText('실증 지표 자세히 보기 (연구용)').click()
+}
+
 /** 홈에서 "이야기 시작"(기본) 또는 "추가 상태변화 기록하기"를 누른다. "추가 상태변화
  * 기록하기"는 오늘 기본 돌봄보고를 먼저 제출해야만 홈 화면에 나타난다(시작 버튼과
  * 경쟁하지 않게 하기 위함) — 그 상태에서 호출해야 한다. 수급자는 CurrentRecipientCard가
