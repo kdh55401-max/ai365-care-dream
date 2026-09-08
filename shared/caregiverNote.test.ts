@@ -41,6 +41,17 @@ describe('extractCaregiverNote — 대표 사례', () => {
     expect(extractCaregiverNote('')).toBe('')
   })
 
+  it('한 쪽이 다른 쪽의 부분 문자열인 명백한 반복은 더 긴 쪽만 남긴다 (실제 데모 시연에서 재현된 사례)', () => {
+    // 실제 브라우저 시연에서 "오늘 너무 힘들었어요"와 그 부분집합인 "너무 힘들었어요"가
+    // 둘 다 잡혀 화면에 반복 표시됐던 사례를 그대로 재현한다. 새 내용을 지어내지
+    // 않고(원문·발화 이력은 별도로 그대로 보존됨) 짧은 쪽만 지운다.
+    const combined =
+      '어르신이 계속 거절하셔서 오늘 너무 힘들었어요. 제가 계속 부드럽게 권해드렸는데도 안 드셔서 너무 힘들었어요. 여기까지 할게요.'
+    const note = extractCaregiverNote(combined)
+    expect(note).toBe('오늘 너무 힘들었어요')
+    expect(note.split(' / ')).toHaveLength(1)
+  })
+
   it('같은 문장을 여러 번 넘겨도(재계산) 중복 누적되지 않는다 — 순수함수라 항상 같은 결과', () => {
     const text = '어르신이 계속 거절하셔서 오늘 너무 힘들었어요.'
     const first = extractCaregiverNote(text)

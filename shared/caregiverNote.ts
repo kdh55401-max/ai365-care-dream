@@ -68,5 +68,10 @@ export function extractCaregiverNote(text: string): string {
     seen.add(f)
     return true
   })
-  return unique.join(' / ')
+  // 명백한 반복(예: "오늘 너무 힘들었어요"와 그 일부인 "너무 힘들었어요"가 같은
+  // 발화 안에서 함께 잡히는 경우)은 더 긴 쪽만 남긴다. 새 내용을 만들어내는 게
+  // 아니라 이미 포함된 부분 문자열만 제거하는 것이라 원문 손실이 없다 — 원문
+  // 자체(raw_input/followup_answers)는 이 함수와 별개로 그대로 보존된다.
+  const collapsed = unique.filter((seg, i) => !unique.some((other, j) => i !== j && other.length > seg.length && other.includes(seg)))
+  return collapsed.join(' / ')
 }

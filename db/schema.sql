@@ -196,17 +196,19 @@ select code, true
 from unnest(array['A01','A02','A03','A04','A05','A06','A07','A08','A09']) as code
 on conflict (code) do nothing;
 
--- ── 초기 배정: 요양보호사 1명당 수급자 1~2명 (실제 배정은 관리자가 조정) ──
-insert into caregiver_assignments (caregiver_code, recipient_code)
-values
-  ('C01', 'A01'), ('C01', 'A02'),
-  ('C02', 'A03'),
-  ('C03', 'A04'), ('C03', 'A05'),
-  ('C04', 'A06'),
-  ('C05', 'A07'),
-  ('C06', 'A08'),
-  ('C07', 'A09')
-on conflict (caregiver_code, recipient_code) do nothing;
+-- ── 실제 배정 데이터는 여기서 임의로 만들지 않는다 ─────────────────────
+-- 요양보호사-수급자 배정은 실제 현장 명단을 아는 관리자만 정확히 채울 수 있다.
+-- 이 스키마 파일은 caregiver_assignments "테이블"만 준비하고, 실제 배정 행은
+-- 넣지 않는다(데모 모드의 예시 배정은 src/pilot/demo/demoStore.ts에 별도로
+-- 있으며 이 실DB와는 무관하다). 실제 배정은 아래 형태로 SQL Editor에서
+-- 직접 실행하거나, 필요하면 관리자용 배정 입력 화면을 추후에 만든다:
+--
+-- insert into caregiver_assignments (caregiver_code, recipient_code) values
+--   ('C01', 'A01'), ('C01', 'A02'), ('C02', 'A03')
+-- on conflict (caregiver_code, recipient_code) do nothing;
+--
+-- 배정이 없는 요양보호사는 로그인해도 "배정된 수급자가 없습니다"로 표시되고
+-- 보고를 시작할 수 없다 — 실제 사용 전 반드시 배정을 넣어야 한다.
 
 -- ── Row Level Security ───────────────────────────────────────────────
 -- 모든 접근은 서버(Vercel 서버리스 함수)가 Service Role 키로만 수행한다.

@@ -502,11 +502,11 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
 }
 
 const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
-  { key: 'change', label: '관찰한 변화' },
+  { key: 'change', label: '관찰한 돌봄 상황' },
   { key: 'action', label: '현장에서 한 조치' },
   { key: 'result', label: '현재 상태' },
   { key: 'escalation', label: '센터 확인사항' },
-  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청' },
+  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청 (발화 원문 발췌)' },
 ]
 
 function emptyStructuredReport(): StructuredReport {
@@ -926,50 +926,45 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
   )
 }
 
+function todayKstDateStringClient(): string {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  return kst.toISOString().slice(0, 10)
+}
+
 function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) => void }) {
   const [reports, setReports] = useState<ReportListItem[]>([])
   const [source, setSource] = useState<'live' | 'scenario'>('live')
   const [loading, setLoading] = useState(true)
+  const today = todayKstDateStringClient()
+  const [rangeStart, setRangeStart] = useState(today)
+  const [rangeEnd, setRangeEnd] = useState(today)
+  const [computedAt, setComputedAt] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
     void repo
       .listReports(source)
-      .then(setReports)
+      .then((rows) => {
+        setReports(rows)
+        setComputedAt(new Date().toLocaleString('ko-KR'))
+      })
       .finally(() => setLoading(false))
   }, [repo, source])
 
-  // 관리자 기본 3수치. statsCalc.ts의 연구용 KPI와 별개다 — 여기 넣지 않는다.
-  // ① 저장된 돌봄기록 수(=대화 시작 건수라고 표현하지 않는다: 일간보고는 draft
-  //   재사용이라 정확히 같다고 단정 못함) ② 전달 성공(status=submitted)
-  //   ③ 검토완료(제출된 것 중 review_status가 approved/rejected인 것만).
-  const savedCount = reports.length
-  const deliveredCount = reports.filter((r) => r.status === 'submitted').length
-  const reviewedReports = reports.filter((r) => r.status === 'submitted' && (r.review_status === 'approved' || r.review_status === 'rejected'))
-  const approvedCount = reviewedReports.filter((r) => r.review_status === 'approved').length
-  const rejectedCount = reviewedReports.filter((r) => r.review_status === 'rejected').length
+  // 관리자 기본 3지표(조회기간 기준, 기본값 오늘/KST). statsCalc.ts의 연구용 KPI와는
+  // 별개로 계산한다 — 데모/기술테스트/삭제 기록은 listReports('live')가 애초에
+  // 포함하지 않는다(실제 DB에는 데모 데이터 자체가 없고, deleted=false만 조회).
+  const inRange = reports.filter((r) => (r.report_date ?? '') >= rangeStart && (r.report_date ?? '') <= rangeEnd)
+  const delivered = inRange.filter((r) => r.status === 'submitted')
+  const participantCount = new Set(delivered.map((r) => r.participant_code).filter((c): c is string => Boolean(c))).size
+  const reviewed = delivered.filter((r) => r.review_status === 'approved' || r.review_status === 'rejected')
+  const approvedCount = reviewed.filter((r) => r.review_status === 'approved').length
+  const rejectedCount = reviewed.filter((r) => r.review_status === 'rejected').length
+  const pendingCount = delivered.length - reviewed.length
+  const reviewRate = delivered.length > 0 ? Math.round((reviewed.length / delivered.length) * 1000) / 10 : null
 
   return (
     <div className="flex flex-col gap-3">
-      {source === 'live' && (
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-2xl bg-white border border-slate-100 p-3">
-            <p className="text-xl font-bold text-slate-900">{savedCount}</p>
-            <p className="text-slate-400 text-[11px] mt-0.5">저장된 돌봄기록 수</p>
-          </div>
-          <div className="rounded-2xl bg-white border border-slate-100 p-3">
-            <p className="text-xl font-bold text-slate-900">{deliveredCount}</p>
-            <p className="text-slate-400 text-[11px] mt-0.5">전달 성공(제출)</p>
-          </div>
-          <div className="rounded-2xl bg-white border border-slate-100 p-3">
-            <p className="text-xl font-bold text-slate-900">
-              {reviewedReports.length}
-              <span className="text-xs text-slate-400 font-normal"> ({approvedCount}승인/{rejectedCount}반려)</span>
-            </p>
-            <p className="text-slate-400 text-[11px] mt-0.5">검토 완료</p>
-          </div>
-        </div>
-      )}
       <div className="flex gap-2">
         <button onClick={() => setSource('live')} className={`px-3 py-1.5 rounded-full text-xs font-bold ${source === 'live' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
           실제 현장보고
@@ -978,6 +973,42 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
           표준상황 검증
         </button>
       </div>
+
+      {source === 'live' && (
+        <div className="rounded-2xl bg-white border border-slate-100 p-3 flex flex-col gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs font-bold text-slate-500">조회기간</label>
+            <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1 text-xs" />
+            <span className="text-slate-400 text-xs">~</span>
+            <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1 text-xs" />
+            <button onClick={() => { setRangeStart(today); setRangeEnd(today) }} className="text-teal-600 text-xs font-bold underline ml-auto">
+              오늘로 초기화
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-xl font-bold text-slate-900">{participantCount}</p>
+              <p className="text-slate-400 text-[11px] mt-0.5">참여 요양보호사 수</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold text-slate-900">{delivered.length}</p>
+              <p className="text-slate-400 text-[11px] mt-0.5">전달 완료 기록 수</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold text-slate-900">{delivered.length === 0 ? '아직 기록 없음' : `${reviewRate}%`}</p>
+              <p className="text-slate-400 text-[11px] mt-0.5">
+                검토율 {delivered.length > 0 && `(${reviewed.length}/${delivered.length})`}
+              </p>
+            </div>
+          </div>
+          {delivered.length > 0 && (
+            <p className="text-slate-400 text-[11px] text-center">
+              승인 {approvedCount} · 반려 {rejectedCount} · 미검토 {pendingCount}
+            </p>
+          )}
+          {computedAt && <p className="text-slate-300 text-[10px] text-center">집계 시각 {computedAt}</p>}
+        </div>
+      )}
       <div className="flex gap-2">
         <button onClick={() => void repo.exportCsv('summary')} className="flex-1 text-center min-h-[44px] flex items-center justify-center rounded-full border-2 border-slate-900 text-slate-900 font-bold text-sm hover:bg-slate-50">
           요약 CSV

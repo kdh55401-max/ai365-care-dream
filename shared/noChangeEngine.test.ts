@@ -127,6 +127,21 @@ describe('computeInformationAddedCount — TEST A~C (특이사항 없음 → 추
     expect(computeInformationAddedCount(initial, entries)).toBeGreaterThanOrEqual(1)
   })
 
+  it('TEST F: 이미 changed인 도메인에 더 구체적인 세부정보가 추가돼도 카운트가 다시 늘지 않는다', () => {
+    const initial = classifyDomainsFromText('특이사항 없어요.')
+    const firstMention = mergeDomainEntries(initial, classifyDomainsFromText('식사를 절반 정도밖에 못 드셨어요.'))
+    expect(firstMention.find((e) => e.domain === 'meal_hydration')?.status).toBe('changed')
+    expect(computeInformationAddedCount(initial, firstMention)).toBe(1)
+
+    // 같은 영역(meal_hydration)에 대해 숟가락 수처럼 더 구체적인 세부정보가 추가돼도
+    // 이미 changed였던 도메인이므로 information_added_count는 그대로 1이어야 한다 —
+    // 다만 이 세부정보 자체(원문)는 이 함수와 별개로 followup_answers에 그대로
+    // 보존된다(CareApp.tsx 구조상 항상 원문을 저장하므로 정보가 사라지지 않음).
+    const moreDetailed = mergeDomainEntries(firstMention, classifyDomainsFromText('정확히 말씀드리면 세 숟갈밖에 못 드셨어요.'))
+    expect(moreDetailed.find((e) => e.domain === 'meal_hydration')?.status).toBe('changed')
+    expect(computeInformationAddedCount(initial, moreDetailed)).toBe(1)
+  })
+
   it('TEST C: 후속 답변에서 어지럼증이 새로 발견되면 관련 도메인이 changed로 기록된다', () => {
     const initial = classifyDomainsFromText('특이사항 없어요.')
     const entries = mergeDomainEntries(initial, classifyDomainsFromText('오늘 일어날 때 어지럽다고 하셨어요.'))

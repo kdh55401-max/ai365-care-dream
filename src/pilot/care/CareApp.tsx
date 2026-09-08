@@ -94,11 +94,11 @@ function PhoneIcon({ className }: { className?: string }) {
 }
 
 const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
-  { key: 'change', label: '관찰한 변화' },
+  { key: 'change', label: '관찰한 돌봄 상황' },
   { key: 'action', label: '현장에서 한 조치' },
   { key: 'result', label: '현재 상태' },
   { key: 'escalation', label: '센터 확인사항' },
-  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청' },
+  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청 (발화 원문 발췌)' },
 ]
 
 function DemoBanner({ onReset }: { onReset: () => void }) {
