@@ -20,11 +20,11 @@ function RoleGateway() {
   const roles: RoleDef[] = [
     {
       id: 'team',
-      path: '/team',
+      path: '/admin',
       icon: <TeamIcon className="w-7 h-7" />,
       koreanName: '관리자',
       moduleName: 'TEAM',
-      description: '기관 업무 확인·수정·승인',
+      description: '실증 현황·돌봄보고 확인',
     },
     {
       id: 'care',
@@ -32,7 +32,7 @@ function RoleGateway() {
       icon: <CareIcon className="w-7 h-7" />,
       koreanName: '요양보호사',
       moduleName: 'CARE',
-      description: '방문 중 상황보고·대응 안내',
+      description: '오늘 돌봄보고 60초 작성',
     },
     {
       id: 'community',
