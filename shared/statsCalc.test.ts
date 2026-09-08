@@ -45,6 +45,8 @@ function row(overrides: Partial<CareReportRecord>): CareReportRecord {
     report_source: 'live',
     scenario_id: null,
     emergency_flagged: false,
+    ai_fallback_used: null,
+    ai_fallback_stage: null,
     raw_immediately_actionable: null,
     raw_followup_needed: null,
     raw_completeness_score: null,
@@ -163,6 +165,57 @@ describe('computeStats — 실제 현장보고(live)만 집계하고 scenario는
     const b = stats.reportTypeBreakdown
     expect(b.changed.numerator + b.similar.numerator + b.uncertain.numerator + b.noInfo.numerator).toBe(4)
     expect(b.noInfo.numerator).toBe(1)
+  })
+
+  it('구조화 완료율: 방금 시작한(1시간 이내) draft는 실패로 세지 않고 "진행 중"으로 분리한다', () => {
+    const now = new Date()
+    const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString()
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()
+    const rows = [
+      row({ status: 'submitted' }),
+      row({ status: 'draft', started_at: fiveMinAgo }), // 진행 중 — 분모에서 제외
+      row({ status: 'draft', started_at: twoHoursAgo }), // 방치됨 — 분모에 포함(실패로 집계)
+    ]
+    const stats = computeStats(rows, '2026-09-07')
+    expect(stats.quality.completionBreakdown).toEqual({ completed: 1, abandoned: 1, inProgress: 1, abandonedThresholdHours: 1 })
+    // 분모는 완료(1) + 방치(1) = 2, 진행 중인 1건은 빠진다 — 66.7%가 아니라 50%.
+    expect(stats.quality.completionRate).toEqual({ numerator: 1, denominator: 2, percent: 50 })
+  })
+
+  it('AI 폴백 발생률: ai_fallback_used가 null인(추적 이전) 기록은 분모에서 빼고 "확인 불가" 건수로 센다', () => {
+    const rows = [
+      row({ ai_fallback_used: false }),
+      row({ ai_fallback_used: true, ai_fallback_stage: 'final_report' }),
+      row({ ai_fallback_used: null }), // 과거 기록 — 확인 불가
+    ]
+    const stats = computeStats(rows, '2026-09-07')
+    expect(stats.quality.fallbackRate).toEqual({ numerator: 1, denominator: 2, percent: 50 })
+    expect(stats.quality.fallbackUnknownCount).toBe(1)
+  })
+
+  it('AI 폴백 발생률: DB에 컬럼이 아직 없어 ai_fallback_used가 undefined로 오는 배포 시점에도 "확인 불가"로 안전하게 처리한다(잘못 false로 세지 않는다)', () => {
+    const r = row({ ai_fallback_used: true })
+    // 마이그레이션 전 실제 Supabase select('*')는 이 컬럼을 아예 반환하지 않는다 —
+    // 그 상황을 흉내내 키 자체를 지운다.
+    const legacyRow = { ...r } as Partial<CareReportRecord>
+    delete legacyRow.ai_fallback_used
+    const stats = computeStats([legacyRow as CareReportRecord], '2026-09-07')
+    expect(stats.quality.fallbackRate).toEqual({ numerator: 0, denominator: 0, percent: null })
+    expect(stats.quality.fallbackUnknownCount).toBe(1)
+  })
+
+  it('재사용률: 첫 제출이 오늘인 참여자는 아직 재사용 기회가 없었으므로 "관찰 중"으로 분모에서 뺀다', () => {
+    const rows = [
+      // C01: 어제 첫 제출 + 오늘 한 번 더 = 관찰 기간 확보, 재사용 인정
+      row({ participant_code: 'C01', report_date: '2026-09-06' }),
+      row({ participant_code: 'C01', report_date: '2026-09-07', report_type: 'additional' }),
+      // C02: 오늘 처음 제출 — 아직 다음날이 안 와서 재사용 여부 판단 불가
+      row({ participant_code: 'C02', report_date: '2026-09-07' }),
+    ]
+    const stats = computeStats(rows, '2026-09-07')
+    expect(stats.participation.stillObservingParticipants).toBe(1)
+    // 분모에서 C02(관찰 중)가 빠지므로 1명 중 1명 재사용 = 100%, 0%로 뭉개지지 않는다.
+    expect(stats.participation.repeatUserRate).toEqual({ numerator: 1, denominator: 1, percent: 100 })
   })
 })
 

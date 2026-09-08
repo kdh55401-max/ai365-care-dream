@@ -27,6 +27,8 @@ export interface CareTurnResult {
   report: CareStructuredReport | null
   options?: string[]
   allowMultiple?: boolean
+  /** report가 채워진 턴에서만 의미 있음 — fallbackReport()로 대체됐으면 true. */
+  usedFallback: boolean
 }
 
 const RESPONSE_SCHEMA = {
@@ -144,13 +146,19 @@ const SYSTEM_PROMPT = `너는 장기요양 방문요양 요양보호사의 돌�
 12. 요양보호사가 "그만할게요"/"여기까지 할게요"처럼 종료 의사를 밝히면 즉시 needFollowup=false로
     최종 보고문을 만든다. 지금까지 실제로 들은 내용은 반영하되, 그 시점까지 확인 못 한 항목은
     "확인되지 않음"으로 남기고 억지로 채우지 않는다.
-13. 요양보호사의 발화가 오늘 돌봄 대상 어르신과 무관한 내용(날씨, 뉴스, 스포츠 등 잡담)뿐이면,
-    그 내용을 change 등 보고 항목에 그대로 옮기지 마라. needFollowup=true로 "오늘 어르신은
-    어떠셨어요?"처럼 짧게 한 번만 돌봄 이야기로 되돌리는 질문을 하고, 그래도 다시 무관한
-    답만 오면 더 반복해서 묻지 말고 change에 "요양보호사가 돌봄과 관련된 구체적인 내용을
-    말씀하지 않았습니다"처럼 사실 그대로 적어라 — 무관한 발언을 어르신의 상태로 지어내지 마라.
-    이렇게 되물은 뒤 요양보호사가 실제 돌봄 내용으로 답했다면, change는 그 답변(실제 관찰
-    내용)을 기준으로 작성하고 최초의 무관한 발화는 다시 담지 않는다.
+13. 요양보호사의 발화가 오늘 돌봄 대상 어르신과 무관한 내용(잡담, 날씨, 뉴스, 스포츠, 요양보호사
+    개인 용무, 시스템에 대한 불만 등)뿐이면, 그 내용으로 change/action/result를 지어내지 마라.
+    대신 needFollowup=true로 두고 question에 "그 말씀도 알겠습니다. 오늘 어르신은 어떠셨어요?"처럼
+    짧게 인정한 뒤 담당 어르신 이야기로 자연스럽게 되돌아오는 질문을 담는다(비난하거나 길게
+    설명하지 않는다). 그래도 다시 무관한 답만 오면 더 반복해서 묻지 말고, 최종 보고문의 change에
+    "요양보호사가 돌봄과 관련된 구체적인 내용을 말씀하지 않았습니다"처럼 사실 그대로 적어라 —
+    무관한 발언을 어르신의 상태로 지어내지 마라. 반대로 이렇게 되물은 뒤 요양보호사가 실제 돌봄
+    내용으로 답했다면, change는 그 답변(실제 관찰 내용)을 기준으로 작성하고 최초의 무관한 발화는
+    다시 담지 않는다. 단, 이 규칙은 명백히 돌봄과 무관한 화제일 때만 적용한다 — "어르신과 산책하며
+    날씨 이야기를 했다", "더워서 물을 적게 드셨다"처럼 날씨·계절 같은 단어가 어르신의 실제 상황
+    설명에 쓰였을 뿐이면 무관한 발화로 취급하지 말고 그대로 관찰 사실로 반영한다. 요양보호사 본인의
+    어려움 표현("오늘 너무 힘들었어요")도 돌봄과 무관한 잡담이 아니다 — 11번 규칙에 따라
+    caregiverNote로 다루고, 이 13번 규칙으로 되묻거나 배제하지 않는다.
 
 너는 응급도를 진단하거나 위험등급을 만들지 않는다. 그 역할은 이 시스템에 없다.
 모든 텍스트는 한국어로 작성하고, 반드시 지정된 JSON 스키마로만 답한다.`
@@ -195,7 +203,13 @@ export async function runCareReportTurn(
   // 뒤에도 다시 무관한 답만 오면 무관한 내용을 report에 담지 않고 그대로 정리한다.
   const lastWasOffTopicRedirect = history.length > 0 && history[history.length - 1].missingField === 'offtopic_redirect'
   if (history.length === 0 && isLikelyOffTopic(rawInput)) {
-    return { needFollowup: true, question: OFF_TOPIC_REDIRECT_QUESTION, missingField: 'offtopic_redirect', report: null }
+    return {
+      needFollowup: true,
+      question: OFF_TOPIC_REDIRECT_QUESTION,
+      missingField: 'offtopic_redirect',
+      report: null,
+      usedFallback: false,
+    }
   }
   if (lastWasOffTopicRedirect && isLikelyOffTopic(history[history.length - 1].answer)) {
     return {
@@ -209,6 +223,10 @@ export async function runCareReportTurn(
         escalation: '요양보호사가 돌봄 관련 내용을 말씀하지 않아 센터 확인이 필요합니다.',
         caregiverNote: '',
       },
+      // 이 경로는 Gemini 호출 실패가 아니라 결정론적 가드가 의도적으로 요약한
+      // 것이므로 "AI 대체 처리"(usedFallback)로 집계하지 않는다 — 실패와 정상
+      // 판단을 구분해야 하는 이유와 동일하게, 서로 다른 사실을 섞지 않는다.
+      usedFallback: false,
     }
   }
 
@@ -278,14 +296,13 @@ export async function runCareReportTurn(
 
   // 서버 측 안전장치: 3회를 넘겼거나(또는 클라이언트가 조기종료를 요청했거나) 질문하지 못하게 강제한다.
   if (forceFinalize && parsed.needFollowup) {
+    const validAiReport = parsed.report && isValidReport(parsed.report)
     return {
       needFollowup: false,
       question: null,
       missingField: null,
-      report:
-        parsed.report && isValidReport(parsed.report)
-          ? { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' }
-          : fallbackReport(rawInput, history),
+      report: validAiReport ? { ...parsed.report!, caregiverNote: parsed.report!.caregiverNote ?? '' } : fallbackReport(rawInput, history),
+      usedFallback: !validAiReport,
     }
   }
 
@@ -300,17 +317,19 @@ export async function runCareReportTurn(
       report: null,
       options: sanitizeOptions(parsed.options),
       allowMultiple: parsed.allowMultiple === true,
+      usedFallback: false,
     }
   }
 
   if (!parsed.report || !isValidReport(parsed.report)) {
-    return { needFollowup: false, question: null, missingField: null, report: fallbackReport(rawInput, history) }
+    return { needFollowup: false, question: null, missingField: null, report: fallbackReport(rawInput, history), usedFallback: true }
   }
   return {
     needFollowup: false,
     question: null,
     missingField: null,
     report: { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' },
+    usedFallback: false,
   }
 }
 

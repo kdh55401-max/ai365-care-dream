@@ -241,6 +241,24 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       .select(CARE_DETAIL_COLUMNS)
       .single()
     if (updateError || !updated) throw new ApiError(500, '보고를 저장하지 못했습니다.')
-    sendJson(res, 200, { report: updated })
+
+    // ai_fallback_used/ai_fallback_stage는 진단용 보조 컬럼이라 별도 업데이트로
+    // 분리한다 — 이 컬럼이 아직 실제 Supabase에 없는 배포 시점(마이그레이션을
+    // 관리자가 수동 적용하기 전)에도, 핵심 저장(보고 원문·구조화 결과·제출)이
+    // 이 컬럼 때문에 실패하지 않도록 하기 위함이다. 실패해도 조용히 넘어간다.
+    let finalReport = updated
+    if (typeof body.aiFallbackUsed === 'boolean' || body.aiFallbackStage === 'final_report' || body.aiFallbackStage === null) {
+      const fallbackUpdate: Record<string, unknown> = {}
+      if (typeof body.aiFallbackUsed === 'boolean') fallbackUpdate.ai_fallback_used = body.aiFallbackUsed
+      if (body.aiFallbackStage === 'final_report' || body.aiFallbackStage === null) fallbackUpdate.ai_fallback_stage = body.aiFallbackStage
+      const { data: withFallback, error: fallbackError } = await supabase
+        .from('reports')
+        .update(fallbackUpdate)
+        .eq('id', id)
+        .select(CARE_DETAIL_COLUMNS)
+        .maybeSingle()
+      if (!fallbackError && withFallback) finalReport = withFallback
+    }
+    sendJson(res, 200, { report: finalReport })
   })
 }

@@ -23,6 +23,26 @@ function fmtPct(f: Fraction, unit = '건'): string {
   return `${f.denominator}${unit} 중 ${f.numerator}${unit}, ${f.percent}%`
 }
 
+/** 빈 값을 "문제없음"으로 바꾸지 않고 그대로 "미기록"류로 보여주기 위해, 값이
+ * 있을 때만 잘라서 반환한다(없으면 null — 호출부가 자기 문구를 붙인다). */
+function truncateText(v: string | undefined, max = 40): string | null {
+  if (!v || !v.trim()) return null
+  const t = v.trim()
+  return t.length > max ? `${t.slice(0, max)}…` : t
+}
+
+/** AI가 어르신 위험도를 판단하는 게 아니라, "Gemini 응답을 실제로 썼는지"만 보여주는
+ * 기술 상태 배지. 응급신호(위험도) 배지와 절대 섞지 않는다. */
+function FallbackBadge({ used }: { used: boolean | null | undefined }) {
+  if (used === null || used === undefined) {
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">AI 처리상태 확인 불가</span>
+  }
+  if (used) {
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">AI 대체 처리됨</span>
+  }
+  return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-400">AI 정상 처리</span>
+}
+
 function SpinnerIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={`animate-spin ${className ?? ''}`} aria-hidden="true">
@@ -197,6 +217,58 @@ function ParticipantTable({ stats, reports }: { stats: StatsResponse; reports: R
   )
 }
 
+/** "센터가 확인할 돌봄" 우선순위 요약 — 연구용 KPI보다 먼저, 화면 맨 위에 둔다.
+ * AI 오류(폴백/처리실패)와 어르신 위험도(응급신호)는 서로 다른 축이라 절대 같은
+ * 배지로 섞지 않는다: 응급신호는 "우선 확인이 필요한 보고"에, AI 처리 이상은
+ * 각 카드 안의 별도 문구로만 보여준다. */
+function PriorityCareStrip({ reports, today, onOpen }: { reports: ReportListItem[]; today: string; onOpen: (id: string) => void }) {
+  const submitted = reports.filter((r) => r.status === 'submitted' && r.report_source !== 'scenario')
+  const urgent = submitted.filter((r) => r.emergency_flagged && (r.review_status ?? 'pending') === 'pending')
+  const unreviewed = submitted.filter((r) => (r.review_status ?? 'pending') === 'pending')
+  const todayReports = submitted.filter((r) => r.report_date === today)
+  const todayParticipants = new Set(todayReports.map((r) => r.participant_code).filter((c): c is string => Boolean(c)))
+
+  return (
+    <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
+      <h2 className="font-bold text-slate-900 mb-3">센터가 확인할 돌봄</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className={`rounded-2xl p-3 ${urgent.length > 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50'}`}>
+          <p className={`text-2xl font-bold ${urgent.length > 0 ? 'text-red-700' : 'text-slate-900'}`}>{urgent.length}건</p>
+          <p className={`text-xs mt-0.5 ${urgent.length > 0 ? 'text-red-600' : 'text-slate-400'}`}>우선 확인 필요(응급신호·미확인)</p>
+        </div>
+        <div className="rounded-2xl bg-slate-50 p-3">
+          <p className="text-2xl font-bold text-slate-900">{unreviewed.length}건</p>
+          <p className="text-slate-400 text-xs mt-0.5">아직 확인하지 않은 보고</p>
+        </div>
+        <div className="rounded-2xl bg-slate-50 p-3">
+          <p className="text-2xl font-bold text-slate-900">{todayReports.length}건</p>
+          <p className="text-slate-400 text-xs mt-0.5">오늘 완료된 보고</p>
+        </div>
+        <div className="rounded-2xl bg-slate-50 p-3">
+          <p className="text-2xl font-bold text-slate-900">{todayParticipants.size}명</p>
+          <p className="text-slate-400 text-xs mt-0.5">오늘 참여한 요양보호사</p>
+        </div>
+      </div>
+      {urgent.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {urgent.slice(0, 3).map((r) => (
+            <button
+              key={r.id}
+              onClick={() => onOpen(r.id)}
+              className="text-left rounded-xl border border-red-200 bg-red-50 p-3 hover:border-red-400 transition"
+            >
+              <span className="font-bold text-red-700 text-sm">
+                🔴 {r.participant_code} → {r.recipient_code}
+              </span>
+              <span className="text-red-500 text-xs ml-2">{r.submitted_at?.slice(0, 16).replace('T', ' ')}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: StatsResponse | null; reports: ReportListItem[]; onOpen: (id: string) => void }) {
   if (!data) {
     return (
@@ -256,7 +328,11 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
         )}
       </div>
 
-      <>
+      <PriorityCareStrip reports={reports} today={data.today} onOpen={onOpen} />
+
+      <details className="rounded-3xl bg-white border border-slate-100 shadow-sm">
+        <summary className="cursor-pointer select-none p-5 font-bold text-slate-900">실증 지표 자세히 보기 (연구용)</summary>
+        <div className="px-5 pb-5 flex flex-col gap-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <StatCard
               label="실제 참여자"
@@ -272,12 +348,16 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
             />
             <StatCard
               label="재사용률"
-              value={stats.participation.repeatUserRate.denominator === 0 ? '측정 전' : `${stats.participation.repeatUserRate.percent}%`}
-              sub={`실제 참여자 ${stats.participation.repeatUserRate.denominator}명 중 ${stats.participation.repeatUserRate.numerator}명이 2회 이상 사용`}
+              value={stats.participation.repeatUserRate.denominator === 0 ? '관찰 중' : `${stats.participation.repeatUserRate.percent}%`}
+              sub={
+                stats.participation.repeatUserRate.denominator === 0
+                  ? `아직 재사용 여부를 판단할 만큼 관찰 기간이 지난 참여자가 없음 (첫 제출이 오늘인 ${stats.participation.stillObservingParticipants}명은 관찰 중)`
+                  : `관찰 기간을 확보한 ${stats.participation.repeatUserRate.denominator}명 중 ${stats.participation.repeatUserRate.numerator}명이 2회 이상 사용 (관찰 중 ${stats.participation.stillObservingParticipants}명 별도)`
+              }
               tip={
                 <InfoTip
                   title="재사용률"
-                  formula="2회 이상 제출한 참여자 수 ÷ 1회 이상 참여자 수 × 100"
+                  formula="2회 이상 제출한 참여자 수 ÷ 첫 제출일이 오늘 이전인(=최소 하루 관찰 기간이 지난) 참여자 수 × 100. 첫 제출이 오늘인 참여자는 아직 다시 쓸 기회가 없었을 수 있어 분모에서 뺀다."
                   den={stats.participation.repeatUserRate.denominator}
                   num={stats.participation.repeatUserRate.numerator}
                   note={`참여 예정자 9명 기준 보조값: ${stats.participation.repeatUserRateOfPlanned.numerator}/9`}
@@ -285,9 +365,23 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
               }
             />
             <StatCard
-              label="보고 완료시간"
-              value={stats.quality.completionSecondsMedian === null ? '측정 전' : `중앙값 ${Math.round(stats.quality.completionSecondsMedian)}초`}
-              sub="돌봄보고 시작부터 최종 제출까지"
+              label="시작~제출 경과시간"
+              value={stats.quality.completionTime.medianAllSeconds === null ? '측정 전' : `중앙값 ${Math.round(stats.quality.completionTime.medianAllSeconds)}초`}
+              sub={
+                stats.quality.completionTime.medianWithinThresholdSeconds === null
+                  ? '돌봄보고 시작부터 최종 제출까지(대기시간 포함 가능)'
+                  : `${stats.quality.completionTime.thresholdSeconds / 60}분 이내 완료 ${
+                      stats.quality.completionTime.sampleCount - stats.quality.completionTime.excludedFromThresholdCount
+                    }건 중앙값 ${Math.round(stats.quality.completionTime.medianWithinThresholdSeconds)}초 (${
+                      stats.quality.completionTime.excludedFromThresholdCount
+                    }건은 화면을 열어둔 채 대기했을 가능성이 있어 제외)`
+              }
+              tip={
+                <InfoTip
+                  title="시작~제출 경과시간"
+                  formula="이 값은 '시작부터 제출까지 흐른 전체 시간'이며, 실제로 화면을 붙잡고 응답한 시간과는 다를 수 있다(턴별 상호작용 시간은 별도로 기록하지 않아 계산할 수 없음)."
+                />
+              }
             />
             <StatCard
               big
@@ -317,8 +411,32 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
             <StatCard
               label="구조화 완료율"
               value={fmtPct(stats.quality.completionRate)}
-              sub="시작한 돌봄보고 중 최종 제출까지 끝낸 비율"
-              tip={<InfoTip title="구조화 완료율" formula="제출 완료(submitted) 건수 ÷ 시작한 전체 보고 건수 × 100" den={stats.quality.completionRate.denominator} num={stats.quality.completionRate.numerator} />}
+              sub={`완료 ${stats.quality.completionBreakdown.completed} · 방치됨 ${stats.quality.completionBreakdown.abandoned} · 진행 중 ${stats.quality.completionBreakdown.inProgress}(제외)`}
+              tip={
+                <InfoTip
+                  title="구조화 완료율"
+                  formula={`제출 완료 건수 ÷ (제출 완료 + 시작 후 ${stats.quality.completionBreakdown.abandonedThresholdHours}시간 넘게 방치된 draft) × 100. 방금 시작해 아직 작성 중인 draft는 실패로 보지 않고 분모에서 뺀다.`}
+                  den={stats.quality.completionRate.denominator}
+                  num={stats.quality.completionRate.numerator}
+                />
+              }
+            />
+            <StatCard
+              label="AI 폴백(대체) 발생률"
+              value={stats.quality.fallbackRate.denominator === 0 ? '확인 불가' : fmtPct(stats.quality.fallbackRate)}
+              sub={
+                stats.quality.fallbackUnknownCount > 0
+                  ? `실제 Gemini 응답 대신 규칙 기반 대체가 쓰인 비율 (추적 이전 기록 ${stats.quality.fallbackUnknownCount}건은 확인 불가)`
+                  : '실제 Gemini 응답 대신 규칙 기반 대체가 쓰인 비율'
+              }
+              tip={
+                <InfoTip
+                  title="AI 폴백(대체) 발생률"
+                  formula="최종 보고문이 Gemini 실패/무효 응답으로 규칙 기반 대체(fallbackReport)를 썼던 건수 ÷ 이 값이 기록된(ai_fallback_used가 null이 아닌) 제출 건수 × 100. 보고가 저장됐다는 것과 AI가 정상 작동했다는 것은 다른 사실이다."
+                  den={stats.quality.fallbackRate.denominator}
+                  num={stats.quality.fallbackRate.numerator}
+                />
+              }
             />
             <StatCard
               label="AI 추가질문 발생률"
@@ -342,7 +460,15 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
               label="AI 초안 수정률"
               value={fmtPct(stats.quality.aiDraftEditRate)}
               sub="AI가 생성한 기록을 요양보호사가 수정 후 제출한 비율"
-              tip={<InfoTip title="AI 초안 수정률" formula="ai_generated_report ≠ caregiver_final_report(정규화 텍스트 비교) 건수 ÷ 제출 건수 × 100" den={stats.quality.aiDraftEditRate.denominator} num={stats.quality.aiDraftEditRate.numerator} />}
+              tip={
+                <InfoTip
+                  title="AI 초안 수정률"
+                  formula="ai_generated_report ≠ caregiver_final_report(정규화 텍스트 비교) 건수 ÷ 제출 건수 × 100"
+                  den={stats.quality.aiDraftEditRate.denominator}
+                  num={stats.quality.aiDraftEditRate.numerator}
+                  note="주의: 수정하지 않았다는 것이 곧 초안이 적절했다는 뜻은 아니다(그냥 넘어갔을 수도 있음) — 품질 판단은 관리자 평가(2단계) 점수를 함께 봐야 한다."
+                />
+              }
             />
           </div>
 
@@ -496,7 +622,8 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
               {reports.length === 0 && <p className="text-slate-400 text-sm text-center py-6">돌봄보고가 제출되면 이곳에 실시간으로 표시됩니다.</p>}
             </div>
           </section>
-        </>
+        </div>
+      </details>
     </div>
   )
 }
@@ -698,6 +825,11 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
           {report.emergency_flagged && (
             <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
               🔴 {report.status === 'submitted' ? '응급신호 감지' : '미제출·확인 전 주의 신호'}
+            </span>
+          )}
+          {report.status === 'submitted' && (
+            <span className="ml-2 inline-block align-middle">
+              <FallbackBadge used={report.ai_fallback_used} />
             </span>
           )}
         </h2>
@@ -1023,38 +1155,58 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
         </div>
       )}
       {!loading && reports.length === 0 && <p className="text-slate-400 text-center py-10">아직 보고가 없습니다.</p>}
-      {reports.map((r) => (
-        <button key={r.id} onClick={() => onOpen(r.id)} className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-teal-300 transition">
-          <div className="flex justify-between items-center text-sm">
-            <span className="font-bold text-slate-900">
-              {r.participant_code} → {r.recipient_code}
-            </span>
-            <span className="text-slate-400">{r.report_type === 'daily' ? '기본' : '추가'}</span>
-          </div>
-          <div className="flex justify-between items-center mt-1 text-xs text-slate-400">
-            <span>{r.submitted_at ?? '미제출'}</span>
-            <span>{r.completion_seconds ? `${r.completion_seconds}초` : ''}</span>
-          </div>
-          <div className="flex gap-1 mt-2 flex-wrap">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.status === 'submitted' ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
-              {r.status === 'submitted' ? '제출완료' : '임시저장'}
-            </span>
-            {r.raw_evaluated_at && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">원문평가</span>}
-            {r.ai_evaluated_at && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-white">AI평가완료</span>}
-            {r.no_information_report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">무정보</span>}
-            {r.emergency_flagged && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">🔴 응급신호</span>}
-            {r.status === 'submitted' && r.review_status === 'approved' && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">승인됨</span>
+      {reports.map((r) => {
+        const finalReport = r.caregiver_final_report ?? r.ai_generated_report
+        return (
+          <button key={r.id} onClick={() => onOpen(r.id)} className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-teal-300 transition">
+            <div className="flex justify-between items-center text-sm">
+              <span className="font-bold text-slate-900">
+                {r.participant_code} → {r.recipient_code}
+              </span>
+              <span className="text-slate-400">{r.report_type === 'daily' ? '기본' : '추가'}</span>
+            </div>
+            <div className="flex justify-between items-center mt-1 text-xs text-slate-400">
+              <span>{r.submitted_at ?? '미제출'}</span>
+              <span>{r.completion_seconds ? `${r.completion_seconds}초` : ''}</span>
+            </div>
+            {r.status === 'submitted' && (
+              <div className="mt-2 flex flex-col gap-0.5 text-xs">
+                <p className="text-slate-700">
+                  <span className="text-slate-400">관찰: </span>
+                  {truncateText(finalReport?.change) ?? '미기록'}
+                </p>
+                <p className="text-slate-700">
+                  <span className="text-slate-400">대응: </span>
+                  {truncateText(finalReport?.action) ?? '미기록'}
+                </p>
+                <p className="text-slate-700">
+                  <span className="text-slate-400">센터 확인: </span>
+                  {truncateText(finalReport?.escalation) ?? '확인 필요'}
+                </p>
+              </div>
             )}
-            {r.status === 'submitted' && r.review_status === 'rejected' && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">반려됨</span>
-            )}
-            {r.status === 'submitted' && (!r.review_status || r.review_status === 'pending') && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">검토 대기</span>
-            )}
-          </div>
-        </button>
-      ))}
+            <div className="flex gap-1 mt-2 flex-wrap">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.status === 'submitted' ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
+                {r.status === 'submitted' ? '제출완료' : '임시저장'}
+              </span>
+              {r.status === 'submitted' && <FallbackBadge used={r.ai_fallback_used} />}
+              {r.raw_evaluated_at && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">원문평가</span>}
+              {r.ai_evaluated_at && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-white">AI평가완료</span>}
+              {r.no_information_report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">무정보</span>}
+              {r.emergency_flagged && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">🔴 응급신호</span>}
+              {r.status === 'submitted' && r.review_status === 'approved' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">승인됨</span>
+              )}
+              {r.status === 'submitted' && r.review_status === 'rejected' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">반려됨</span>
+              )}
+              {r.status === 'submitted' && (!r.review_status || r.review_status === 'pending') && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">검토 대기</span>
+              )}
+            </div>
+          </button>
+        )
+      })}
     </div>
   )
 }

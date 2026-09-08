@@ -756,7 +756,14 @@ function CareApp() {
       } else if (result.report) {
         setAiGeneratedReport(result.report)
         setFinalReport(result.report)
-        await repo.patchReport({ id: reportId, aiGeneratedReport: result.report })
+        // usedFallback을 함께 저장해 관리자 화면이 "저장됨"과 "AI가 실제로 만들었음"을
+        // 구분할 수 있게 한다. 데모 모드는 result.usedFallback이 항상 undefined이므로
+        // 이 필드를 건드리지 않는다(의미 없는 값을 채우지 않음).
+        await repo.patchReport({
+          id: reportId,
+          aiGeneratedReport: result.report,
+          ...(result.usedFallback !== undefined ? { aiFallbackUsed: result.usedFallback, aiFallbackStage: result.usedFallback ? 'final_report' : null } : {}),
+        })
         setScreen('reportReview')
       }
     } catch {

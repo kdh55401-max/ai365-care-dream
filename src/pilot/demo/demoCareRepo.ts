@@ -69,6 +69,8 @@ function newReportRecord(input: {
     report_source: input.reportSource,
     scenario_id: input.scenarioId,
     emergency_flagged: false,
+    ai_fallback_used: null,
+    ai_fallback_stage: null,
     raw_immediately_actionable: null,
     raw_followup_needed: null,
     raw_completeness_score: null,
@@ -116,6 +118,8 @@ function patchToRecord(patch: Record<string, unknown>): Partial<CareReportRecord
     informationAddedCount: 'information_added_count',
     noInformationReport: 'no_information_report',
     emergencyFlagged: 'emergency_flagged',
+    aiFallbackUsed: 'ai_fallback_used',
+    aiFallbackStage: 'ai_fallback_stage',
   }
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(patch)) {
