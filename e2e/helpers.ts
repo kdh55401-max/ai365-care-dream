@@ -29,20 +29,37 @@ export async function loginAdmin(page: Page, password = 'demo1234') {
   await expect(page.getByText('관리자 검증 화면')).toBeVisible()
 }
 
-/** 홈에서 "오늘 어르신 이야기하기"(기본) 또는 "추가 상태변화 보고"를 누른다.
- * 수급자는 CurrentRecipientCard가 배정된 것 중 하나를 자동으로 선택해 두므로
- * (드롭다운 없음) 별도로 고를 필요가 없다. */
-export async function startReport(page: Page, kind: '오늘 어르신 이야기하기' | '추가 상태변화 보고' = '오늘 어르신 이야기하기') {
+/** 홈에서 "이야기 시작"(기본) 또는 "추가 상태변화 기록하기"를 누른다. "추가 상태변화
+ * 기록하기"는 오늘 기본 돌봄보고를 먼저 제출해야만 홈 화면에 나타난다(시작 버튼과
+ * 경쟁하지 않게 하기 위함) — 그 상태에서 호출해야 한다. 수급자는 CurrentRecipientCard가
+ * 배정된 것 중 하나를 자동으로 선택해 두므로(드롭다운 없음) 별도로 고를 필요가 없다. */
+export async function startReport(page: Page, kind: '이야기 시작' | '추가 상태변화 기록하기' = '이야기 시작') {
   await page.getByRole('button', { name: kind }).click()
-  if (kind === '오늘 어르신 이야기하기') {
+  if (kind === '이야기 시작') {
     await expect(page.getByPlaceholder(/음성 대신/)).toBeVisible()
   } else {
     await expect(page.getByText('오늘 방문은 어땠나요?')).toBeVisible()
   }
 }
 
+/** 기본 돌봄보고 하나를 처음부터 끝까지("이야기 시작" → 텍스트 입력 → 선택형
+ * 후속질문 → 제출) 완료한다. "추가 상태변화 기록하기"는 오늘 기본 보고가 먼저
+ * 제출돼야 홈 화면에 나타나므로, 그 상태를 만들어야 하는 테스트에서 이 헬퍼로
+ * 선행 조건을 채운다. */
+export async function completeDailyReport(page: Page, text = '식사를 평소보다 조금 적게 하셨어요') {
+  await startReport(page, '이야기 시작')
+  await page.getByPlaceholder(/음성 대신/).fill(text)
+  await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+  await answerFollowupsWithOptions(page)
+  if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+  }
+  await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+  await page.getByRole('button', { name: '홈으로' }).click()
+}
+
 /** "평소와 다른 점이 있었어요" 선택 후 텍스트로 관찰내용을 입력해 제출한다.
- * (추가 상태변화 보고의 상황선택 화면에서만 쓰는 경로 — 기본 보고는 상황선택
+ * (추가 상태변화 기록하기의 상황선택 화면에서만 쓰는 경로 — 기본 보고는 상황선택
  * 화면 없이 바로 record 화면으로 간다.) */
 export async function submitChangedReport(page: Page, text: string) {
   await page.getByRole('button', { name: '평소와 다른 점이 있었어요' }).click()

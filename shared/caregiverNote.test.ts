@@ -33,6 +33,16 @@ describe('extractCaregiverNote — 대표 사례', () => {
     expect(extractCaregiverNote('오늘은 정말 도와주세요.')).not.toBe('')
   })
 
+  it('"어르신이 같은 말씀을 반복하셔서 어떻게 대답할지 고민됐어요." → 요양보호사의 돌봄 중 어려움으로 보존', () => {
+    const note = extractCaregiverNote('어르신이 같은 말씀을 반복하셔서 어떻게 대답할지 고민됐어요.')
+    expect(note).not.toBe('')
+    expect(note).toContain('고민됐어요')
+  })
+
+  it('"어르신이 오늘 메뉴를 고민하셨어요." → 어르신 본인의 고민이므로 caregiverNote 아님(존댓말 활용형)', () => {
+    expect(extractCaregiverNote('어르신이 오늘 메뉴를 고민하셨어요.')).toBe('')
+  })
+
   it('아무 단서가 없으면 빈 문자열', () => {
     expect(extractCaregiverNote('오늘 점심을 잘 드셨어요.')).toBe('')
   })

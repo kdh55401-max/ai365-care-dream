@@ -26,8 +26,8 @@ export function TopCallBar() {
           센터 전화
         </a>
       ) : (
-        <span className="flex-1 flex items-center justify-center min-h-[44px] rounded-2xl border-2 border-slate-200 text-slate-400 text-sm">
-          센터 번호 미등록
+        <span className="flex-1 flex items-center justify-center min-h-[44px] rounded-2xl border-2 border-slate-300 bg-slate-50 text-slate-600 text-sm font-bold">
+          센터 연락처 미등록
         </span>
       )}
       <a

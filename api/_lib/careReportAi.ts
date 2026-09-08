@@ -1,5 +1,6 @@
 import { env } from './env.js'
 import { ApiError } from './http.js'
+import { isLikelyOffTopic } from '../../shared/offTopicEngine.js'
 
 const MODEL = 'gemini-3.6-flash'
 const REQUEST_TIMEOUT_MS = 18000
@@ -143,6 +144,13 @@ const SYSTEM_PROMPT = `너는 장기요양 방문요양 요양보호사의 돌�
 12. 요양보호사가 "그만할게요"/"여기까지 할게요"처럼 종료 의사를 밝히면 즉시 needFollowup=false로
     최종 보고문을 만든다. 지금까지 실제로 들은 내용은 반영하되, 그 시점까지 확인 못 한 항목은
     "확인되지 않음"으로 남기고 억지로 채우지 않는다.
+13. 요양보호사의 발화가 오늘 돌봄 대상 어르신과 무관한 내용(날씨, 뉴스, 스포츠 등 잡담)뿐이면,
+    그 내용을 change 등 보고 항목에 그대로 옮기지 마라. needFollowup=true로 "오늘 어르신은
+    어떠셨어요?"처럼 짧게 한 번만 돌봄 이야기로 되돌리는 질문을 하고, 그래도 다시 무관한
+    답만 오면 더 반복해서 묻지 말고 change에 "요양보호사가 돌봄과 관련된 구체적인 내용을
+    말씀하지 않았습니다"처럼 사실 그대로 적어라 — 무관한 발언을 어르신의 상태로 지어내지 마라.
+    이렇게 되물은 뒤 요양보호사가 실제 돌봄 내용으로 답했다면, change는 그 답변(실제 관찰
+    내용)을 기준으로 작성하고 최초의 무관한 발화는 다시 담지 않는다.
 
 너는 응급도를 진단하거나 위험등급을 만들지 않는다. 그 역할은 이 시스템에 없다.
 모든 텍스트는 한국어로 작성하고, 반드시 지정된 JSON 스키마로만 답한다.`
@@ -174,11 +182,36 @@ function fallbackReport(rawInput: string, history: FollowupTurn[]): CareStructur
   }
 }
 
+const OFF_TOPIC_REDIRECT_QUESTION = '오늘 어르신 돌봄 이야기로 다시 여쭤볼게요. 오늘 어르신은 어떠셨어요?'
+
 export async function runCareReportTurn(
   rawInput: string,
   history: FollowupTurn[],
   clientForceFinalize = false,
 ): Promise<CareTurnResult> {
+  // 서버 측 결정론적 안전장치: 프롬프트(규칙 13)로 AI에게도 지시하지만, 무관한
+  // 발언이 보고서에 섞여 들어가는 것을 프롬프트 준수 여부에만 맡기지 않는다.
+  // 첫 발화가 명백히 돌봄과 무관하면 Gemini를 호출하지 않고 즉시 되묻고, 되물은
+  // 뒤에도 다시 무관한 답만 오면 무관한 내용을 report에 담지 않고 그대로 정리한다.
+  const lastWasOffTopicRedirect = history.length > 0 && history[history.length - 1].missingField === 'offtopic_redirect'
+  if (history.length === 0 && isLikelyOffTopic(rawInput)) {
+    return { needFollowup: true, question: OFF_TOPIC_REDIRECT_QUESTION, missingField: 'offtopic_redirect', report: null }
+  }
+  if (lastWasOffTopicRedirect && isLikelyOffTopic(history[history.length - 1].answer)) {
+    return {
+      needFollowup: false,
+      question: null,
+      missingField: null,
+      report: {
+        change: '요양보호사가 돌봄과 관련된 구체적인 내용을 말씀하지 않았습니다. 센터가 직접 확인이 필요합니다.',
+        action: '확인되지 않음',
+        result: '확인되지 않음',
+        escalation: '요양보호사가 돌봄 관련 내용을 말씀하지 않아 센터 확인이 필요합니다.',
+        caregiverNote: '',
+      },
+    }
+  }
+
   // clientForceFinalize: 요양보호사가 "그만할게요"류 종료 의사를 밝혀 화면에서
   // 직접 조기종료를 트리거한 경우. 3회 상한 도달과 같은 방식으로 처리한다.
   const forceFinalize = clientForceFinalize || history.length >= MAX_FOLLOWUPS

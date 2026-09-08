@@ -1,5 +1,6 @@
 import type { AiTurnResult, FollowupItem, StructuredReport } from '../../../shared/careTypes.js'
 import { extractCaregiverNote } from '../../../shared/caregiverNote.js'
+import { isLikelyOffTopic } from '../../../shared/offTopicEngine.js'
 
 /** Gemini 키가 없을 때(또는 데모 모드에서) 쓰는 규칙 기반 질문·구조화 엔진.
  * 실제 AI 결과가 아니므로 화면에서는 반드시 "데모 데이터"로 표시해야 한다.
@@ -13,7 +14,37 @@ function has(text: string, hints: string[]): boolean {
   return hints.some((h) => text.includes(h))
 }
 
+const OFF_TOPIC_REDIRECT_QUESTION = '오늘 어르신 돌봄 이야기로 다시 여쭤볼게요. 오늘 어르신은 어떠셨어요?'
+
 export function runDemoAiTurn(rawInput: string, history: FollowupItem[], forceFinalize = false): AiTurnResult {
+  // 첫 발화가 돌봄과 무관한 잡담이면(날씨/뉴스 등) 그 내용을 보고문에 담지 않고
+  // 짧게 한 번만 돌봄 이야기로 되돌린다. 되돌린 뒤에도 다시 무관한 답이 오면(예:
+  // 계속 딴 이야기) 더 반복해서 묻지 않고 "확인되지 않음"으로 정리해 센터가 원문을
+  // 보게 한다 — 무관한 발언을 어르신 상태로 둔갑시키지 않는다.
+  const lastWasOffTopicRedirect = history.length > 0 && history[history.length - 1].missingField === 'offtopic_redirect'
+  if (history.length === 0 && isLikelyOffTopic(rawInput)) {
+    return {
+      needFollowup: true,
+      question: OFF_TOPIC_REDIRECT_QUESTION,
+      missingField: 'offtopic_redirect',
+      report: null,
+    }
+  }
+  if (lastWasOffTopicRedirect && isLikelyOffTopic(history[history.length - 1].answer)) {
+    return {
+      needFollowup: false,
+      question: null,
+      missingField: null,
+      report: {
+        change: '요양보호사가 돌봄과 관련된 구체적인 내용을 말씀하지 않았습니다. 센터가 직접 확인이 필요합니다.',
+        action: '확인되지 않음',
+        result: '확인되지 않음',
+        escalation: '요양보호사가 돌봄 관련 내용을 말씀하지 않아 센터 확인이 필요합니다.',
+        caregiverNote: '',
+      },
+    }
+  }
+
   const combined = [rawInput, ...history.map((h) => h.answer)].join(' ')
   const askMore = !forceFinalize && history.length < 3
   // 이미 그 항목을 질문해서 답을 받았으면(버튼 답이 힌트 키워드를 그대로 포함하지
@@ -52,8 +83,15 @@ export function runDemoAiTurn(rawInput: string, history: FollowupItem[], forceFi
     }
   }
 
+  // change(관찰한 돌봄 상황)의 기준 발화는 보통 최초 입력(rawInput)이다. 다만
+  // 최초 입력이 돌봄과 무관해 되물었던 경우(offtopic_redirect)에는, 실제 관찰
+  // 내용은 rawInput이 아니라 그 되물음에 대한 답변이므로 그것을 기준으로 삼는다
+  // — 그러지 않으면 무관한 잡담이 어르신의 상태로 그대로 저장된다.
+  const offTopicRedirectAnswer = history.find((h) => h.missingField === 'offtopic_redirect')?.answer
+  const baseObservation = offTopicRedirectAnswer ?? rawInput
+
   const report: StructuredReport = {
-    change: rawInput || '확인되지 않음',
+    change: baseObservation || '확인되지 않음',
     action: findAnswerFor(history, 'action_taken') ?? (has(combined, ACTION_HINTS) ? extractSentenceWith(combined, ACTION_HINTS) : '확인되지 않음'),
     result: findAnswerFor(history, 'current_result') ?? (has(combined, RESULT_HINTS) ? extractSentenceWith(combined, RESULT_HINTS) : '확인되지 않음'),
     escalation: '센터가 관찰 내용을 확인하고 다음 방문 시 추가 관찰이 필요한지 판단 필요.',

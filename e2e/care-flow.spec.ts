@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { answerFollowupsWithOptions, loginAdmin, loginCare, resetDemo, startReport, submitChangedReport } from './helpers'
+import { answerFollowupsWithOptions, completeDailyReport, loginAdmin, loginCare, resetDemo, startReport, submitChangedReport } from './helpers'
 
 test.describe('care-flow: /care?demo=1 골든 패스', () => {
   test.beforeEach(async ({ page }) => {
@@ -30,12 +30,14 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
   })
 
-  test('음성 인식 미지원 기기에서도 텍스트만으로 끝까지 제출할 수 있다(추가 상태변화 보고)', async ({ page }) => {
+  test('음성 인식 미지원 기기에서도 텍스트만으로 끝까지 제출할 수 있다(추가 상태변화 기록하기)', async ({ page }) => {
     // Playwright의 기본 브라우저 컨텍스트는 SpeechRecognition을 제공하지 않으므로
     // 음성 버튼 없이도 텍스트 입력만으로 전체 흐름이 끊기지 않아야 한다. 추가
-    // 상태변화 보고는(기본 보고와 달리) 상황선택 화면을 그대로 거친다.
+    // 상태변화 기록하기는(기본 보고와 달리) 상황선택 화면을 그대로 거치며, 오늘
+    // 기본 돌봄보고를 먼저 제출해야 홈 화면에 나타난다.
     await loginCare(page)
-    await startReport(page, '추가 상태변화 보고')
+    await completeDailyReport(page)
+    await startReport(page, '추가 상태변화 기록하기')
     await submitChangedReport(page, '식사량이 평소보다 적었습니다.')
     await answerFollowupsWithOptions(page)
     await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()

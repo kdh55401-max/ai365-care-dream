@@ -168,8 +168,10 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
       <div className="flex flex-col items-center justify-center flex-1 gap-8 py-10">
         <div className="text-center">
           <p className="text-base font-semibold tracking-wide text-teal-600">AI365 CARE DREAM</p>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">60초 AI 돌봄보고</h1>
-          <p className="text-slate-500 text-base mt-2 leading-relaxed">오늘 돌봄 내용을 60초 안에 보고하세요.</p>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">목표 60초 AI 돌봄보고</h1>
+          <p className="text-slate-500 text-base mt-2 leading-relaxed">
+            60초는 목표 시간이에요. 더 걸려도 괜찮으니 오늘 돌봄 내용을 편하게 들려주세요.
+          </p>
           {demo && (
             <p className="text-amber-600 text-xs mt-2 font-bold">
               데모 계정 c1 ~ c9 / 비밀번호 {DEMO_ALIAS_PASSWORD}
@@ -241,8 +243,8 @@ function CurrentRecipientCard({
     <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-slate-400 text-xs font-bold">현재 방문</p>
-          <p className="text-slate-900 text-2xl font-bold mt-0.5">{recipientCode}</p>
+          <p className="text-slate-400 text-xs font-bold">오늘 돌봄 대상</p>
+          <p className="text-slate-900 text-2xl font-bold mt-0.5">{recipientCode} 어르신</p>
           <p className="text-teal-700 text-sm font-bold mt-1">방문요양 · 서비스 진행 중</p>
         </div>
         {recipientCodes.length > 1 && (
@@ -529,7 +531,7 @@ function CareApp() {
     setScreen(homeScreenName)
   }
 
-  const startReport = async (type: ReportType) => {
+  const startReport = async (type: ReportType, voiceAutoStart = true) => {
     if (!recipientCode) {
       setError('배정된 수급자가 없습니다. 관리자에게 문의해 주세요.')
       return
@@ -552,12 +554,14 @@ function CareApp() {
       // 메뉴를 그대로 유지한다.
       setInitialChoice(null)
       setScreen(type === 'daily' ? 'record' : 'statusChoice')
-      // 기본 돌봄보고를 처음 시작할 때(이어서 하는 draft 복원이 아닐 때)는 버튼을
-      // 누른 즉시 음성 입력을 시작한다 — "버튼 누르고 편하게 말씀해주세요"가 핵심
-      // 동선이라 record 화면에서 마이크를 한 번 더 누르게 하지 않는다. 지원하지
-      // 않는 기기/권한 거부는 훅 내부에서 error로 알려주고 화면은 텍스트 입력으로
-      // 그대로 진행할 수 있다.
-      if (type === 'daily' && !res.resumed && voice.isSupported) {
+      // 기본 돌봄보고를 "이야기 시작"으로 처음 열 때(이어서 하는 draft 복원이 아닐
+      // 때)는 버튼을 누른 즉시 음성 입력을 시작한다 — "버튼 누르고 편하게
+      // 말씀해주세요"가 핵심 동선이라 record 화면에서 마이크를 한 번 더 누르게
+      // 하지 않는다. "글로 입력하기"로 들어온 경우(voiceAutoStart=false)는 문자
+      // 입력을 기대하고 온 것이므로 마이크를 자동으로 켜지 않는다. 지원하지 않는
+      // 기기/권한 거부는 훅 내부에서 error로 알려주고 화면은 텍스트 입력으로 그대로
+      // 진행할 수 있다.
+      if (type === 'daily' && !res.resumed && voiceAutoStart && voice.isSupported) {
         setInputMethod('voice')
         voice.start()
       }
@@ -898,15 +902,21 @@ function CareApp() {
     setRetryAction(null)
     try {
       await repo.patchReport({ id: reportId, caregiverFinalReport: finalReport, submit: true })
-      clearDraft()
-      setScreen('submitted')
-      if (participantCode) await loadHome(participantCode, false)
     } catch {
+      // 저장 자체가 실패했을 때만 오류·재시도를 보여준다 — 완료 화면으로 넘어가지 않는다.
       setError(CONNECTION_ERROR_MESSAGE)
       setRetryAction(() => () => void handleSubmitReport())
-    } finally {
       setLoading(false)
+      return
     }
+    clearDraft()
+    setScreen('submitted')
+    setLoading(false)
+    // 제출은 이미 성공했다 — 홈 화면 새로고침(오늘 기록 상태·목록)이 실패해도 방금
+    // 제출이 성공했다는 사실과는 무관하므로, 이미 보여준 완료 화면 위에 저장
+    // 실패로 오인될 수 있는 오류·재시도 UI를 덮어씌우지 않는다(다음에 홈으로
+    // 돌아오면 다시 최신 상태를 불러온다).
+    if (participantCode) await loadHome(participantCode, false).catch(() => undefined)
   }
 
   const openHistoryDetail = async (id: string) => {
@@ -958,14 +968,6 @@ function CareApp() {
             <p className="text-slate-500 text-sm mt-0.5">{today}</p>
           </div>
 
-          <div
-            className={`rounded-3xl p-5 text-center font-bold text-lg border ${
-              dailySubmitted ? 'bg-teal-50 border-teal-200 text-teal-700' : 'bg-white border-slate-100 text-slate-500'
-            }`}
-          >
-            {dailySubmitted ? '오늘의 돌봄보고를 완료했습니다.' : '오늘의 돌봄보고를 아직 작성하지 않았습니다.'}
-          </div>
-
           <CurrentRecipientCard
             recipientCode={recipientCode}
             recipientCodes={recipientCodes}
@@ -973,6 +975,19 @@ function CareApp() {
             onTogglePicker={() => setShowRecipientPicker((v) => !v)}
             onSelect={selectRecipient}
           />
+
+          {/* 오늘 기록 상태는 참고 정보로 작게 보여준다 — 화면의 중심은 "이야기
+              시작"이지, 아직 작성하지 않았다는 안내가 아니다. */}
+          {recipientCodes.length > 0 && (
+            <div
+              className={`self-center flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold ${
+                dailySubmitted ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {dailySubmitted && <CheckIcon className="w-4 h-4" />}
+              {dailySubmitted ? '오늘 돌봄기록을 남겼어요' : '오늘 돌봄을 함께 기록해요'}
+            </div>
+          )}
 
           {error && (
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
@@ -986,38 +1001,55 @@ function CareApp() {
           )}
 
           {recipientCodes.length > 0 && !dailySubmitted && (
-            <div className="flex flex-col items-center gap-2 mt-1">
-              <h2 className="text-lg font-bold text-slate-900 text-center leading-relaxed">
-                오늘 어르신은 어떠셨어요?
-                <br />
-                아래 버튼을 누르고 편하게 말씀해주세요.
-              </h2>
+            <div className="flex flex-col items-center gap-3 mt-1">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-slate-900 leading-relaxed">
+                  오늘 {recipientCode} 어르신은 어떠셨어요?
+                </h2>
+                <p className="text-slate-500 text-base mt-1.5 leading-relaxed">
+                  평소와 같아도 괜찮아요.
+                  <br />
+                  어르신의 상태나 돌보면서 어려웠던 점을 편하게 말씀해주세요.
+                </p>
+              </div>
               <button
                 onClick={() => void startReport('daily')}
                 disabled={loading || !recipientCode}
-                aria-label="오늘 어르신 이야기하기"
+                aria-label="이야기 시작"
                 className="w-40 h-40 rounded-full text-white flex flex-col items-center justify-center gap-2
                            bg-gradient-to-b from-teal-500 to-slate-900 shadow-xl transition
                            hover:scale-105 hover:brightness-110 active:scale-100
                            disabled:opacity-50 disabled:hover:scale-100"
               >
                 <MicIcon className="w-9 h-9" />
-                <span className="text-base font-bold">{loading ? '준비 중...' : '오늘 어르신 이야기하기'}</span>
+                <span className="text-lg font-bold">{loading ? '준비 중...' : '이야기 시작'}</span>
               </button>
+              <SecondaryButton
+                onClick={() => void startReport('daily', false)}
+                disabled={loading || !recipientCode}
+                className="max-w-[240px]"
+              >
+                글로 입력하기
+              </SecondaryButton>
               <p className="text-slate-400 text-xs text-center leading-relaxed">
-                글로 적고 싶으면 다음 화면에서 직접 입력할 수도 있어요.
+                목표 시간은 60초예요. 더 걸려도 괜찮으니 편하게 말씀해주세요.
               </p>
             </div>
           )}
 
-          <SecondaryButton onClick={() => void startReport('additional')} disabled={loading || !recipientCode}>
-            추가 상태변화 보고
-          </SecondaryButton>
-          <SecondaryButton onClick={() => setScreen('history')}>최근 본인 보고 목록</SecondaryButton>
+          {dailySubmitted && (
+            <SecondaryButton onClick={() => void startReport('additional')} disabled={loading || !recipientCode}>
+              추가 상태변화 기록하기
+            </SecondaryButton>
+          )}
+          <SecondaryButton onClick={() => setScreen('history')}>내가 남긴 돌봄기록</SecondaryButton>
           <a href="/care/scenario" className="text-center text-slate-400 text-xs underline mt-1">
             표준상황 연습 (검증용, 실제 실증과 별도 집계)
           </a>
-          <button onClick={() => void handleLogout()} className="text-slate-400 text-sm self-center mt-2">
+          <button
+            onClick={() => void handleLogout()}
+            className="text-slate-400 text-sm self-center mt-2 min-h-[44px] px-4 flex items-center justify-center"
+          >
             로그아웃
           </button>
         </div>
@@ -1486,7 +1518,7 @@ function CareApp() {
 
       {screen === 'history' && (
         <div className="flex flex-col gap-3 pt-2">
-          <h2 className="text-xl font-bold text-slate-900 text-center">최근 본인 보고 목록</h2>
+          <h2 className="text-xl font-bold text-slate-900 text-center">내가 남긴 돌봄기록</h2>
           {recentReports.filter((r) => r.report_source !== 'scenario').length === 0 && (
             <p className="text-slate-400 text-center py-8">아직 작성한 보고가 없습니다.</p>
           )}

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { answerAllFollowups, loginCare, resetDemo, startReport, submitChangedReport } from './helpers'
+import { answerAllFollowups, loginCare, resetDemo, startReport } from './helpers'
 
 test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보호', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,13 +8,14 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
 
   test('잘못된 PIN은 거부된다', async ({ page }) => {
     await page.goto('/care?demo=1')
-    await page.getByPlaceholder('예: C01').fill('C01')
+    // 데모 모드(?demo=1)의 입력칸 placeholder는 항상 별칭 기준("예: c1")이다.
+    await page.getByPlaceholder('예: c1').fill('c1')
     await page.getByPlaceholder('숫자 4자리').fill('0000')
     await page.getByRole('button', { name: '로그인' }).click()
     await expect(page.getByText('참여자 코드 또는 PIN이 올바르지 않습니다.')).toBeVisible()
   })
 
-  test('C01이 작성한 보고는 C02의 "최근 본인 보고 목록"에 보이지 않는다', async ({ context, browser }) => {
+  test('C01이 작성한 보고는 C02의 "내가 남긴 돌봄기록"에 보이지 않는다', async ({ context, browser }) => {
     // 세션은 브라우저 프로필(=localStorage) 단위로 유지되므로, 같은 컨텍스트의
     // 두 탭은 실제 쿠키 기반 로그인과 마찬가지로 항상 "같은 로그인 상태"를
     // 공유한다(둘 다 C01로 남는다). 서로 다른 참여자로 각각 로그인하려면
@@ -23,7 +24,8 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
     const p1 = await context.newPage()
     await loginCare(p1, 'c1', '6003')
     await startReport(p1)
-    await submitChangedReport(p1, 'C01의 보고입니다.')
+    await p1.getByPlaceholder(/음성 대신/).fill('C01의 보고입니다.')
+    await p1.getByRole('button', { name: '이 내용으로 보고하기' }).click()
     await answerAllFollowups(p1, ['오전 9시입니다', '확인했습니다', '지금은 괜찮습니다'])
     await p1.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(p1.getByText('센터에 보고되었습니다.')).toBeVisible()
@@ -31,7 +33,7 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
     const context2 = await browser.newContext()
     const p2 = await context2.newPage()
     await loginCare(p2, 'c2', '6003')
-    await p2.getByRole('button', { name: '최근 본인 보고 목록' }).click()
+    await p2.getByRole('button', { name: '내가 남긴 돌봄기록' }).click()
     await expect(p2.getByText('아직 작성한 보고가 없습니다.')).toBeVisible()
     await context2.close()
   })
@@ -40,6 +42,6 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
     await loginCare(page)
     await page.getByRole('button', { name: '로그아웃' }).click()
     await expect(page.getByText('참여자 코드')).toBeVisible()
-    await expect(page.getByText('오늘 돌봄보고 시작')).not.toBeVisible()
+    await expect(page.getByRole('button', { name: '이야기 시작' })).not.toBeVisible()
   })
 })
