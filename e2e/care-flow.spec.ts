@@ -57,4 +57,27 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     // — 코드가 비슷하다고 다른 참여자/수급자로 표시되면 안 된다.
     await expect(adminPage.getByText('C07', { exact: false }).first()).toBeVisible()
   })
+
+  test('회귀: AI 응답이 지연돼도 질문 전환 중 대화 영역이 비어 보이지 않는다', async ({ page }) => {
+    // 데모 엔진은 로컬 계산이라 원래는 즉시 응답한다. 실 운영(Gemini)의 네트워크
+    // 지연 구간에서만 드러나던 버그(답변 제출 시 currentQuestion을 먼저 비우고,
+    // 다음 질문/보고는 비동기 응답이 온 뒤에야 채워져 그 사이 대화 영역 전체가
+    // 빈 화면으로 보임)를 이 쿼리 파라미터로 재현한다.
+    await page.goto('/care?demo=1&e2eAiDelayMs=1500')
+    await page.getByPlaceholder('예: c1').fill('c1')
+    await page.getByPlaceholder('숫자 4자리').fill('6003')
+    await page.getByRole('button', { name: '로그인' }).click()
+    await startReport(page)
+
+    await page.getByPlaceholder(/음성 대신/).fill('물을 적게 드셨어요')
+    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await expect(page.getByText(/추가 확인 1\/3/)).toBeVisible()
+
+    await page.locator('button[type="button"]').first().click()
+    // 지연 구간 동안에도 로딩 안내가 보여야 한다 — 상단 전화 버튼/하단 안전고지만
+    // 남고 대화 영역이 완전히 비면 안 된다.
+    await expect(page.getByText('말씀하신 내용을 확인하고 있어요')).toBeVisible()
+    // 지연이 끝나면 다음 질문으로 정상 이어진다.
+    await expect(page.getByText(/추가 확인 2\/3/)).toBeVisible()
+  })
 })

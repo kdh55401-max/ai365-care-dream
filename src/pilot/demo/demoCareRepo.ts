@@ -18,6 +18,17 @@ function todayKst(): string {
   return kst.toISOString().slice(0, 10)
 }
 
+/** 데모 엔진은 로컬 계산이라 즉시 응답해, 실제 Gemini 호출의 네트워크 지연 구간에서만
+ * 드러나는 화면 버그(예: 질문 전환 중 대화 영역이 비어 보이는 문제)를 데모로는 재현할
+ * 수 없었다. `?e2eAiDelayMs=N`을 붙이면 이 구간에서만 인위적으로 지연시켜, 그 버그를
+ * 자동 테스트(e2e)로 반복 재현·검증할 수 있게 한다 — 쿼리 파라미터가 없으면(실제 사용자
+ * 화면) 전혀 동작하지 않는다. */
+function e2eAiDelayMs(): number {
+  const raw = new URLSearchParams(window.location.search).get('e2eAiDelayMs')
+  const n = raw ? Number(raw) : 0
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 10_000) : 0
+}
+
 function newReportRecord(input: {
   participantCode: string
   recipientCode: string
@@ -223,6 +234,8 @@ export const demoCareRepo: CareRepo = {
     return updated
   },
   async aiTurn(rawInput, history, forceFinalize) {
+    const delay = e2eAiDelayMs()
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay))
     return runDemoAiTurn(rawInput, history, forceFinalize)
   },
 }

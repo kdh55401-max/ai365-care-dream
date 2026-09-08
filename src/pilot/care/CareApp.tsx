@@ -1220,6 +1220,19 @@ function CareApp() {
         </div>
       )}
 
+      {/* screen이 'question'인 동안 currentQuestion이 잠깐 비는 구간이 실제로 있다
+          (답변 제출 시 setCurrentQuestion(null)을 먼저 호출하고, 다음 질문/보고가
+          비동기 AI 턴 응답으로 뒤늦게 온다 — 두 setState가 같은 렌더로 묶이지
+          않는다). 이 구간에 아무 것도 렌더링하지 않으면 상단 전화 버튼과 하단
+          안전고지만 남고 대화 영역 전체가 비어 보인다("흰 화면") — 반드시 로딩
+          안내를 보여준다. */}
+      {screen === 'question' && !currentQuestion && (
+        <div className="flex flex-col items-center gap-4 pt-16 flex-1 justify-center">
+          <SpinnerIcon className="w-8 h-8 text-teal-600" />
+          <p className="text-slate-500 text-base">말씀하신 내용을 확인하고 있어요</p>
+        </div>
+      )}
+
       {screen === 'question' && currentQuestion && (
         <div className="flex flex-col gap-4 pt-2">
           <p className="text-teal-600 font-semibold text-sm text-center">추가 확인 {followupHistory.length + 1}/3</p>
@@ -1497,6 +1510,17 @@ function CareApp() {
               </button>
             ))}
           <SecondaryButton onClick={() => setScreen('home')}>홈으로</SecondaryButton>
+        </div>
+      )}
+
+      {/* historyDetail은 draft에 저장되지 않으므로, 새로고침 직후 screen만
+          'historyDetail'로 복원되고 데이터가 아직 없는 순간이 있을 수 있다 —
+          question 화면과 같은 이유로 로딩 안내를 반드시 보여준다. */}
+      {screen === 'historyDetail' && !historyDetail && (
+        <div className="flex flex-col items-center gap-4 pt-16 flex-1 justify-center">
+          <SpinnerIcon className="w-8 h-8 text-teal-600" />
+          <p className="text-slate-500 text-base">불러오는 중이에요</p>
+          <SecondaryButton onClick={() => setScreen('history')}>목록으로</SecondaryButton>
         </div>
       )}
 
