@@ -176,6 +176,25 @@ export const demoCareRepo: CareRepo = {
       }
     }
 
+    // 실서버(api/care/reports.ts)와 동일하게, "응답만 유실된" 추가보고 재시도가 새
+    // 보고를 중복 생성하지 않도록 방금(2분 이내) 만든 빈 draft가 있으면 재사용한다.
+    if (reportSource === 'live' && input.reportType === 'additional') {
+      const twoMinutesAgo = Date.now() - 2 * 60 * 1000
+      const recentEmptyDraft = demoAllReports()
+        .filter(
+          (r) =>
+            r.participant_code === code &&
+            r.recipient_code === input.recipientCode &&
+            r.report_type === 'additional' &&
+            r.report_source === 'live' &&
+            r.status === 'draft' &&
+            r.raw_input === '' &&
+            new Date(r.created_at).getTime() >= twoMinutesAgo,
+        )
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+      if (recentEmptyDraft) return { report: recentEmptyDraft, resumed: true }
+    }
+
     const record = newReportRecord({
       participantCode: code,
       recipientCode: input.recipientCode,

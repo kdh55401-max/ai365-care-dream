@@ -8,10 +8,10 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
 
   test('보고 제출 후 새로고침해도 "오늘의 돌봄보고를 완료했습니다"가 유지된다', async ({ page }) => {
     await loginCare(page)
-    await startReport(page, 'A01', '오늘 돌봄보고 시작')
+    await startReport(page)
     await submitChangedReport(page, '오늘 어르신 컨디션이 평소와 달랐어요.')
     await answerAllFollowups(page, ['오전입니다', '확인했습니다', '지금은 괜찮습니다'])
-    await page.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     await page.getByRole('button', { name: '홈으로' }).click()
@@ -21,7 +21,7 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
 
   test('입력 중 새로고침해도 작성하던 내용이 복구된다', async ({ page }) => {
     await loginCare(page)
-    await startReport(page, 'A01', '오늘 돌봄보고 시작')
+    await startReport(page)
     await page.getByRole('button', { name: '평소와 다른 점이 있었어요' }).click()
     await page.getByPlaceholder(/음성 대신/).fill('작성 중이던 관찰 내용입니다.')
 
@@ -32,10 +32,10 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
   test('관리자 평가를 저장한 뒤 새로고침해도 평가 결과가 유지된다', async ({ context }) => {
     const carePage = await context.newPage()
     await loginCare(carePage)
-    await startReport(carePage, 'A01', '오늘 돌봄보고 시작')
+    await startReport(carePage)
     await submitChangedReport(carePage, '평가 유지 테스트용 보고입니다.')
     await answerAllFollowups(carePage, ['오전입니다', '확인했습니다', '지금은 괜찮습니다'])
-    await carePage.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     const adminPage = await context.newPage()

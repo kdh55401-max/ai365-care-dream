@@ -27,7 +27,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     expect(change).toContain('평소와 유사한 것으로 관찰됨')
     expect(change).toContain('확인하지 못함')
 
-    await page.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     // 관리자 대시보드의 "무정보 보고 구체화율"에 반영된다.
@@ -53,7 +53,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     const change = await page.locator('textarea').first().inputValue()
     expect(change).toBe('금일 요양보호사가 별도 상태변화를 보고하지 않음. 구체적으로 확인된 관찰영역은 없음.')
 
-    await page.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     const admin = await page.context().newPage()
@@ -79,7 +79,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
       await next.click()
       if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) break
     }
-    await page.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(page.getByText('표준상황 연습이 저장되었습니다.')).toBeVisible()
 
     const admin = await page.context().newPage()

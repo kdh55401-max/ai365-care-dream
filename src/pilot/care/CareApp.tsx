@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiClientError } from '../shared/api'
+import { useContinuousVoice } from './useContinuousVoice'
 import { TopCallBar, SafetyFooter, PrivacyNotice } from '../shared/SafetyNotice'
 import type { AiTurnResult, CareReportDetail, CareReportListItem, DomainEntry, FollowupItem, StructuredReport } from '../shared/types'
 import { DOMAIN_LABELS } from '../shared/types'
@@ -293,8 +294,17 @@ function CareApp() {
   const [inputMethod, setInputMethod] = useState<'voice' | 'text'>('text')
   const [initialChoice, setInitialChoice] = useState<InitialChoice>(null)
   const [followupHistory, setFollowupHistory] = useState<FollowupItem[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<{ question: string; missingField: string } | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<{
+    question: string
+    missingField: string
+    options?: string[]
+    allowMultiple?: boolean
+  } | null>(null)
   const [answerText, setAnswerText] = useState('')
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([])
+  // 옵션이 있는 질문이라도 상황에 안 맞으면 "다른 내용 말하기"로 자유 입력(텍스트/음성)을
+  // 열 수 있다. 옵션이 아예 없는 질문(AI가 채우지 못한 경우)은 처음부터 자유 입력만 보인다.
+  const [showFreeAnswer, setShowFreeAnswer] = useState(false)
   const [aiGeneratedReport, setAiGeneratedReport] = useState<StructuredReport | null>(null)
   const [finalReport, setFinalReport] = useState<StructuredReport>(emptyReport())
 
@@ -310,11 +320,17 @@ function CareApp() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [voiceState, setVoiceState] = useState<'idle' | 'listening'>('idle')
-
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
-  const finalTranscriptRef = useRef('')
-  const settledRef = useRef(false)
+  // 저장/AI 호출이 실패했을 때, 방금 하려던 동작을 그대로 다시 시도할 수 있게
+  // 보관해 둔다("재시도로 같은 보고가 중복 저장되지 않게" — reportId가 이미
+  // 만들어진 뒤의 재시도이므로 patch만 반복될 뿐 새 보고가 다시 생기지 않는다).
+  const [retryAction, setRetryAction] = useState<(() => void) | null>(null)
+  const CONNECTION_ERROR_MESSAGE = '잠시 연결이 어려워요. 다시 시도해주세요.'
+  // 최초 관찰 입력용 음성 인식(홈에서 버튼을 누르면 바로 시작). 짧은 무음이나
+  // 브라우저의 예기치 않은 세션 종료에도 이어서 들을 수 있도록 useContinuousVoice가
+  // 재연결을 흡수한다 — 사용자가 "말하기 완료"를 눌러야 끝난다.
+  const voice = useContinuousVoice()
+  // 후속 질문 화면에서 "다른 내용 말하기"로 자유 입력을 열었을 때 쓰는 별도 세션.
+  const answerVoice = useContinuousVoice()
   // "특이사항 없음" 흐름 시작 시점의 도메인 분류 스냅샷. information_added_count는
   // 이 스냅샷과 최종 분류를 비교해 "새로 changed로 바뀐 도메인"만 세야 하므로,
   // 매 답변마다 덮어써지는 noChangeEntries와는 별도로 고정해 둔다.
@@ -444,11 +460,15 @@ function CareApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, rawInput, followupHistory, currentQuestion, aiGeneratedReport, finalReport, noChangeEntries, noChangeStep])
 
+  // 마이크 권한 거부/미지원처럼 "재연결로 해결되지 않는" 음성 오류만 화면 공용
+  // 오류 배너에 반영한다. 재연결 시도 중 메시지는 record 화면의 전용 안내로 이미
+  // 보여주므로 여기서 중복 표시하지 않는다.
   useEffect(() => {
-    return () => {
-      recognitionRef.current?.abort()
-    }
-  }, [])
+    if (voice.state === 'idle' && voice.error) setError(voice.error)
+  }, [voice.state, voice.error])
+  useEffect(() => {
+    if (answerVoice.state === 'idle' && answerVoice.error) setError(answerVoice.error)
+  }, [answerVoice.state, answerVoice.error])
 
   const handleLogin = async (code: string, pin: string) => {
     await repo.login(code, pin)
@@ -484,6 +504,8 @@ function CareApp() {
   }
 
   const resetFlow = () => {
+    voice.cancel()
+    answerVoice.cancel()
     clearDraft()
     setReportId(null)
     setRawInput('')
@@ -493,6 +515,8 @@ function CareApp() {
     setAiGeneratedReport(null)
     setFinalReport(emptyReport())
     setAnswerText('')
+    setSelectedOptions([])
+    setShowFreeAnswer(false)
     setNoChangeEntries([])
     setNoChangeStep(0)
     setNoChangeAnswered(0)
@@ -501,6 +525,7 @@ function CareApp() {
     setActiveScenarioId(null)
     setEmergencyDraftText('')
     setError(null)
+    setRetryAction(null)
     setScreen(homeScreenName)
   }
 
@@ -510,6 +535,7 @@ function CareApp() {
       return
     }
     setError(null)
+    setRetryAction(null)
     setLoading(true)
     try {
       const res = await repo.createReport({ recipientCode, reportType: type, inputMethod })
@@ -526,8 +552,20 @@ function CareApp() {
       // 메뉴를 그대로 유지한다.
       setInitialChoice(null)
       setScreen(type === 'daily' ? 'record' : 'statusChoice')
-    } catch (e) {
-      setError(e instanceof ApiClientError || e instanceof Error ? e.message : '보고를 시작하지 못했습니다.')
+      // 기본 돌봄보고를 처음 시작할 때(이어서 하는 draft 복원이 아닐 때)는 버튼을
+      // 누른 즉시 음성 입력을 시작한다 — "버튼 누르고 편하게 말씀해주세요"가 핵심
+      // 동선이라 record 화면에서 마이크를 한 번 더 누르게 하지 않는다. 지원하지
+      // 않는 기기/권한 거부는 훅 내부에서 error로 알려주고 화면은 텍스트 입력으로
+      // 그대로 진행할 수 있다.
+      if (type === 'daily' && !res.resumed && voice.isSupported) {
+        setInputMethod('voice')
+        voice.start()
+      }
+    } catch {
+      // createReport는 daily/additional 모두 "최근 빈 draft 재사용"으로 재시도-안전하다
+      // (같은 요청을 다시 보내도 새 보고가 중복 생성되지 않는다).
+      setError(CONNECTION_ERROR_MESSAGE)
+      setRetryAction(() => () => void startReport(type))
     } finally {
       setLoading(false)
     }
@@ -578,6 +616,28 @@ function CareApp() {
 
   const startNoChangeFlow = async (firstText: string) => {
     const entries = classifyDomainsFromText(firstText)
+    setLoading(true)
+    setError(null)
+    setRetryAction(null)
+    try {
+      if (reportId) {
+        await repo.patchReport({
+          id: reportId,
+          initialStatusChoice: 'similar',
+          noChangeInitialInput: true,
+          rawInput: firstText,
+          initialInformationCount: entries.length,
+        })
+      }
+    } catch {
+      // 여기서 실패하면 화면 전환·상태 갱신을 하지 않는다 — 최초 입력(firstText)은
+      // 호출부(handleSubmitRaw 등)의 rawInput에 그대로 남아 있으므로, 재시도는 같은
+      // 내용으로 이 함수를 다시 부르는 것뿐이라 중복 저장을 만들지 않는다.
+      setError(CONNECTION_ERROR_MESSAGE)
+      setRetryAction(() => () => void startNoChangeFlow(firstText))
+      setLoading(false)
+      return
+    }
     initialNoChangeEntriesRef.current = entries
     noChangeQaHistoryRef.current = []
     noChangeRawTextsRef.current = [firstText]
@@ -585,17 +645,9 @@ function CareApp() {
     setInitialInfoCount(entries.length)
     setNoChangeInitialInput(true)
     setInitialChoice('similar')
-    if (reportId) {
-      await repo.patchReport({
-        id: reportId,
-        initialStatusChoice: 'similar',
-        noChangeInitialInput: true,
-        rawInput: firstText,
-        initialInformationCount: entries.length,
-      })
-    }
+    setLoading(false)
     if (shouldSkipSecondQuestion(entries)) {
-      finalizeNoChangeFlow(entries, 1, entries.length > 0 ? 1 : 0)
+      await finalizeNoChangeFlow(entries, 1, entries.length > 0 ? 1 : 0)
     } else {
       setNoChangeStep(1)
       setScreen('noChangeQuestion')
@@ -604,29 +656,41 @@ function CareApp() {
 
   const finalizeNoChangeFlow = async (entries: DomainEntry[], askedCount: number, answeredCount: number) => {
     const report = buildNoChangeReport(entries, noChangeRawTextsRef.current)
-    setAiGeneratedReport(report)
-    setFinalReport(report)
-    if (reportId) {
-      // "질문한 횟수"(askedCount, followup_questions와 별개 필드)와 "실제로 새로 발견한
-      // 정보의 수"는 서로 다른 값이다 — computeInformationAddedCount 참고.
-      const informationAddedCount = computeInformationAddedCount(initialNoChangeEntriesRef.current, entries)
+    setLoading(true)
+    setError(null)
+    setRetryAction(null)
+    try {
+      if (reportId) {
+        // "질문한 횟수"(askedCount, followup_questions와 별개 필드)와 "실제로 새로 발견한
+        // 정보의 수"는 서로 다른 값이다 — computeInformationAddedCount 참고.
+        const informationAddedCount = computeInformationAddedCount(initialNoChangeEntriesRef.current, entries)
 
-      await repo.patchReport({
-        id: reportId,
-        aiGeneratedReport: report,
-        noChangeFollowupCount: askedCount,
-        noChangeFollowupAnswered: answeredCount,
-        finalInformationCount: entries.length,
-        informationAddedCount,
-        noInformationReport: entries.length === 0,
-        // changed 흐름과 동일한 필드에 실제 질문·답변 원문을 남긴다(스킵 분기처럼
-        // 질문 화면 자체가 안 뜬 경우는 빈 배열 — 실제로 안 물어본 걸 물어본 것처럼
-        // 기록하지 않는다).
-        followupQuestions: noChangeQaHistoryRef.current,
-        followupAnswers: noChangeQaHistoryRef.current,
-      })
+        await repo.patchReport({
+          id: reportId,
+          aiGeneratedReport: report,
+          noChangeFollowupCount: askedCount,
+          noChangeFollowupAnswered: answeredCount,
+          finalInformationCount: entries.length,
+          informationAddedCount,
+          noInformationReport: entries.length === 0,
+          // changed 흐름과 동일한 필드에 실제 질문·답변 원문을 남긴다(스킵 분기처럼
+          // 질문 화면 자체가 안 뜬 경우는 빈 배열 — 실제로 안 물어본 걸 물어본 것처럼
+          // 기록하지 않는다).
+          followupQuestions: noChangeQaHistoryRef.current,
+          followupAnswers: noChangeQaHistoryRef.current,
+        })
+      }
+      setAiGeneratedReport(report)
+      setFinalReport(report)
+      setScreen('reportReview')
+    } catch {
+      // 지금까지 답한 noChangeEntries/noChangeQaHistoryRef는 그대로 남아 있으므로
+      // 재시도는 같은 내용을 다시 저장하는 것뿐이다.
+      setError(CONNECTION_ERROR_MESSAGE)
+      setRetryAction(() => () => void finalizeNoChangeFlow(entries, askedCount, answeredCount))
+    } finally {
+      setLoading(false)
     }
-    setScreen('reportReview')
   }
 
   const handleNoChangeAnswer = async (stopRequested = false) => {
@@ -670,12 +734,20 @@ function CareApp() {
     const text = seedInput ?? rawInput
     setLoading(true)
     setError(null)
+    setRetryAction(null)
     try {
       await repo.patchReport({ id: reportId, rawInput: text, inputMethod, followupQuestions: history, followupAnswers: history })
       const result: AiTurnResult = await repo.aiTurn(text, history, forceFinalize)
       if (result.needFollowup && result.question) {
-        setCurrentQuestion({ question: result.question, missingField: result.missingField ?? 'other' })
+        setCurrentQuestion({
+          question: result.question,
+          missingField: result.missingField ?? 'other',
+          options: result.options,
+          allowMultiple: result.allowMultiple,
+        })
         setAnswerText('')
+        setSelectedOptions([])
+        setShowFreeAnswer(false)
         setScreen('question')
       } else if (result.report) {
         setAiGeneratedReport(result.report)
@@ -683,8 +755,12 @@ function CareApp() {
         await repo.patchReport({ id: reportId, aiGeneratedReport: result.report })
         setScreen('reportReview')
       }
-    } catch (e) {
-      setError(e instanceof ApiClientError || e instanceof Error ? e.message : 'AI 보고 생성에 실패했습니다. 다시 시도해 주세요.')
+    } catch {
+      // 요양보호사에게는 서버 원인 문구를 그대로 보여주지 않고 항상 같은 안내로
+      // 통일한다 — 최초 입력(rawInput/history)은 그대로 남아 있으므로 재시도는
+      // 같은 reportId에 patch만 다시 하는 것이라 중복 보고가 생기지 않는다.
+      setError(CONNECTION_ERROR_MESSAGE)
+      setRetryAction(() => () => void runAiTurn(history, seedInput, forceFinalize))
     } finally {
       setLoading(false)
     }
@@ -709,6 +785,7 @@ function CareApp() {
     const text = emergencyDraftText.trim() || rawInput.trim()
     setLoading(true)
     setError(null)
+    setRetryAction(null)
     try {
       const report: StructuredReport = {
         change: text || '확인되지 않음',
@@ -721,8 +798,9 @@ function CareApp() {
       setFinalReport(report)
       await repo.patchReport({ id: reportId, rawInput: text, aiGeneratedReport: report, emergencyFlagged: true })
       setScreen('reportReview')
-    } catch (e) {
-      setError(e instanceof ApiClientError || e instanceof Error ? e.message : '저장에 실패했습니다. 다시 시도해 주세요.')
+    } catch {
+      setError(CONNECTION_ERROR_MESSAGE)
+      setRetryAction(() => () => void handleEmergencyContinue())
     } finally {
       setLoading(false)
     }
@@ -731,6 +809,8 @@ function CareApp() {
   const handleSubmitRaw = () => {
     const text = rawInput.trim()
     if (!text) return
+    // 제출 시점에는 마이크가 켜져 있을 이유가 없다 — 화면 이탈이므로 확실히 끈다.
+    voice.cancel()
     // 응급 신호는 흐름 분기(특이사항없음/일반)보다 항상 먼저 확인한다.
     if (detectEmergencyPhrase(text)) {
       void enterEmergencyScreen(text)
@@ -745,51 +825,85 @@ function CareApp() {
     void runAiTurn(followupHistory, text)
   }
 
-  const handleAnswerQuestion = () => {
-    if (!currentQuestion || !answerText.trim()) return
-    const text = answerText.trim()
-    if (detectEmergencyPhrase(text)) {
-      void enterEmergencyScreen(text)
-      return
-    }
-    const nextHistory = [...followupHistory, { question: currentQuestion.question, missingField: currentQuestion.missingField, answer: text }]
-    setFollowupHistory(nextHistory)
-    setCurrentQuestion(null)
-    setAnswerText('')
-    // nextHistory(로컬 변수)를 그대로 넘긴다 — 방금 계산한 값이라 state가 아직
-    // 반영 전이어도(stale closure) 문제되지 않는다. "그만할게요"류 표현이 답변
-    // 문장 안에 있으면(정보는 남긴 채) 추가질문 없이 바로 정리한다.
-    void runAiTurn(nextHistory, undefined, detectStopRequest(text))
-  }
-
-  // "여기까지 말씀드릴게요" 버튼 — 답변칸이 비어있어도 동작한다(입력 강제 안 함).
-  const handleStopQuestion = () => {
-    const text = answerText.trim()
+  // 선택 버튼과 자유 입력(텍스트/음성) 두 경로가 모두 여기로 모인다. answerText를
+  // 화면에서 직접 조작하지 않고 항상 이 함수에 최종 답변 문자열을 넘긴다 — 어느
+  // 경로로 답했든 followup_answers에는 실제로 말/선택한 내용만 그대로 남는다.
+  const submitAnswerText = (text: string, stopRequested = false) => {
+    if (!currentQuestion) return
     if (text && detectEmergencyPhrase(text)) {
       void enterEmergencyScreen(text)
       return
     }
     const nextHistory =
-      text && currentQuestion
+      text
         ? [...followupHistory, { question: currentQuestion.question, missingField: currentQuestion.missingField, answer: text }]
         : followupHistory
     setFollowupHistory(nextHistory)
     setCurrentQuestion(null)
     setAnswerText('')
-    void runAiTurn(nextHistory, undefined, true)
+    setSelectedOptions([])
+    setShowFreeAnswer(false)
+    answerVoice.cancel()
+    // nextHistory(로컬 변수)를 그대로 넘긴다 — 방금 계산한 값이라 state가 아직
+    // 반영 전이어도(stale closure) 문제되지 않는다. "그만할게요"류 표현이 답변
+    // 문장 안에 있으면(정보는 남긴 채) 추가질문 없이 바로 정리한다.
+    void runAiTurn(nextHistory, undefined, stopRequested || (text ? detectStopRequest(text) : false))
+  }
+
+  const handleAnswerQuestion = () => {
+    if (!answerText.trim()) return
+    submitAnswerText(answerText.trim())
+  }
+
+  /** 단일 선택 옵션 버튼 — 누르면 바로 다음 단계로 진행한다(추가 클릭 불필요). */
+  const handleSelectSingleOption = (label: string) => {
+    submitAnswerText(label)
+  }
+
+  const EXCLUSIVE_OPTION_HINTS = ['아직 못', '못 했', '해당 없', '없었어요', '없어요']
+  const isExclusiveOption = (label: string) => EXCLUSIVE_OPTION_HINTS.some((h) => label.includes(h))
+
+  /** 복수 선택 옵션 토글 — "아직 못 했어요"류 배타적 선택지는 다른 항목과
+   * 동시에 선택되지 않게 한다(누르면 나머지를 비우고, 반대로 일반 항목을
+   * 고르면 배타적 항목은 선택 해제된다). */
+  const toggleMultiOption = (label: string) => {
+    setSelectedOptions((prev) => {
+      if (prev.includes(label)) return prev.filter((l) => l !== label)
+      if (isExclusiveOption(label)) return [label]
+      return [...prev.filter((l) => !isExclusiveOption(l)), label]
+    })
+  }
+
+  const handleSubmitMultiOptions = () => {
+    if (selectedOptions.length === 0) return
+    submitAnswerText(selectedOptions.join(', '))
+  }
+
+  /** "잘 모르겠어요" — 모른다는 사실 그대로를 답으로 남긴다. 이상 없음으로
+   * 바꾸거나 진행을 막지 않는다. */
+  const handleUnsureAnswer = () => {
+    submitAnswerText('잘 모르겠어요')
+  }
+
+  // "여기까지 말씀드릴게요" 버튼 — 답변칸이 비어있어도 동작한다(입력 강제 안 함).
+  const handleStopQuestion = () => {
+    const text = selectedOptions.length > 0 ? selectedOptions.join(', ') : answerText.trim()
+    submitAnswerText(text, true)
   }
 
   const handleSubmitReport = async () => {
     if (!reportId) return
     setLoading(true)
     setError(null)
+    setRetryAction(null)
     try {
       await repo.patchReport({ id: reportId, caregiverFinalReport: finalReport, submit: true })
       clearDraft()
       setScreen('submitted')
       if (participantCode) await loadHome(participantCode, false)
-    } catch (e) {
-      setError(e instanceof ApiClientError || e instanceof Error ? e.message : '제출에 실패했습니다. 다시 시도해 주세요.')
+    } catch {
+      setError(CONNECTION_ERROR_MESSAGE)
+      setRetryAction(() => () => void handleSubmitReport())
     } finally {
       setLoading(false)
     }
@@ -808,58 +922,22 @@ function CareApp() {
     }
   }
 
+  // record 화면 마이크 버튼: 듣고 있지 않으면 시작(이미 입력된 rawInput이 있으면
+  // 이어서), 듣고 있거나 재연결 대기 중이면 "말하기 완료"와 동일하게 마무리한다.
   const handleVoiceToggle = () => {
     setError(null)
-    if (voiceState === 'listening') {
-      recognitionRef.current?.stop()
+    if (voice.state === 'listening' || voice.state === 'reconnecting') {
+      finishVoiceInput()
       return
     }
-    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!Ctor) {
-      setError('이 기기에서는 음성 입력을 지원하지 않습니다. 아래에 직접 입력해 주세요.')
-      return
-    }
-    const recognition = new Ctor()
-    recognition.lang = 'ko-KR'
-    recognition.interimResults = true
-    recognition.continuous = false
-    recognitionRef.current = recognition
-    finalTranscriptRef.current = rawInput ? rawInput + ' ' : ''
-    settledRef.current = false
-    setVoiceState('listening')
     setInputMethod('voice')
+    voice.start(rawInput)
+  }
 
-    recognition.onresult = (event) => {
-      let interim = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
-        if (event.results[i].isFinal) finalTranscriptRef.current += transcript
-        else interim += transcript
-      }
-      setRawInput((finalTranscriptRef.current + interim).trim())
-    }
-    recognition.onerror = (event) => {
-      if (settledRef.current) return
-      settledRef.current = true
-      setVoiceState('idle')
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        setError('마이크 권한이 필요해요. 아래에 직접 입력해 주세요.')
-      } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
-        setError('음성 인식에 문제가 생겼어요. 아래에 직접 입력해 주세요.')
-      }
-    }
-    recognition.onend = () => {
-      if (settledRef.current) return
-      settledRef.current = true
-      setVoiceState('idle')
-    }
-    try {
-      recognition.start()
-    } catch {
-      settledRef.current = true
-      setVoiceState('idle')
-      setError('음성 인식을 시작하지 못했어요. 아래에 직접 입력해 주세요.')
-    }
+  // "말하기 완료" — 마지막 인식 결과가 누락되지 않도록 정상 종료를 기다린 뒤
+  // rawInput에 반영한다. 완료 후에는 같은 내용을 다시 타이핑할 필요가 없다.
+  const finishVoiceInput = () => {
+    voice.finish((finalText) => setRawInput(finalText))
   }
 
   if (phase === 'loading') {
@@ -896,25 +974,38 @@ function CareApp() {
             onSelect={selectRecipient}
           />
 
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          {error && (
+            <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
+              <p>{error}</p>
+              {retryAction && (
+                <button onClick={retryAction} className="mt-2 font-bold underline">
+                  다시 시도
+                </button>
+              )}
+            </div>
+          )}
 
           {recipientCodes.length > 0 && !dailySubmitted && (
             <div className="flex flex-col items-center gap-2 mt-1">
-              <h2 className="text-lg font-bold text-slate-900 text-center">오늘 어르신은 어떠셨나요?</h2>
+              <h2 className="text-lg font-bold text-slate-900 text-center leading-relaxed">
+                오늘 어르신은 어떠셨어요?
+                <br />
+                아래 버튼을 누르고 편하게 말씀해주세요.
+              </h2>
               <button
                 onClick={() => void startReport('daily')}
                 disabled={loading || !recipientCode}
-                aria-label="AI와 대화 시작"
+                aria-label="오늘 어르신 이야기하기"
                 className="w-40 h-40 rounded-full text-white flex flex-col items-center justify-center gap-2
                            bg-gradient-to-b from-teal-500 to-slate-900 shadow-xl transition
                            hover:scale-105 hover:brightness-110 active:scale-100
                            disabled:opacity-50 disabled:hover:scale-100"
               >
                 <MicIcon className="w-9 h-9" />
-                <span className="text-base font-bold">{loading ? '준비 중...' : 'AI와 대화 시작'}</span>
+                <span className="text-base font-bold">{loading ? '준비 중...' : '오늘 어르신 이야기하기'}</span>
               </button>
               <p className="text-slate-400 text-xs text-center leading-relaxed">
-                버튼을 누르고 평소처럼 말씀해 주세요.
+                글로 적고 싶으면 다음 화면에서 직접 입력할 수도 있어요.
               </p>
             </div>
           )}
@@ -1003,25 +1094,53 @@ function CareApp() {
           <p className="text-teal-600 font-semibold text-sm text-center">
             {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode}
           </p>
-          <h2 className="text-xl font-bold text-slate-900 text-center">
-            {activeScenarioId ? '아래 상황을 그대로 제출해 주세요' : '오늘 관찰한 내용을 말씀해 주세요'}
+          <h2 className="text-xl font-bold text-slate-900 text-center leading-relaxed">
+            {activeScenarioId
+              ? '아래 상황을 그대로 제출해 주세요'
+              : voice.state === 'listening'
+                ? '천천히 말씀하셔도 괜찮아요. 다 말씀하시면 완료를 눌러주세요.'
+                : '오늘 어르신 이야기를 들려주세요'}
           </h2>
 
           {!activeScenarioId && (
-            <button
-              onClick={handleVoiceToggle}
-              className={`self-center w-32 h-32 rounded-full text-white flex flex-col items-center justify-center gap-1
-                          transition ${voiceState === 'listening' ? 'bg-red-500 animate-pulse' : 'bg-teal-600'}`}
-            >
-              <MicIcon className="w-8 h-8" />
-              <span className="text-sm font-bold">{voiceState === 'listening' ? '듣고 있어요' : '눌러서 말하기'}</span>
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleVoiceToggle}
+                disabled={loading}
+                className={`self-center w-32 h-32 rounded-full text-white flex flex-col items-center justify-center gap-1
+                            transition disabled:opacity-50 ${
+                              voice.state === 'listening'
+                                ? 'bg-red-500 animate-pulse'
+                                : voice.state === 'reconnecting'
+                                  ? 'bg-amber-500'
+                                  : 'bg-teal-600'
+                            }`}
+              >
+                <MicIcon className="w-8 h-8" />
+                <span className="text-sm font-bold">
+                  {voice.state === 'listening' ? '듣고 있어요' : voice.state === 'reconnecting' ? '이어서 말하기' : '눌러서 말하기'}
+                </span>
+              </button>
+              {voice.state === 'listening' && (
+                <button onClick={finishVoiceInput} className="text-teal-700 text-sm font-bold underline">
+                  말하기 완료
+                </button>
+              )}
+              {voice.state === 'reconnecting' && (
+                <p className="text-amber-600 text-sm font-bold text-center leading-relaxed">
+                  마이크가 잠시 멈췄어요. 이어서 말씀해주세요.
+                  <br />
+                  지금까지 하신 말씀은 그대로 남아 있어요.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
             <textarea
-              value={rawInput}
+              value={voice.state === 'listening' || voice.state === 'reconnecting' ? voice.text : rawInput}
               onChange={(e) => setRawInput(e.target.value)}
+              readOnly={voice.state === 'listening' || voice.state === 'reconnecting'}
               placeholder="음성 대신 여기에 직접 입력할 수도 있습니다. (예: 오늘 아침 식사량이 평소보다 적었어요)"
               rows={6}
               className="w-full text-lg text-slate-900 leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
@@ -1029,18 +1148,33 @@ function CareApp() {
           </div>
 
           <PrivacyNotice />
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          {error && (
+            <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
+              <p>{error}</p>
+              {retryAction && (
+                <button onClick={retryAction} className="mt-2 font-bold underline">
+                  다시 시도
+                </button>
+              )}
+            </div>
+          )}
 
-          <PrimaryButton onClick={handleSubmitRaw} disabled={!rawInput.trim() || loading}>
+          <PrimaryButton onClick={handleSubmitRaw} disabled={!rawInput.trim() || loading || voice.state === 'listening'}>
             {loading ? (
               <span className="flex items-center justify-center gap-2">
-                <SpinnerIcon className="w-5 h-5" /> 확인하는 중...
+                <SpinnerIcon className="w-5 h-5" /> 말씀하신 내용을 확인하고 있어요
               </span>
             ) : (
               '이 내용으로 보고하기'
             )}
           </PrimaryButton>
-          <SecondaryButton onClick={resetFlow} disabled={loading}>
+          <SecondaryButton
+            onClick={() => {
+              voice.cancel()
+              resetFlow()
+            }}
+            disabled={loading}
+          >
             처음으로
           </SecondaryButton>
         </div>
@@ -1063,9 +1197,18 @@ function CareApp() {
               className="w-full text-lg text-slate-900 leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
             />
           </div>
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          {error && (
+            <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
+              <p>{error}</p>
+              {retryAction && (
+                <button onClick={retryAction} className="mt-2 font-bold underline">
+                  다시 시도
+                </button>
+              )}
+            </div>
+          )}
           <PrimaryButton onClick={() => void handleNoChangeAnswer()} disabled={loading}>
-            다음
+            {loading ? '말씀하신 내용을 확인하고 있어요' : '다음'}
           </PrimaryButton>
           <button
             onClick={() => void handleNoChangeAnswer(true)}
@@ -1083,25 +1226,139 @@ function CareApp() {
           <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6">
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">{currentQuestion.question}</p>
           </div>
-          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
-            <textarea
-              value={answerText}
-              onChange={(e) => setAnswerText(e.target.value)}
-              rows={4}
-              placeholder="답변을 입력해 주세요."
-              className="w-full text-lg text-slate-900 leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
-            />
-          </div>
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
-          <PrimaryButton onClick={handleAnswerQuestion} disabled={!answerText.trim() || loading}>
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <SpinnerIcon className="w-5 h-5" /> 확인하는 중...
-              </span>
-            ) : (
-              '다음'
-            )}
-          </PrimaryButton>
+
+          {currentQuestion.options && currentQuestion.options.length > 0 && !showFreeAnswer ? (
+            <div className="flex flex-col gap-4">
+              {currentQuestion.allowMultiple && (
+                <p className="text-slate-400 text-xs text-center">여러 개 선택 가능</p>
+              )}
+              <div className="flex flex-col gap-2.5">
+                {currentQuestion.options.map((opt) => {
+                  const selected = currentQuestion.allowMultiple && selectedOptions.includes(opt)
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() =>
+                        currentQuestion.allowMultiple ? toggleMultiOption(opt) : handleSelectSingleOption(opt)
+                      }
+                      disabled={loading}
+                      className={`min-h-[56px] rounded-3xl border-2 text-lg font-bold px-5 transition text-left disabled:opacity-50 ${
+                        selected
+                          ? 'border-teal-500 bg-teal-50 text-teal-800'
+                          : 'border-slate-200 bg-white text-slate-900 hover:border-teal-400'
+                      }`}
+                    >
+                      {currentQuestion.allowMultiple && (
+                        <span
+                          className={`inline-block w-5 h-5 mr-3 rounded-full border-2 align-middle ${
+                            selected ? 'border-teal-600 bg-teal-600' : 'border-slate-300'
+                          }`}
+                        />
+                      )}
+                      {opt}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {currentQuestion.allowMultiple && (
+                <PrimaryButton onClick={handleSubmitMultiOptions} disabled={selectedOptions.length === 0 || loading}>
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <SpinnerIcon className="w-5 h-5" /> 말씀하신 내용을 확인하고 있어요
+                    </span>
+                  ) : (
+                    '다음'
+                  )}
+                </PrimaryButton>
+              )}
+
+              <div className="flex items-center justify-center gap-4">
+                <button onClick={handleUnsureAnswer} disabled={loading} className="text-slate-400 text-sm underline disabled:opacity-50">
+                  잘 모르겠어요
+                </button>
+                <button
+                  onClick={() => setShowFreeAnswer(true)}
+                  disabled={loading}
+                  className="text-slate-400 text-sm underline disabled:opacity-50"
+                >
+                  다른 내용 말하기
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {!currentQuestion.options?.length ? null : (
+                <button onClick={() => setShowFreeAnswer(false)} className="text-slate-400 text-xs underline self-center">
+                  선택지로 돌아가기
+                </button>
+              )}
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (answerVoice.state === 'listening' || answerVoice.state === 'reconnecting') {
+                      answerVoice.finish((finalText) => setAnswerText(finalText))
+                    } else {
+                      answerVoice.start(answerText)
+                    }
+                  }}
+                  disabled={loading}
+                  className={`self-center w-20 h-20 rounded-full text-white flex items-center justify-center transition disabled:opacity-50 ${
+                    answerVoice.state === 'listening'
+                      ? 'bg-red-500 animate-pulse'
+                      : answerVoice.state === 'reconnecting'
+                        ? 'bg-amber-500'
+                        : 'bg-teal-600'
+                  }`}
+                >
+                  <MicIcon className="w-6 h-6" />
+                </button>
+                {(answerVoice.state === 'listening' || answerVoice.state === 'reconnecting') && (
+                  <button
+                    onClick={() => answerVoice.finish((finalText) => setAnswerText(finalText))}
+                    className="text-teal-700 text-sm font-bold underline"
+                  >
+                    말하기 완료
+                  </button>
+                )}
+              </div>
+              <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
+                <textarea
+                  value={answerVoice.state === 'listening' || answerVoice.state === 'reconnecting' ? answerVoice.text : answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  readOnly={answerVoice.state === 'listening' || answerVoice.state === 'reconnecting'}
+                  rows={4}
+                  placeholder="답변을 입력하거나 마이크로 말씀해 주세요."
+                  className="w-full text-lg text-slate-900 leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
+                />
+              </div>
+              <PrimaryButton
+                onClick={handleAnswerQuestion}
+                disabled={!answerText.trim() || loading || answerVoice.state === 'listening'}
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <SpinnerIcon className="w-5 h-5" /> 말씀하신 내용을 확인하고 있어요
+                  </span>
+                ) : (
+                  '다음'
+                )}
+              </PrimaryButton>
+            </div>
+          )}
+
+          {error && (
+            <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
+              <p>{error}</p>
+              {retryAction && (
+                <button onClick={retryAction} className="mt-2 font-bold underline">
+                  다시 시도
+                </button>
+              )}
+            </div>
+          )}
           <button onClick={handleStopQuestion} disabled={loading} className="text-slate-400 text-sm underline self-center disabled:opacity-50">
             여기까지 말씀드릴게요
           </button>
@@ -1144,9 +1401,18 @@ function CareApp() {
               className="w-full text-base text-slate-900 leading-relaxed focus:outline-none resize-none"
             />
           </div>
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          {error && (
+            <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
+              <p>{error}</p>
+              {retryAction && (
+                <button onClick={retryAction} className="mt-2 font-bold underline">
+                  다시 시도
+                </button>
+              )}
+            </div>
+          )}
           <PrimaryButton onClick={() => void handleEmergencyContinue()} disabled={loading}>
-            {loading ? '확인하는 중...' : '이 내용으로 우선확인 요청 저장하기'}
+            {loading ? '말씀하신 내용을 확인하고 있어요' : '이 내용으로 우선확인 요청 저장하기'}
           </PrimaryButton>
           <SecondaryButton onClick={resetFlow} disabled={loading}>
             취소
@@ -1174,9 +1440,18 @@ function CareApp() {
               />
             </div>
           ))}
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          {error && (
+            <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
+              <p>{error}</p>
+              {retryAction && (
+                <button onClick={retryAction} className="mt-2 font-bold underline">
+                  다시 시도
+                </button>
+              )}
+            </div>
+          )}
           <PrimaryButton onClick={() => void handleSubmitReport()} disabled={loading}>
-            {loading ? '제출하는 중...' : '이 내용으로 제출하기'}
+            {loading ? '이대로 센터에 보내는 중이에요' : '이대로 센터에 보내기'}
           </PrimaryButton>
           <SecondaryButton onClick={resetFlow} disabled={loading}>
             취소

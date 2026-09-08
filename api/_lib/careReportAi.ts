@@ -24,6 +24,8 @@ export interface CareTurnResult {
   question: string | null
   missingField: string | null
   report: CareStructuredReport | null
+  options?: string[]
+  allowMultiple?: boolean
 }
 
 const RESPONSE_SCHEMA = {
@@ -47,6 +49,22 @@ const RESPONSE_SCHEMA = {
       description:
         '해당 질문이 채우려는 항목. change_time=발생 시간/상황, change_context=관찰한 구체적 사실, ' +
         'action_taken=현장 조치, current_result=현재 상태, escalation_check=센터 확인 필요사항.',
+    },
+    options: {
+      type: 'ARRAY',
+      nullable: true,
+      items: { type: 'STRING' },
+      description:
+        'needFollowup이 true일 때, 요양보호사가 타이핑 대신 바로 누를 수 있는 짧은 선택지 2~4개. ' +
+        '반드시 question에 대한 실제로 가능성 있는 답만 담고, 구체적 수치(예: "300ml")를 지어내지 말고 ' +
+        '"조금 적게/많이 적게"처럼 요양보호사가 실제로 관찰했을 법한 정성적 표현으로 짧게 쓴다. ' +
+        '적절한 선택지를 만들기 어려우면 빈 배열이나 null로 두어 자유 입력만 쓰게 한다. ' +
+        '"잘 모르겠어요"는 화면이 항상 별도로 붙여주므로 옵션에 넣지 않는다.',
+    },
+    allowMultiple: {
+      type: 'BOOLEAN',
+      nullable: true,
+      description: '해당 질문이 복수 선택이 자연스러우면 true(예: 오늘 한 조치가 여러 개일 수 있는 질문). 아니면 false.',
     },
     report: {
       type: 'OBJECT',
@@ -94,10 +112,23 @@ const SYSTEM_PROMPT = `너는 장기요양 방문요양 요양보호사의 돌�
 
 질문 규칙 (반드시 지킬 것):
 1. 정보가 부족할 때만 질문한다. 이미 충분하면 바로 최종 보고문을 만든다.
-2. 질문 우선순위: (1) 발생 시간과 상황 (2) 관찰한 구체적 사실 (3) 현장에서 한 조치 (4) 현재 상태 (5) 센터가 확인해야 할 사항.
+2. 질문 우선순위는 참고용 기본값이다: (1) 발생 시간과 상황 (2) 관찰한 구체적 사실(정도·양 등)
+   (3) 현장에서 한 조치 (4) 현재 상태 (5) 센터가 확인해야 할 사항. 다만 요양보호사가 이미 말한
+   내용에서 가장 먼저 확인이 필요한 구체적 사실(예: "적게 드셨어요"처럼 정도·양이 핵심인 관찰)이
+   있으면, 그 사실을 시간보다 먼저 물어도 된다 — 순서보다 "지금 이 발화에서 가장 궁금한 것"이
+   우선이다.
 3. 한 번에 질문은 반드시 하나만 한다.
-4. 이미 답변된 내용은 다시 묻지 않는다.
-5. 요양보호사가 말하지 않은 사실을 추정하거나 지어내지 않는다.
+4. 이미 답변된 내용은 다시 묻지 않는다(첫 발화나 이전 답변에 이미 답이 있으면 그 항목은 건너뛴다).
+5. 요양보호사가 말하지 않은 사실을 추정하거나 지어내지 않는다. 요양보호사가 버튼으로 짧은
+   선택지(예: "도와드렸어요")만 골랐다면, 그 선택지에 없는 구체적인 방법·수치·시간을 report에
+   임의로 덧붙이지 않는다 — 짧게 답했으면 짧은 사실만 그대로 옮긴다.
+6-1. 화면에서는 요양보호사가 다시 타이핑하지 않고 버튼을 눌러 답할 수 있어야 하므로,
+    가능하면 항상 options에 실제로 있을 법한 답 2~4개를 짧게 채운다(예: "조금 적게/많이 적게").
+    options는 반드시 그 question이 실제로 묻는 것과 의미가 일치해야 한다 — 예를 들어 "언제"를
+    묻는 질문에는 시점 선택지만, "얼마나/어느 정도"를 묻는 질문에는 정도 선택지만 넣는다. 시점
+    질문에 정도 선택지를 섞거나 그 반대로 섞지 않는다. 구체적 수치나 지어낸 정보를 옵션에 넣지
+    말고, 정말 선택지로 표현하기 어려운 질문(예: 자유 서술이 꼭 필요한 경우)만 options를 비워
+    자유 입력에 맡긴다.
 6. 의료용어를 임의로 추가하지 않는다.
 7. 진단명이나 질환 가능성을 판단하지 않는다.
 8. 투약·치료·처치 변경을 권고하지 않는다.
@@ -234,6 +265,8 @@ export async function runCareReportTurn(
       question: parsed.question,
       missingField: parsed.missingField ?? 'other',
       report: null,
+      options: sanitizeOptions(parsed.options),
+      allowMultiple: parsed.allowMultiple === true,
     }
   }
 
@@ -246,6 +279,18 @@ export async function runCareReportTurn(
     missingField: null,
     report: { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' },
   }
+}
+
+/** AI가 준 options를 화면에 그대로 노출하기 전 마지막 방어선. 문자열이 아니거나
+ * 비어있거나 지나치게 긴 항목은 버리고, 최대 4개까지만 남긴다(화면이 큰 버튼으로
+ * 보여줘야 해서 항목이 많으면 오히려 고르기 어렵다). */
+function sanitizeOptions(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const cleaned = v
+    .filter((o): o is string => typeof o === 'string' && o.trim().length > 0 && o.trim().length <= 40)
+    .map((o) => o.trim())
+    .slice(0, 4)
+  return cleaned.length >= 2 ? cleaned : undefined
 }
 
 function isValidReport(v: unknown): v is CareStructuredReport {

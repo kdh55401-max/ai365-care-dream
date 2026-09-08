@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
 import SafetyScannerApp from './safetyScanner/SafetyScannerApp.tsx'
 import RoleGateway from './roles/RoleGateway.tsx'
 import TeamWorkspace from './team/TeamWorkspace.tsx'
@@ -38,6 +39,8 @@ function Root() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Root />
+    <ErrorBoundary>
+      <Root />
+    </ErrorBoundary>
   </StrictMode>,
 )

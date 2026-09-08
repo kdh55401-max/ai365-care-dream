@@ -34,11 +34,11 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await loginAdmin(adminPage)
 
     const carePage = await context.newPage()
-    await loginCare(carePage, 'C01', '1234')
-    await startReport(carePage, 'A01', '오늘 돌봄보고 시작')
+    await loginCare(carePage, 'c1', '6003')
+    await startReport(carePage)
     await submitChangedReport(carePage, '오늘 어르신이 두 번 휘청거리셨어요.')
     await answerAllFollowups(carePage, ['오전 10시경입니다', '부축했습니다', '지금은 괜찮습니다'])
-    await carePage.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     // 관리자는 재접속(새로고침)해서 최신 폴링 결과를 즉시 확인한다 (3초 폴링).
@@ -48,10 +48,10 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
 
     // C01이 두 번째 보고(추가) 제출 → 재사용 참여자 수 변경
     await carePage.goto('/care?demo=1')
-    await startReport(carePage, 'A01', '추가 상태변화 보고')
+    await startReport(carePage, '추가 상태변화 보고')
     await submitChangedReport(carePage, '오늘 점심을 잘 안 드셨어요.')
     await answerAllFollowups(carePage, ['오늘 낮 12시경입니다', '조금 더 드시라고 권했습니다', '지금은 평소와 비슷합니다'])
-    await carePage.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     await adminPage.reload()

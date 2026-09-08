@@ -131,6 +131,33 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         }
       }
 
+      // 추가 상태변화 보고는 하루에 여러 건 생길 수 있어 daily처럼 "오늘 1건" 재사용이
+      // 불가능하다. 대신 "서버 저장은 됐지만 응답만 유실된" 재시도(네트워크 끊김 등)를
+      // 새 보고 중복 생성으로 오인하지 않도록, 방금(2분 이내) 이 요양보호사·수급자로
+      // 만들어졌고 아직 한 글자도 입력되지 않은 draft가 있으면 그것을 재사용한다.
+      // 2분을 넘겼거나 이미 내용이 있으면(=사용자가 실제로 진행 중) 진짜 새 보고로 본다.
+      if (reportSource === 'live' && reportType === 'additional') {
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+        const { data: recentEmptyDraft } = await supabase
+          .from('reports')
+          .select(CARE_DETAIL_COLUMNS)
+          .eq('participant_code', session.participantCode)
+          .eq('recipient_code', recipientCode)
+          .eq('report_type', 'additional')
+          .eq('report_source', 'live')
+          .eq('status', 'draft')
+          .eq('raw_input', '')
+          .eq('deleted', false)
+          .gte('created_at', twoMinutesAgo)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (recentEmptyDraft) {
+          sendJson(res, 200, { report: recentEmptyDraft, resumed: true })
+          return
+        }
+      }
+
       const { data: created, error } = await supabase
         .from('reports')
         .insert({

@@ -177,6 +177,12 @@ export interface AiTurnResult {
   question: string | null
   missingField: string | null
   report: StructuredReport | null
+  /** 후속 질문에 대해 화면에서 버튼으로 바로 고를 수 있는 짧은 선택지(2~4개).
+   * 타이핑을 줄이기 위한 보조 수단이며, 없으면(undefined/빈 배열) 자유 입력만
+   * 제공한다. AI/데모 엔진이 채우지 못한 값을 화면이 임의로 만들어내지 않는다. */
+  options?: string[]
+  /** true면 복수 선택 후 "다음"으로 진행, false/undefined면 하나를 고르면 바로 진행. */
+  allowMultiple?: boolean
 }
 
 /** AI 생성보고/최종보고의 4개 CARE 영역이 실제로 채워졌는지로 계산하는 자동 정보충실도(0~4).

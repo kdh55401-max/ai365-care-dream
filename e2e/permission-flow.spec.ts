@@ -21,16 +21,16 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
     // 별도 브라우저 프로필, 즉 Playwright의 별도 context가 필요하다 — 새
     // context는 storage가 완전히 분리되므로 C02는 깨끗한 상태에서 로그인한다.
     const p1 = await context.newPage()
-    await loginCare(p1, 'C01', '1234')
-    await startReport(p1, 'A01', '오늘 돌봄보고 시작')
+    await loginCare(p1, 'c1', '6003')
+    await startReport(p1)
     await submitChangedReport(p1, 'C01의 보고입니다.')
     await answerAllFollowups(p1, ['오전 9시입니다', '확인했습니다', '지금은 괜찮습니다'])
-    await p1.getByRole('button', { name: '이 내용으로 제출하기' }).click()
+    await p1.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(p1.getByText('센터에 보고되었습니다.')).toBeVisible()
 
     const context2 = await browser.newContext()
     const p2 = await context2.newPage()
-    await loginCare(p2, 'C02', '1234')
+    await loginCare(p2, 'c2', '6003')
     await p2.getByRole('button', { name: '최근 본인 보고 목록' }).click()
     await expect(p2.getByText('아직 작성한 보고가 없습니다.')).toBeVisible()
     await context2.close()

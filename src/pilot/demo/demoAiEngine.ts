@@ -16,29 +16,39 @@ function has(text: string, hints: string[]): boolean {
 export function runDemoAiTurn(rawInput: string, history: FollowupItem[], forceFinalize = false): AiTurnResult {
   const combined = [rawInput, ...history.map((h) => h.answer)].join(' ')
   const askMore = !forceFinalize && history.length < 3
+  // 이미 그 항목을 질문해서 답을 받았으면(버튼 답이 힌트 키워드를 그대로 포함하지
+  // 않아도) 같은 질문을 다시 하지 않는다 — "이미 답변된 내용은 다시 묻지 않는다"는
+  // 원칙은 원문에 힌트 단어가 있는지가 아니라 실제로 물어봤는지로 판단해야 한다.
+  const wasAsked = (field: string) => history.some((h) => h.missingField === field)
 
-  if (!has(combined, TIME_HINTS) && askMore) {
+  if (!wasAsked('change_time') && !has(combined, TIME_HINTS) && askMore) {
     return {
       needFollowup: true,
       question: '언제, 어떤 상황에서 있었던 일인가요?',
       missingField: 'change_time',
       report: null,
+      options: ['방문 초반에', '방문 중간에', '방문 마무리에'],
+      allowMultiple: false,
     }
   }
-  if (!has(combined, ACTION_HINTS) && askMore) {
+  if (!wasAsked('action_taken') && !has(combined, ACTION_HINTS) && askMore) {
     return {
       needFollowup: true,
-      question: '그때 현장에서 어떤 조치를 하셨나요? (예: 부축, 센터 연락 등)',
+      question: '그때 현장에서 어떤 조치를 하셨나요?',
       missingField: 'action_taken',
       report: null,
+      options: ['말씀드리고 권해드렸어요', '도와드렸어요', '센터에 연락했어요', '아직 못 했어요'],
+      allowMultiple: true,
     }
   }
-  if (!has(combined, RESULT_HINTS) && askMore) {
+  if (!wasAsked('current_result') && !has(combined, RESULT_HINTS) && askMore) {
     return {
       needFollowup: true,
-      question: '지금 상태는 어떤가요? 좋아지셨나요, 계속되고 있나요?',
+      question: '지금 상태는 어떤가요?',
       missingField: 'current_result',
       report: null,
+      options: ['좋아지셨어요', '그대로예요', '계속되고 있어요'],
+      allowMultiple: false,
     }
   }
 
