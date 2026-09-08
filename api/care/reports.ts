@@ -245,7 +245,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // ai_fallback_used/ai_fallback_stage는 진단용 보조 컬럼이라 별도 업데이트로
     // 분리한다 — 이 컬럼이 아직 실제 Supabase에 없는 배포 시점(마이그레이션을
     // 관리자가 수동 적용하기 전)에도, 핵심 저장(보고 원문·구조화 결과·제출)이
-    // 이 컬럼 때문에 실패하지 않도록 하기 위함이다. 실패해도 조용히 넘어간다.
+    // 이 컬럼 때문에 실패하지 않도록 하기 위함이다. 클라이언트 응답은 어떤 경우든
+    // 성공(핵심 저장은 이미 끝났으므로)으로 돌려주되, 실패 원인은 서버 로그에는
+    // 남긴다 — "컬럼 없음"처럼 예상된 실패와 그 외 진짜 오류를 구분할 수 있게
+    // 원문(돌봄 내용)은 남기지 않고 에러 메시지/코드만 남긴다.
     let finalReport = updated
     if (typeof body.aiFallbackUsed === 'boolean' || body.aiFallbackStage === 'final_report' || body.aiFallbackStage === null) {
       const fallbackUpdate: Record<string, unknown> = {}
@@ -257,7 +260,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .eq('id', id)
         .select(CARE_DETAIL_COLUMNS)
         .maybeSingle()
-      if (!fallbackError && withFallback) finalReport = withFallback
+      if (!fallbackError && withFallback) {
+        finalReport = withFallback
+      } else if (fallbackError) {
+        console.error('ai_fallback_used/ai_fallback_stage 저장 실패(핵심 보고 저장은 정상 완료됨):', fallbackError.code, fallbackError.message)
+      }
     }
     sendJson(res, 200, { report: finalReport })
   })
