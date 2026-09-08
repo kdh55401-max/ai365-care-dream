@@ -21,8 +21,18 @@ function todayKst(): string {
 /** 데모 엔진은 로컬 계산이라 즉시 응답해, 실제 Gemini 호출의 네트워크 지연 구간에서만
  * 드러나는 화면 버그(예: 질문 전환 중 대화 영역이 비어 보이는 문제)를 데모로는 재현할
  * 수 없었다. `?e2eAiDelayMs=N`을 붙이면 이 구간에서만 인위적으로 지연시켜, 그 버그를
- * 자동 테스트(e2e)로 반복 재현·검증할 수 있게 한다 — 쿼리 파라미터가 없으면(실제 사용자
- * 화면) 전혀 동작하지 않는다. */
+ * 자동 테스트(e2e)로 반복 재현·검증할 수 있게 한다.
+ *
+ * 운영 안전성(중요 — 실제 사용자 경로에는 영향을 줄 수 없는 구조):
+ * 1) 이 함수는 demoCareRepo 안에만 있고, demoCareRepo는 isDemoMode()(URL의
+ *    ?demo=1)가 true일 때만 CareApp이 선택하는 저장소다. 실제 참여자가 쓰는
+ *    /care(데모 파라미터 없음)는 항상 realCareRepo를 쓰고, realCareRepo.aiTurn은
+ *    서버 API(/api/care/ai-turn)를 그대로 호출할 뿐 이 함수를 참조하지 않는다 —
+ *    즉 ?e2eAiDelayMs=를 실제 운영 URL에 붙여도 아무 효과가 없다(?demo=1이 함께
+ *    없으면 애초에 이 코드 경로 자체를 안 탄다).
+ * 2) 데모 모드 안에서도 최대 10초로 상한을 둬(Math.min) 외부 입력값으로 무한정
+ *    지연시킬 수 없게 한다.
+ */
 function e2eAiDelayMs(): number {
   const raw = new URLSearchParams(window.location.search).get('e2eAiDelayMs')
   const n = raw ? Number(raw) : 0

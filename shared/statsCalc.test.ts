@@ -182,18 +182,18 @@ describe('computeStats — 실제 현장보고(live)만 집계하고 scenario는
     expect(b.similar).toEqual({ numerator: 1, denominator: 2, percent: 50 })
   })
 
-  it('구조화 완료율: 방금 시작한(1시간 이내) draft는 실패로 세지 않고 "진행 중"으로 분리한다', () => {
+  it('제출 완료율: 방금 시작한(1시간 이내) draft는 실패로 세지 않고 "진행 중"으로 분리하며, 1시간 넘은 draft는 "장기 미완료"로만 표시하고 실패 확정은 하지 않는다', () => {
     const now = new Date()
     const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString()
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()
     const rows = [
       row({ status: 'submitted' }),
       row({ status: 'draft', started_at: fiveMinAgo }), // 진행 중 — 분모에서 제외
-      row({ status: 'draft', started_at: twoHoursAgo }), // 방치됨 — 분모에 포함(실패로 집계)
+      row({ status: 'draft', started_at: twoHoursAgo }), // 장기 미완료 — 분모에 포함(실패 확정 아님, 관찰값)
     ]
     const stats = computeStats(rows, '2026-09-07')
-    expect(stats.quality.completionBreakdown).toEqual({ completed: 1, abandoned: 1, inProgress: 1, abandonedThresholdHours: 1 })
-    // 분모는 완료(1) + 방치(1) = 2, 진행 중인 1건은 빠진다 — 66.7%가 아니라 50%.
+    expect(stats.quality.completionBreakdown).toEqual({ completed: 1, longPending: 1, inProgress: 1, longPendingThresholdHours: 1 })
+    // 분모는 완료(1) + 장기미완료(1) = 2, 진행 중인 1건은 빠진다 — 66.7%가 아니라 50%.
     expect(stats.quality.completionRate).toEqual({ numerator: 1, denominator: 2, percent: 50 })
   })
 

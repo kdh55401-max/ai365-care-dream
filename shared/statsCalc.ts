@@ -176,12 +176,16 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
 
   // 재사용률: 첫 제출일이 오늘이면 "다시 쓸 기회"가 아직 없었을 수 있으므로(다음
   // 방문은 보통 다음날) 관찰 기간이 부족한 참여자로 보고 분모에서 뺀다 — 0%로
-  // 뭉뚱그리지 않고 "관찰 중" 인원으로 따로 센다.
+  // 뭉뚱그리지 않고 "관찰 중" 인원으로 따로 센다. report_date/todayDate는 모두
+  // KST(Asia/Seoul) 기준 날짜 문자열이다(date.ts의 todayKstDateString, demoStore의
+  // todayKst — 둘 다 UTC+9 보정 후 잘라 쓴다) — 여기서 별도 시간대 변환은 하지 않는다.
   const firstSubmissionDateByParticipant = new Map<string, string>()
   for (const r of submitted) {
     const cur = firstSubmissionDateByParticipant.get(r.participant_code)
     if (!cur || r.report_date < cur) firstSubmissionDateByParticipant.set(r.participant_code, r.report_date)
   }
+  // observationCompleteParticipants가 분모 집합이고, 아래 repeatUsersObservationComplete는
+  // 반드시 이 집합 "안에서만" 필터링한다 — 분자가 분모 밖 인원을 포함하지 않게 한다.
   const observationCompleteParticipants = [...participantsWithSubmission].filter((code) => {
     const first = firstSubmissionDateByParticipant.get(code)
     return first !== undefined && first < todayDate
@@ -192,9 +196,12 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   const completionSeconds = submitted.map((r) => r.completion_seconds).filter((n): n is number => typeof n === 'number')
   // 시작~제출 "전체 경과시간"에는 화면을 켜둔 채 대기한 시간 등이 섞일 수 있어,
   // 실제 상호작용 시간과 다르다(과거 기록에는 턴별 타임스탬프가 없어 실제 상호작용
-  // 시간 자체를 계산할 방법이 없다 — 추정해서 채우지 않는다). 대신 이 문턱(30분)을
-  // 넘는 긴 기록을 "화면을 열어둔 채 대기했을 가능성이 큼"으로 보고 별도 표시만
-  // 하고, 임의로 삭제하거나 전체 중앙값에서 빼지 않는다 — 제외 건수를 함께 보여준다.
+  // 시간 자체를 계산할 방법이 없다 — 추정해서 채우지 않는다). 기본으로 보여줄 값은
+  // 항상 medianAllSeconds(전체 경과시간 중앙값)다 — 아래 문턱값 기준 중앙값은
+  // 화면에서 보조 정보로만 쓴다. 30분이라는 문턱은 통계적/임상적 근거가 있는 값이
+  // 아니라 편의상 정한 기준이다("이보다 길면 화면을 열어둔 채 대기했을 가능성이
+  // 있다" 정도의 참고용). 이 기준으로 긴 기록을 임의로 삭제하거나 전체 중앙값에서
+  // 빼지 않고, 포함/제외 건수를 항상 함께 보여준다.
   const INTERACTIVE_SECONDS_THRESHOLD = 1800
   const withinThresholdSeconds = completionSeconds.filter((s) => s <= INTERACTIVE_SECONDS_THRESHOLD)
   const completionTime = {
@@ -220,15 +227,16 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   const fallbackRate = fraction(fallbackTracked.filter((r) => r.ai_fallback_used === true).length, fallbackTracked.length)
   const fallbackUnknownCount = submitted.length - fallbackTracked.length
 
-  // 구조화 완료율 분모에 "지금 막 시작해서 아직 작성 중인" draft까지 실패처럼 세지
-  // 않기 위해, draft를 "방치됨(abandoned)"과 "진행 중(inProgress)"으로 나눈다.
-  // started_at 기준 1시간을 넘겼는데 아직 draft면 더 이상 진행 중이라 보기 어렵다
-  // (이 화면의 보고는 정상적으로 수 분 내에 끝나도록 설계돼 있다).
-  const ABANDONED_DRAFT_MS = 60 * 60 * 1000
+  // 구조화 완료율 분모에 "지금 막 시작해서 아직 작성 중인" draft까지 세지 않기 위해
+  // draft를 "장기 미완료"와 "진행 중"으로 나눈다. 이 1시간 기준은 관찰 가능한 사실
+  // (시작 후 얼마나 지났는가)일 뿐, 실패/중단으로 확정하는 판정이 아니다 — 요양보호사가
+  // 나중에 이어서 제출할 수도 있으므로 "abandoned/실패"라고 부르지 않는다. 편의상 정한
+  // 임계값이며 임상적/통계적 근거는 없다.
+  const LONG_PENDING_DRAFT_MS = 60 * 60 * 1000
   const draftRows = rows.filter((r) => r.status === 'draft')
   const nowMs = Date.now()
-  const abandonedDrafts = draftRows.filter((r) => nowMs - new Date(r.started_at).getTime() > ABANDONED_DRAFT_MS)
-  const inProgressDrafts = draftRows.filter((r) => nowMs - new Date(r.started_at).getTime() <= ABANDONED_DRAFT_MS)
+  const longPendingDrafts = draftRows.filter((r) => nowMs - new Date(r.started_at).getTime() > LONG_PENDING_DRAFT_MS)
+  const inProgressDrafts = draftRows.filter((r) => nowMs - new Date(r.started_at).getTime() <= LONG_PENDING_DRAFT_MS)
 
   const rawEvaluated = submitted.filter((r) => r.raw_evaluated_at)
   const aiEvaluated = submitted.filter((r) => r.ai_evaluated_at)
@@ -259,16 +267,18 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
 
   const noEditCount = submitted.filter((r) => deepEqual(r.ai_generated_report, r.caregiver_final_report)).length
 
-  // 구조화 완료율 = 분자: 최종 제출(status='submitted')된 보고 수 / 분모: 제출 +
-  // 방치된 draft 수(진행 중인 draft는 아직 실패·중단으로 볼 수 없어 분모에서
-  // 뺀다 — completionBreakdown.inProgress로 별도 표시). 분모가 0이면
+  // 제출 완료율(예전 이름 "구조화 완료율" — AI 처리 성공 여부와 혼동될 수 있는
+  // 이름이라 정정. AI가 실제로 잘 작동했는지는 이 지표가 아니라 fallbackRate를
+  // 봐야 한다) = 분자: 최종 제출(status='submitted')된 보고 수 / 분모: 제출 +
+  // 장기 미완료 draft 수(방금 시작해 아직 진행 중인 draft는 실패로 볼 수 없어
+  // 분모에서 뺀다 — completionBreakdown.inProgress로 별도 표시). 분모가 0이면
   // fraction()이 percent=null을 돌려주므로 화면에서 "평가 전"으로 표시된다.
-  const completionRate = fraction(submitted.length, submitted.length + abandonedDrafts.length)
+  const completionRate = fraction(submitted.length, submitted.length + longPendingDrafts.length)
   const completionBreakdown = {
     completed: submitted.length,
-    abandoned: abandonedDrafts.length,
+    longPending: longPendingDrafts.length,
     inProgress: inProgressDrafts.length,
-    abandonedThresholdHours: ABANDONED_DRAFT_MS / (60 * 60 * 1000),
+    longPendingThresholdHours: LONG_PENDING_DRAFT_MS / (60 * 60 * 1000),
   }
 
   // AI 초안 수정률 = 분자: ai_generated_report와 caregiver_final_report가 정규화
