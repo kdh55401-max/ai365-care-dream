@@ -73,6 +73,8 @@ export interface CareReportPatchInput {
   informationAddedCount?: number
   noInformationReport?: boolean
   emergencyFlagged?: boolean
+  aiFallbackUsed?: boolean
+  aiFallbackStage?: 'final_report' | null
   submit?: boolean
 }
 

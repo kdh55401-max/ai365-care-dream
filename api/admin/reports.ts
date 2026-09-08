@@ -5,11 +5,17 @@ import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import type { StructuredReport } from '../../shared/careTypes.js'
 
-const LIST_COLUMNS =
+const LIST_COLUMNS_BASE =
   'id, participant_code, recipient_code, report_type, report_date, status, submitted_at, ' +
   'completion_seconds, raw_evaluated_at, ai_evaluated_at, initial_status_choice, ' +
   'no_information_report, report_source, scenario_id, ai_inaccuracy_detected, created_at, ' +
-  'emergency_flagged, review_status, reviewed_at, updated_at'
+  'emergency_flagged, review_status, reviewed_at, updated_at, raw_input, caregiver_final_report, ' +
+  'ai_generated_report'
+// ai_fallback_used/ai_fallback_stage는 db/schema.sql에 추가는 됐지만 실제 Supabase에는
+// 관리자가 수동으로 마이그레이션을 적용해야 생긴다 — 배포 시점에 아직 컬럼이 없으면
+// 이 두 필드를 select에 넣는 순간 목록 조회 전체가 깨지므로, 먼저 포함해서 시도하고
+// 실패하면(컬럼 없음 등) 이 필드 없이 한 번 더 시도해 목록 자체는 항상 뜨게 한다.
+const LIST_COLUMNS_WITH_FALLBACK = `${LIST_COLUMNS_BASE}, ai_fallback_used, ai_fallback_stage`
 
 const DETAIL_COLUMNS = '*'
 
@@ -42,9 +48,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
 
       const source = getQuery(req).get('source') // 'live' | 'scenario' | 'all' — 기본은 실제 현장보고만
-      let query = supabase.from('reports').select(LIST_COLUMNS).eq('deleted', false)
-      if (source !== 'all') query = query.eq('report_source', source === 'scenario' ? 'scenario' : 'live')
-      const { data, error } = await query.order('created_at', { ascending: false }).limit(500)
+      const buildQuery = (columns: string) => {
+        let q = supabase.from('reports').select(columns).eq('deleted', false)
+        if (source !== 'all') q = q.eq('report_source', source === 'scenario' ? 'scenario' : 'live')
+        return q.order('created_at', { ascending: false }).limit(500)
+      }
+      let { data, error } = await buildQuery(LIST_COLUMNS_WITH_FALLBACK)
+      if (error) {
+        ;({ data, error } = await buildQuery(LIST_COLUMNS_BASE))
+      }
       if (error) throw new ApiError(500, '보고 목록을 불러오지 못했습니다.')
       sendJson(res, 200, { reports: data ?? [] })
       return

@@ -165,10 +165,61 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
   }
   const repeatUsers = [...submissionCountByParticipant.values()].filter((n) => n >= 2).length
 
+  // 재사용률: 첫 제출일이 오늘이면 "다시 쓸 기회"가 아직 없었을 수 있으므로(다음
+  // 방문은 보통 다음날) 관찰 기간이 부족한 참여자로 보고 분모에서 뺀다 — 0%로
+  // 뭉뚱그리지 않고 "관찰 중" 인원으로 따로 센다.
+  const firstSubmissionDateByParticipant = new Map<string, string>()
+  for (const r of submitted) {
+    const cur = firstSubmissionDateByParticipant.get(r.participant_code)
+    if (!cur || r.report_date < cur) firstSubmissionDateByParticipant.set(r.participant_code, r.report_date)
+  }
+  const observationCompleteParticipants = [...participantsWithSubmission].filter((code) => {
+    const first = firstSubmissionDateByParticipant.get(code)
+    return first !== undefined && first < todayDate
+  })
+  const stillObservingParticipants = participantsWithSubmission.size - observationCompleteParticipants.length
+  const repeatUsersObservationComplete = observationCompleteParticipants.filter((code) => (submissionCountByParticipant.get(code) ?? 0) >= 2).length
+
   const completionSeconds = submitted.map((r) => r.completion_seconds).filter((n): n is number => typeof n === 'number')
+  // 시작~제출 "전체 경과시간"에는 화면을 켜둔 채 대기한 시간 등이 섞일 수 있어,
+  // 실제 상호작용 시간과 다르다(과거 기록에는 턴별 타임스탬프가 없어 실제 상호작용
+  // 시간 자체를 계산할 방법이 없다 — 추정해서 채우지 않는다). 대신 이 문턱(30분)을
+  // 넘는 긴 기록을 "화면을 열어둔 채 대기했을 가능성이 큼"으로 보고 별도 표시만
+  // 하고, 임의로 삭제하거나 전체 중앙값에서 빼지 않는다 — 제외 건수를 함께 보여준다.
+  const INTERACTIVE_SECONDS_THRESHOLD = 1800
+  const withinThresholdSeconds = completionSeconds.filter((s) => s <= INTERACTIVE_SECONDS_THRESHOLD)
+  const completionTime = {
+    medianAllSeconds: median(completionSeconds),
+    medianWithinThresholdSeconds: median(withinThresholdSeconds),
+    thresholdSeconds: INTERACTIVE_SECONDS_THRESHOLD,
+    excludedFromThresholdCount: completionSeconds.length - withinThresholdSeconds.length,
+    sampleCount: completionSeconds.length,
+  }
 
   const voiceCount = submitted.filter((r) => r.input_method === 'voice').length
   const textCount = submitted.filter((r) => r.input_method === 'text').length
+
+  // AI 폴백(대체) 발생률 — 최종 보고문이 실제 Gemini 응답이 아니라 규칙 기반
+  // 대체(fallbackReport)로 만들어진 비율. ai_fallback_used가 null인 건(이 필드가
+  // 생기기 전 기록)은 분모에서 제외하고 "확인 불가" 건수로 별도 표시한다 — 과거
+  // 기록을 추정해서 채우지 않는다.
+  // typeof로 검사한다 — DB 마이그레이션이 아직 적용되지 않아 컬럼 자체가 없는
+  // 배포 시점에는 undefined로 들어올 수 있는데, 이를 null과 똑같이 "확인 불가"로
+  // 다뤄야 한다(그렇지 않으면 undefined가 !== null이라 "폴백 아님(false)"으로
+  // 잘못 집계된다).
+  const fallbackTracked = submitted.filter((r) => typeof r.ai_fallback_used === 'boolean')
+  const fallbackRate = fraction(fallbackTracked.filter((r) => r.ai_fallback_used === true).length, fallbackTracked.length)
+  const fallbackUnknownCount = submitted.length - fallbackTracked.length
+
+  // 구조화 완료율 분모에 "지금 막 시작해서 아직 작성 중인" draft까지 실패처럼 세지
+  // 않기 위해, draft를 "방치됨(abandoned)"과 "진행 중(inProgress)"으로 나눈다.
+  // started_at 기준 1시간을 넘겼는데 아직 draft면 더 이상 진행 중이라 보기 어렵다
+  // (이 화면의 보고는 정상적으로 수 분 내에 끝나도록 설계돼 있다).
+  const ABANDONED_DRAFT_MS = 60 * 60 * 1000
+  const draftRows = rows.filter((r) => r.status === 'draft')
+  const nowMs = Date.now()
+  const abandonedDrafts = draftRows.filter((r) => nowMs - new Date(r.started_at).getTime() > ABANDONED_DRAFT_MS)
+  const inProgressDrafts = draftRows.filter((r) => nowMs - new Date(r.started_at).getTime() <= ABANDONED_DRAFT_MS)
 
   const rawEvaluated = submitted.filter((r) => r.raw_evaluated_at)
   const aiEvaluated = submitted.filter((r) => r.ai_evaluated_at)
@@ -199,10 +250,17 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
 
   const noEditCount = submitted.filter((r) => deepEqual(r.ai_generated_report, r.caregiver_final_report)).length
 
-  // 구조화 완료율 = 분자: 최종 제출(status='submitted')된 보고 수 / 분모: 시작한
-  // 전체 보고(draft 포함) 수. rows.length가 0이면 fraction()이 percent=null을
-  // 돌려주므로 화면에서 "평가 전"으로 자연스럽게 표시된다(가짜 0% 아님).
-  const completionRate = fraction(submitted.length, rows.length)
+  // 구조화 완료율 = 분자: 최종 제출(status='submitted')된 보고 수 / 분모: 제출 +
+  // 방치된 draft 수(진행 중인 draft는 아직 실패·중단으로 볼 수 없어 분모에서
+  // 뺀다 — completionBreakdown.inProgress로 별도 표시). 분모가 0이면
+  // fraction()이 percent=null을 돌려주므로 화면에서 "평가 전"으로 표시된다.
+  const completionRate = fraction(submitted.length, submitted.length + abandonedDrafts.length)
+  const completionBreakdown = {
+    completed: submitted.length,
+    abandoned: abandonedDrafts.length,
+    inProgress: inProgressDrafts.length,
+    abandonedThresholdHours: ABANDONED_DRAFT_MS / (60 * 60 * 1000),
+  }
 
   // AI 초안 수정률 = 분자: ai_generated_report와 caregiver_final_report가 정규화
   // 텍스트 기준으로 다른(=요양보호사가 고쳐서 낸) 보고 수 / 분모: 제출 보고 수.
@@ -305,8 +363,12 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
       todaySubmitted: todaySubmittedCount,
       todayNotSubmitted: PARTICIPANT_CODES.length - todaySubmittedCount,
       todayNotSubmittedCodes,
-      repeatUserRate: fraction(repeatUsers, participantsWithSubmission.size),
+      // 첫 제출일이 오늘인 참여자는 아직 "다시 쓸 기회"가 없었을 수 있어 분모에서
+      // 제외한다(stillObservingParticipants로 별도 표시) — 관찰 기간 부족을 0%로
+      // 뭉개지 않기 위함.
+      repeatUserRate: fraction(repeatUsersObservationComplete, observationCompleteParticipants.length),
       repeatUserRateOfPlanned: fraction(repeatUsers, PARTICIPANT_CODES.length),
+      stillObservingParticipants,
       submissionCountByParticipant: Object.fromEntries(submissionCountByParticipant),
     },
     volume: {
@@ -318,12 +380,16 @@ export function computeStats(allRows: CareReportRecord[], todayDate: string) {
     },
     quality: {
       completionRate,
-      completionSecondsMedian: median(completionSeconds),
+      completionBreakdown,
+      completionSecondsMedian: completionTime.medianAllSeconds,
+      completionTime,
       voiceVsText: { voice: voiceCount, text: textCount },
       noEditRate: fraction(noEditCount, submitted.length),
       aiDraftEditRate,
       followupOccurredRate,
       infoAddedRate,
+      fallbackRate,
+      fallbackUnknownCount,
       adminEvalCompletionRate: fraction(aiEvaluated.length, submitted.length),
       aiUsefulnessAvg: average(aiEvaluated.map((r) => r.ai_usefulness_score ?? 0)),
       inaccuracyCount: aiEvaluated.filter((r) => r.ai_inaccuracy_detected === true).length,

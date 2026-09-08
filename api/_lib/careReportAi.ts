@@ -26,6 +26,8 @@ export interface CareTurnResult {
   report: CareStructuredReport | null
   options?: string[]
   allowMultiple?: boolean
+  /** report가 채워진 턴에서만 의미 있음 — fallbackReport()로 대체됐으면 true. */
+  usedFallback: boolean
 }
 
 const RESPONSE_SCHEMA = {
@@ -143,6 +145,12 @@ const SYSTEM_PROMPT = `너는 장기요양 방문요양 요양보호사의 돌�
 12. 요양보호사가 "그만할게요"/"여기까지 할게요"처럼 종료 의사를 밝히면 즉시 needFollowup=false로
     최종 보고문을 만든다. 지금까지 실제로 들은 내용은 반영하되, 그 시점까지 확인 못 한 항목은
     "확인되지 않음"으로 남기고 억지로 채우지 않는다.
+13. 최초 발화나 답변이 돌봄과 무관한 내용(잡담, 날씨, 요양보호사 개인 용무, 시스템에 대한 불만
+    등 어르신 관찰과 관계없는 말)이면, 그 내용으로 change/action/result를 지어내지 않는다. 대신
+    needFollowup=true로 두고 question에 "그 말씀도 알겠습니다. 오늘 어르신은 어떠셨어요?"처럼
+    짧게 인정한 뒤 담당 어르신 이야기로 자연스럽게 되돌아오는 질문을 담는다(비난하거나 길게
+    설명하지 않는다). 무관한 말이 반복돼도 최종 보고문에는 그 잡담 내용을 채워 넣지 말고, 어르신에
+    대한 관찰이 끝내 없었다면 "금일 관찰 내용이 확인되지 않음"처럼 사실대로 적는다.
 
 너는 응급도를 진단하거나 위험등급을 만들지 않는다. 그 역할은 이 시스템에 없다.
 모든 텍스트는 한국어로 작성하고, 반드시 지정된 JSON 스키마로만 답한다.`
@@ -245,14 +253,13 @@ export async function runCareReportTurn(
 
   // 서버 측 안전장치: 3회를 넘겼거나(또는 클라이언트가 조기종료를 요청했거나) 질문하지 못하게 강제한다.
   if (forceFinalize && parsed.needFollowup) {
+    const validAiReport = parsed.report && isValidReport(parsed.report)
     return {
       needFollowup: false,
       question: null,
       missingField: null,
-      report:
-        parsed.report && isValidReport(parsed.report)
-          ? { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' }
-          : fallbackReport(rawInput, history),
+      report: validAiReport ? { ...parsed.report!, caregiverNote: parsed.report!.caregiverNote ?? '' } : fallbackReport(rawInput, history),
+      usedFallback: !validAiReport,
     }
   }
 
@@ -267,17 +274,19 @@ export async function runCareReportTurn(
       report: null,
       options: sanitizeOptions(parsed.options),
       allowMultiple: parsed.allowMultiple === true,
+      usedFallback: false,
     }
   }
 
   if (!parsed.report || !isValidReport(parsed.report)) {
-    return { needFollowup: false, question: null, missingField: null, report: fallbackReport(rawInput, history) }
+    return { needFollowup: false, question: null, missingField: null, report: fallbackReport(rawInput, history), usedFallback: true }
   }
   return {
     needFollowup: false,
     question: null,
     missingField: null,
     report: { ...parsed.report, caregiverNote: parsed.report.caregiverNote ?? '' },
+    usedFallback: false,
   }
 }
 

@@ -103,6 +103,14 @@ export interface CareReportRecord {
    * 않고 관리자 화면에 "미제출·확인 전 주의 신호"로만 별도 표시한다. */
   emergency_flagged: boolean
 
+  /** 최종 보고문이 실제 Gemini 응답으로 만들어졌는지(false) 아니면 Gemini 실패/무효
+   * 응답으로 규칙 기반 대체(fallbackReport)가 대신 쓰였는지(true) — "저장됐다"와
+   * "AI가 정상 작동했다"는 다른 사실이라 이 필드로 구분한다. null=이 필드가 생기기
+   * 전에 만들어진 기록이라 확인 불가(과거 값을 추정해서 채우지 않는다). 데모 모드는
+   * 애초에 실제 AI를 쓰지 않으므로 이 필드를 건드리지 않는다(항상 null).*/
+  ai_fallback_used: boolean | null
+  ai_fallback_stage: 'final_report' | null
+
   // 관리자 1단계(원문) 평가
   raw_immediately_actionable: boolean | null
   raw_followup_needed: boolean | null
@@ -169,6 +177,8 @@ export function normalizeReportRecord<T extends Partial<CareReportRecord>>(raw: 
     reviewed_at: r.reviewed_at ?? null,
     review_history: Array.isArray(r.review_history) ? r.review_history : [],
     last_review_request_id: r.last_review_request_id ?? null,
+    ai_fallback_used: r.ai_fallback_used ?? null,
+    ai_fallback_stage: r.ai_fallback_stage ?? null,
   } as T & CareReportRecord
 }
 
@@ -183,6 +193,9 @@ export interface AiTurnResult {
   options?: string[]
   /** true면 복수 선택 후 "다음"으로 진행, false/undefined면 하나를 고르면 바로 진행. */
   allowMultiple?: boolean
+  /** report가 채워진 턴(최종 보고문 생성)에서만 의미 있음 — 그 보고문이 실제 Gemini
+   * 응답인지(false), Gemini 실패/무효 응답으로 규칙 기반 대체가 쓰였는지(true). */
+  usedFallback?: boolean
 }
 
 /** AI 생성보고/최종보고의 4개 CARE 영역이 실제로 채워졌는지로 계산하는 자동 정보충실도(0~4).

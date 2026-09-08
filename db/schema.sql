@@ -120,6 +120,14 @@ create table if not exists reports (
   ai_evaluated_at timestamptz,
   ai_eval_history jsonb not null default '[]'::jsonb,
 
+  -- AI 처리가 실제로 성공했는지 진단하는 필드. null=이 컬럼이 생기기 전에 만들어진
+  -- 기록이라 확인 불가(추정해서 채우지 않는다), false=Gemini가 만든 결과를 그대로
+  -- 썼음, true=Gemini 호출 실패/무효 응답 등으로 규칙 기반 대체(fallbackReport)를
+  -- 최종 보고문에 썼음. "보고가 저장됐다"와 "AI가 정상 작동했다"는 다른 사실이라
+  -- 이 필드로 구분한다 — 이후 요청부터 추적되며 과거 기록에는 소급 적용하지 않는다.
+  ai_fallback_used boolean,
+  ai_fallback_stage text check (ai_fallback_stage in ('final_report')),
+
   deleted boolean not null default false,
   delete_reason text,
   deleted_at timestamptz,
@@ -156,6 +164,8 @@ alter table reports add column if not exists review_note text;
 alter table reports add column if not exists reviewed_at timestamptz;
 alter table reports add column if not exists review_history jsonb not null default '[]'::jsonb;
 alter table reports add column if not exists last_review_request_id text;
+alter table reports add column if not exists ai_fallback_used boolean;
+alter table reports add column if not exists ai_fallback_stage text;
 
 -- ── 관리자 감사 로그 (열람/평가/다운로드/PIN초기화/삭제) ──────────────
 create table if not exists admin_audit_log (
