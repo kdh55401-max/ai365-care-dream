@@ -197,7 +197,11 @@ export function buildNoChangeReport(entries: DomainEntry[], rawTexts: string[] =
   const sentences: string[] = []
   if (same.length > 0) sentences.push(`${joinLabels(same)} 상태는 평소와 같다고 보고함.`)
   if (changed.length > 0) sentences.push(`${joinLabels(changed)} 상태는 평소와 다르다고 보고함.`)
-  if (unclear.length > 0) sentences.push(`${joinLabels(unclear)} 상태는 이번 방문에서 관찰하지 못했다고 보고함.`)
+  // not_observed(관찰 자체를 못함)와 uncertain(관찰은 했으나 확실하지 않음)은 서로
+  // 다른 사실이다 — 둘 다 "관찰하지 못했다"로 뭉뚱그리면 "잘 모르겠어요"처럼 실제로는
+  // 보긴 했으나 확신이 없다는 답변까지 아예 못 본 것으로 왜곡된다.
+  if (notObserved.length > 0) sentences.push(`${joinLabels(notObserved)} 상태는 이번 방문에서 관찰하지 못했다고 보고함.`)
+  if (uncertain.length > 0) sentences.push(`${joinLabels(uncertain)} 상태는 확실하지 않다고 보고함.`)
 
   return {
     change: sentences.join(' '),

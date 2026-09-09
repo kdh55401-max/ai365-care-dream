@@ -1429,7 +1429,13 @@ function AdminApp() {
             <option value="in_progress">중간집계</option>
             <option value="final">최종 실증 결과</option>
           </select>
-          <a href="/admin" className="text-xs bg-slate-800 text-white rounded-full px-3 py-1 border border-slate-600">
+          {/* isDemoMode()는 현재 URL의 query만 본다 — query 없이 /admin으로만 가면
+              데모 모드가 풀려 일반 로그인 화면이 뜬다(DEP-01). 지금 데모 중일 때만
+              demo=1을 이어 붙인다. */}
+          <a
+            href={demo ? '/admin?demo=1' : '/admin'}
+            className="text-xs bg-slate-800 text-white rounded-full px-3 py-1 border border-slate-600"
+          >
             관리자 화면으로
           </a>
         </div>
@@ -1452,7 +1458,10 @@ function AdminApp() {
                 데모 초기화
               </button>
             )}
-            <a href="/admin/presentation" className="px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-bold">
+            <a
+              href={demo ? '/admin/presentation?demo=1' : '/admin/presentation'}
+              className="px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-bold"
+            >
               피칭 화면
             </a>
             <button onClick={() => void handleLogout()} className="text-slate-400 text-sm">
@@ -1482,6 +1491,13 @@ function AdminApp() {
           ))}
         </div>
 
+        {/* Dashboard 탭에는 이미 자체 DEMO 배너가 있다 — 여기서는 그 배너가 없는
+            나머지 탭(보고 목록/상세, 참여자 관리)에서만 데모 출처를 남긴다(DEP-03). */}
+        {demo && tab !== 'dashboard' && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 text-amber-700 text-sm font-bold text-center">
+            DEMO DATA · 실제 실증 결과가 아닙니다
+          </div>
+        )}
         {tab === 'dashboard' && <Dashboard demo={demo} data={stats} reports={liveReports} onOpen={(id) => { setTab('reports'); setSelectedReportId(id) }} />}
         {tab === 'reports' &&
           (selectedReportId ? (

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { answerAllFollowups, loginCare, resetDemo, startReport } from './helpers'
+import { DEMO_SUBMITTED_TEXT, answerAllFollowups, loginCare, resetDemo, startReport } from './helpers'
 
 test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보호', () => {
   test.beforeEach(async ({ page }) => {
@@ -28,7 +28,7 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
     await p1.getByRole('button', { name: '이 내용으로 보고하기' }).click()
     await answerAllFollowups(p1, ['오전 9시입니다', '확인했습니다', '지금은 괜찮습니다'])
     await p1.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(p1.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(p1.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const context2 = await browser.newContext()
     const p2 = await context2.newPage()

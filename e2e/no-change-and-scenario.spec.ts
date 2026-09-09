@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { answerFollowupsWithOptions, completeDailyReport, loginAdmin, loginCare, openResearchKpiDetails, resetDemo, startReport } from './helpers'
+import {
+  DEMO_SUBMITTED_TEXT,
+  answerFollowupsWithOptions,
+  completeDailyReport,
+  loginAdmin,
+  loginCare,
+  openResearchKpiDetails,
+  resetDemo,
+  startReport,
+} from './helpers'
 
 test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 집계', () => {
   test.beforeEach(async ({ page }) => {
@@ -29,7 +38,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     expect(change).toContain('관찰하지 못했다고 보고함')
 
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     // 관리자 대시보드의 "무정보 보고 구체화율"에 반영된다.
     const admin = await page.context().newPage()
@@ -63,7 +72,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     expect(change).toBe('금일 요양보호사가 구체적인 관찰영역을 언급하지 않음. 확인된 관찰영역 없음.')
 
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const admin = await page.context().newPage()
     await loginAdmin(admin)

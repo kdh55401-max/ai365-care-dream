@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { answerFollowupsWithOptions, loginCare, resetDemo, startReport, switchRecipient } from './helpers'
+import { DEMO_SUBMITTED_TEXT, answerFollowupsWithOptions, loginCare, resetDemo, startReport, switchRecipient } from './helpers'
 
 /** 설계 검토 결정 D3 회귀 테스트: "오늘 기본보고 제출 여부"와 "기본보고 시작 가능
  * 여부"는 요양보호사 전체가 아니라 지금 선택된 수급자 기준이어야 한다. 데모 배정
@@ -30,7 +30,7 @@ test.describe('multi-recipient-flow: 대상자별 기본보고 완료 상태 분
     if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
       await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     }
-    await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
     await page.getByRole('button', { name: '홈으로' }).click()
 
     // A02는 완료로 보여야 한다.
@@ -54,7 +54,7 @@ test.describe('multi-recipient-flow: 대상자별 기본보고 완료 상태 분
     if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
       await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     }
-    await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
     await page.getByRole('button', { name: '홈으로' }).click()
 
     // 이제 두 수급자 모두 완료 상태여야 하고, 서로의 상태가 섞이지 않아야 한다.

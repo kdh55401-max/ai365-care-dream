@@ -134,6 +134,25 @@ describe('buildNoChangeReport', () => {
     expect(report.escalation).toContain('검토되지 않음')
   })
 
+  // DEP-02 잔여 문제: not_observed(관찰 자체를 못함)와 uncertain(관찰은 했으나
+  // 확실하지 않음)은 다른 사실인데 같은 "관찰하지 못했다"로 뭉뚱그려지고 있었다.
+  it('"잘 모르겠어요"(uncertain)는 "관찰하지 못했다"가 아니라 "확실하지 않다"로 남는다', () => {
+    const entries = classifyDomainsFromText('수분 섭취는 잘 모르겠어요.')
+    expect(entries.find((e) => e.domain === 'hydration')?.status).toBe('uncertain')
+    const report = buildNoChangeReport(entries, ['수분 섭취는 잘 모르겠어요.'])
+    expect(report.change).toContain('수분 상태는 확실하지 않다고 보고함')
+    expect(report.change).not.toContain('수분 상태는 이번 방문에서 관찰하지 못했다고 보고함')
+  })
+
+  it('not_observed와 uncertain이 함께 있으면 각각 다른 문장으로 분리된다', () => {
+    const t1 = '배설은 확인 못했어요.'
+    const t2 = '수분 섭취는 잘 모르겠어요.'
+    const entries = mergeDomainEntries(classifyDomainsFromText(t1), classifyDomainsFromText(t2))
+    const report = buildNoChangeReport(entries, [t1, t2])
+    expect(report.change).toContain('배설 상태는 이번 방문에서 관찰하지 못했다고 보고함')
+    expect(report.change).toContain('수분 상태는 확실하지 않다고 보고함')
+  })
+
   it('미확인 영역이 있으면 다음 방문 확인 필요 문구에 센터 검토 상태를 함께 남긴다', () => {
     const entries = classifyDomainsFromText('배설은 확인 못했어요.')
     const report = buildNoChangeReport(entries)

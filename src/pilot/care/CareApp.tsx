@@ -1096,7 +1096,13 @@ function CareApp() {
             </SecondaryButton>
           )}
           <SecondaryButton onClick={() => setScreen('history')}>내가 남긴 돌봄기록</SecondaryButton>
-          <a href="/care/scenario" className="text-center text-slate-400 text-xs underline mt-1">
+          {/* isDemoMode()는 현재 URL의 query만 본다 — 이 내부 이동 링크가 query 없이
+              /care/scenario로만 가면 데모 모드가 풀려 일반 로그인 화면이 뜬다
+              (DEP-01). 지금 데모 중일 때만 demo=1을 이어 붙인다. */}
+          <a
+            href={demo ? '/care/scenario?demo=1' : '/care/scenario'}
+            className="text-center text-slate-400 text-xs underline mt-1"
+          >
             표준상황 연습 (검증용, 실제 실증과 별도 집계)
           </a>
           <button
@@ -1138,7 +1144,7 @@ function CareApp() {
               <p className="text-slate-500 text-sm leading-relaxed">{s.prompt}</p>
             </button>
           ))}
-          <a href="/care" className="text-center text-slate-400 text-xs underline mt-1">
+          <a href={demo ? '/care?demo=1' : '/care'} className="text-center text-slate-400 text-xs underline mt-1">
             실제 현장보고 화면으로 돌아가기
           </a>
         </div>
@@ -1270,7 +1276,7 @@ function CareApp() {
           {/* 이제 1번 질문을 건너뛸 수 있어 "몇 번째/총 몇 번" 표시가 항상 맞다고
               단정할 수 없다(예: 2번만 물으면 "2/2"가 되어 1번이 있었던 것처럼
               보인다) — 고정 분모 없이 "추가 확인 중"으로만 안내한다. */}
-          <p className="text-teal-600 font-semibold text-sm text-center">평소와 비슷했어요 · 추가 확인</p>
+          <p className="text-teal-600 font-semibold text-sm text-center">평소와 비슷했어요 · 추가 확인 · {recipientCode}</p>
           <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6">
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">
               {noChangeStep === 1 ? NO_CHANGE_QUESTION_1 : NO_CHANGE_QUESTION_2}
@@ -1323,7 +1329,7 @@ function CareApp() {
 
       {screen === 'question' && currentQuestion && (
         <div className="flex flex-col gap-4 pt-2">
-          <p className="text-teal-600 font-semibold text-sm text-center">추가 확인 {followupHistory.length + 1}/3</p>
+          <p className="text-teal-600 font-semibold text-sm text-center">추가 확인 {followupHistory.length + 1}/3 · {recipientCode}</p>
           <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6">
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">{currentQuestion.question}</p>
           </div>
@@ -1523,6 +1529,9 @@ function CareApp() {
 
       {screen === 'reportReview' && (
         <div className="flex flex-col gap-4 pt-2">
+          <p className="text-teal-600 font-semibold text-sm text-center">
+            {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode} · 아직 보내지 않았어요
+          </p>
           <h2 className="text-xl font-bold text-slate-900 text-center">보고 내용을 확인해 주세요</h2>
           <p className="text-slate-500 text-sm text-center">수정이 필요하면 바로 고칠 수 있습니다.</p>
           {noChangeEntries.length > 0 && (
@@ -1565,9 +1574,21 @@ function CareApp() {
           <div className="w-20 h-20 rounded-full bg-teal-600 flex items-center justify-center">
             <CheckIcon className="w-10 h-10 text-white" />
           </div>
+          {!activeScenarioId && <p className="text-teal-600 font-semibold text-sm text-center">{recipientCode}</p>}
           <p className="text-2xl font-bold text-slate-900 text-center">
-            {activeScenarioId ? '표준상황 연습이 저장되었습니다.' : '센터에 보고되었습니다.'}
+            {activeScenarioId
+              ? '표준상황 연습이 저장되었습니다.'
+              : demo
+                ? '이 브라우저에 데모 기록을 저장했어요 · 실제 센터로 전송하지 않았어요.'
+                : '센터에 보고되었습니다.'}
           </p>
+          {/* 데모 완료 확인은 같은 Vercel origin의 /admin?demo=1로만 보낸다 —
+              운영 관리자 주소로 보내면 데모 기록을 찾을 수 없다(DEP-03). */}
+          {demo && !activeScenarioId && (
+            <a href="/admin?demo=1" target="_blank" rel="noopener noreferrer" className="text-teal-600 text-sm underline">
+              데모 관리자 화면에서 보기
+            </a>
+          )}
           <PrimaryButton onClick={resetFlow}>{scenarioRoute ? '표준상황 목록으로' : '홈으로'}</PrimaryButton>
         </div>
       )}

@@ -1,5 +1,10 @@
 import { expect, type Page } from '@playwright/test'
 
+/** care 완료 화면 문구(DEP-03): 데모(?demo=1)는 실제로 센터에 전송되지 않고 이
+ * 브라우저의 localStorage에만 저장되므로, 실제 제출과 구분되는 문구를 쓴다.
+ * 이 스위트의 모든 시나리오는 데모 모드에서 실행되므로 항상 이 문구를 쓴다. */
+export const DEMO_SUBMITTED_TEXT = '이 브라우저에 데모 기록을 저장했어요 · 실제 센터로 전송하지 않았어요.'
+
 /** 데모 모드는 요구사항대로 브라우저(프로필)당 localStorage에만 저장되므로,
  * 각 테스트를 독립적으로 만들기 위해 시작할 때 항상 초기화한다. */
 export async function resetDemo(page: Page) {
@@ -69,7 +74,7 @@ export async function completeDailyReport(page: Page, text = '식사를 평소�
   if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
   }
-  await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+  await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
   await page.getByRole('button', { name: '홈으로' }).click()
 }
 

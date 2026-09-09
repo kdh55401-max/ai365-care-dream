@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { answerAllFollowups, loginAdmin, loginCare, resetDemo, startReport } from './helpers'
+import { DEMO_SUBMITTED_TEXT, answerAllFollowups, loginAdmin, loginCare, resetDemo, startReport } from './helpers'
 
 test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터 유지', () => {
   test.beforeEach(async ({ page }) => {
@@ -13,7 +13,7 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
     await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
     await answerAllFollowups(page, ['오전입니다', '확인했습니다', '지금은 괜찮습니다'])
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     await page.getByRole('button', { name: '홈으로' }).click()
     await page.reload()
@@ -38,7 +38,7 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
     await carePage.getByRole('button', { name: '이 내용으로 보고하기' }).click()
     await answerAllFollowups(carePage, ['오전입니다', '확인했습니다', '지금은 괜찮습니다'])
     await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(carePage.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const adminPage = await context.newPage()
     await loginAdmin(adminPage)
