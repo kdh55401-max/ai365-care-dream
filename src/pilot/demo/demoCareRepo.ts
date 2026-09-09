@@ -185,15 +185,24 @@ export const demoCareRepo: CareRepo = {
     const reportSource = input.reportSource ?? 'live'
     const scenarioId = input.scenarioId ?? null
 
+    // "하루 1회"는 요양보호사 전체가 아니라 지금 이 수급자 기준이다 — 실서버
+    // (api/care/reports.ts)와 동일하게 recipient_code까지 함께 확인해야, 다른
+    // 수급자(A02) 제출 때문에 이 수급자(A01)의 기본보고 시작이 막히지 않는다
+    // (설계 검토 결정 D3).
     if (reportSource === 'live' && input.reportType === 'daily') {
       const today = todayKst()
       const existing = demoAllReports().find(
-        (r) => r.participant_code === code && r.report_date === today && r.report_type === 'daily' && r.report_source === 'live',
+        (r) =>
+          r.participant_code === code &&
+          r.recipient_code === input.recipientCode &&
+          r.report_date === today &&
+          r.report_type === 'daily' &&
+          r.report_source === 'live',
       )
       if (existing) {
         if (existing.status === 'submitted') {
           throw Object.assign(
-            new Error('오늘의 기본 돌봄보고를 이미 제출했습니다. 추가 상태변화 보고를 이용해 주세요.'),
+            new Error('오늘 이 수급자의 기본 돌봄보고를 이미 제출했습니다. 추가 상태변화 보고를 이용해 주세요.'),
             { status: 409 },
           )
         }

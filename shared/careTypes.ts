@@ -28,8 +28,10 @@ export type ReportSource = 'live' | 'scenario'
 export type InitialStatusChoice = 'changed' | 'similar' | 'uncertain' | null
 
 export const DOMAIN_KEYS = [
-  'meal_hydration',
-  'mobility_fall',
+  'meal',
+  'hydration',
+  'mobility',
+  'fall',
   'excretion',
   'cognition_communication',
   'emotion_behavior',
@@ -39,12 +41,20 @@ export const DOMAIN_KEYS = [
   'medication',
   'other',
   'not_checked',
+  // 레거시 전용 — 2026-09-09부터 새 기록에는 만들지 않는다. '식사·수분'/'이동·낙상'을
+  // 하나로 묶어 하위 항목(예: 수분 미관찰)이 상위 상태에 덮여 사라지는 문제(설계
+  // 검토 결정 D1)가 있어 세분화했다. 과거 기록을 읽을 때 라벨이 없어 깨지지 않도록
+  // 값만 유지한다 — 과거 데이터를 새 키로 소급 변환하지 않는다.
+  'meal_hydration',
+  'mobility_fall',
 ] as const
 export type DomainKey = (typeof DOMAIN_KEYS)[number]
 
 export const DOMAIN_LABELS: Record<DomainKey, string> = {
-  meal_hydration: '식사·수분',
-  mobility_fall: '이동·낙상',
+  meal: '식사',
+  hydration: '수분',
+  mobility: '이동',
+  fall: '낙상',
   excretion: '배설',
   cognition_communication: '인지·의사소통',
   emotion_behavior: '정서·행동',
@@ -54,6 +64,8 @@ export const DOMAIN_LABELS: Record<DomainKey, string> = {
   medication: '복약 관찰',
   other: '기타',
   not_checked: '확인하지 못함',
+  meal_hydration: '식사·수분(세분화 이전 기록)',
+  mobility_fall: '이동·낙상(세분화 이전 기록)',
 }
 
 export type DomainStatus = 'same_as_usual' | 'changed' | 'not_observed' | 'uncertain' | 'not_mentioned'

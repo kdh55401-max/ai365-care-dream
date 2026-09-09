@@ -15,18 +15,18 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     await page.getByPlaceholder(/음성 대신/).fill('오늘은 특별히 달라진 점이 없었어요')
     await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
 
-    await expect(page.getByText('평소와 비슷했어요 · 추가 확인 1/2')).toBeVisible()
+    await expect(page.getByText('평소와 비슷했어요 · 추가 확인')).toBeVisible()
     await page.getByPlaceholder(/없어요/).fill('식사는 평소와 같고 이동도 평소와 같아요')
     await page.getByRole('button', { name: '다음' }).click()
 
-    await expect(page.getByText('평소와 비슷했어요 · 추가 확인 2/2')).toBeVisible()
+    await expect(page.getByText('평소와 비슷했어요 · 추가 확인')).toBeVisible()
     await page.getByPlaceholder(/없어요/).fill('배설은 확인하지 못했어요')
     await page.getByRole('button', { name: '다음' }).click()
 
     await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
     const change = await page.locator('textarea').first().inputValue()
-    expect(change).toContain('평소와 유사한 것으로 관찰됨')
-    expect(change).toContain('확인하지 못함')
+    expect(change).toContain('평소와 같다고 보고함')
+    expect(change).toContain('관찰하지 못했다고 보고함')
 
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
@@ -50,17 +50,17 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     await startReport(page, '추가 상태변화 기록하기')
     await page.getByRole('button', { name: '평소와 비슷했어요' }).click()
 
-    await expect(page.getByText('추가 확인 1/2')).toBeVisible()
+    await expect(page.getByText('추가 확인')).toBeVisible()
     await page.getByPlaceholder(/없어요/).fill('없어요')
     await page.getByRole('button', { name: '다음' }).click()
 
-    await expect(page.getByText('추가 확인 2/2')).toBeVisible()
+    await expect(page.getByText('추가 확인')).toBeVisible()
     await page.getByPlaceholder(/없어요/).fill('없어요')
     await page.getByRole('button', { name: '다음' }).click()
 
     await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
     const change = await page.locator('textarea').first().inputValue()
-    expect(change).toBe('금일 요양보호사가 별도 상태변화를 보고하지 않음. 구체적으로 확인된 관찰영역은 없음.')
+    expect(change).toBe('금일 요양보호사가 구체적인 관찰영역을 언급하지 않음. 확인된 관찰영역 없음.')
 
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
     await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()

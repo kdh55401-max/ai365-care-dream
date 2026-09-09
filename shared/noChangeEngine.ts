@@ -21,18 +21,26 @@ interface DomainRule {
 
 const DOMAIN_RULES: DomainRule[] = [
   {
-    domain: 'meal_hydration',
+    // '묶음은 UI 분류이며 하위 관찰의 증거가 아니다'(설계 검토 결정 D1) — 식사와
+    // 수분을 하나의 도메인으로 합치면 "식사는 평소와 같음, 수분은 관찰 못함"처럼
+    // 상태가 엇갈릴 때 한쪽이 다른 쪽에 덮여 사라진다. 반드시 분리해서 둔다.
+    domain: 'meal',
     // '드시'는 "드셨다/드신다"의 활용형(드셨,드신,드셔)에서 어간이 바뀌어(ㅣ+었→ㅕㅆ)
     // 부분 문자열로 안 걸리므로 활용형을 따로 추가한다. '밥'도 구어체로 자주 쓰인다.
-    keywords: ['식사', '드시', '드셨', '드신', '드셔', '식욕', '수분', '물', '음식', '반찬', '밥'],
+    keywords: ['식사', '드시', '드셨', '드신', '드셔', '식욕', '음식', '반찬', '밥'],
+  },
+  { domain: 'hydration', keywords: ['수분', '물'] },
+  {
+    // 이동(보행 자체)과 낙상(사고·위험 신호)도 같은 이유로 분리한다 — "이동은
+    // 평소와 같음"이라는 응답만으로 "낙상 없음"까지 확인된 것은 아니다.
+    domain: 'mobility',
+    keywords: ['이동', '걷', '걸음', '걸어', '걸으', '보행', '일어나'],
   },
   {
-    domain: 'mobility_fall',
+    domain: 'fall',
     // '넘어지'의 활용형(넘어질,넘어졌)도 어간 변화로 부분 문자열 매칭이 안 되므로 추가.
-    keywords: [
-      '이동', '걷', '걸음', '걸어', '걸으', '보행', '휘청', '낙상', '넘어지', '넘어질', '넘어졌',
-      '일어나', '어지럽', '어지러움', '현기증',
-    ],
+    // 휘청/어지럼/현기증은 낙상 위험 신호로 다룬다.
+    keywords: ['낙상', '넘어지', '넘어질', '넘어졌', '휘청', '어지럽', '어지러움', '현기증'],
   },
   { domain: 'excretion', keywords: ['배설', '대변', '소변', '화장실', '기저귀', '변'] },
   { domain: 'cognition_communication', keywords: ['대화', '말씀', '인지', '기억', '의사소통', '알아'] },
@@ -43,7 +51,13 @@ const DOMAIN_RULES: DomainRule[] = [
   { domain: 'medication', keywords: ['복약', '투약', '약'] },
 ]
 
-const NOT_OBSERVED_CUES = ['확인 못', '확인하지 못', '확인 안', '못 봤', '안 봤', '보지 못']
+// '관찰'은 '확인'과 같은 뜻으로 요양보호사가 실제로 쓰는 동의어다(예: Codex
+// 재현 사례 "수분 섭취는 관찰하지 못했어요") — '확인' 계열만 두면 이 표현이
+// 단서 미검출로 빠져 기본값(same_as_usual)으로 잘못 분류된다.
+const NOT_OBSERVED_CUES = [
+  '확인 못', '확인하지 못', '확인 안', '못 봤', '안 봤', '보지 못',
+  '관찰 못', '관찰하지 못', '관찰 안',
+]
 const UNCERTAIN_CUES = ['모르겠', '잘 모르', '애매', '확실치 않', '확실하지 않']
 // "낙상 없었어요"처럼 증상 단어와 부정 표현이 함께 나오면, 아래 CHANGED_CUES보다
 // 먼저 검사해서 "증상이 없었다(=평소와 같다)"는 뜻으로 해석한다. 부정 표현이
@@ -135,6 +149,14 @@ export function shouldSkipSecondQuestion(entriesSoFar: DomainEntry[]): boolean {
   return hasConfirmed && hasUnconfirmed
 }
 
+/** 1번 질문("오늘 직접 확인한 것 가운데 평소와 같았던 내용을 말씀해주세요")은 이미
+ * 최초 발화에서 도메인이 하나라도 분류됐다면(확인이든 미확인이든) 방금 한 말을
+ * 그대로 되묻는 것과 같다 — 설계 검토 결정 D2("이미 답한 질문은 반복하지 않는다").
+ * 이 경우 1번 질문을 건너뛰고 바로 2번 질문(확인하지 못한 것)으로 넘어간다. */
+export function shouldSkipFirstQuestion(entriesSoFar: DomainEntry[]): boolean {
+  return entriesSoFar.length > 0
+}
+
 function joinLabels(entries: DomainEntry[]): string {
   return entries.map((e) => DOMAIN_LABELS[e.domain]).join('·')
 }
@@ -151,30 +173,37 @@ export function buildNoChangeReport(entries: DomainEntry[], rawTexts: string[] =
   const unclear = [...notObserved, ...uncertain]
   const caregiverNote = extractCaregiverNote(rawTexts.join(' '))
 
+  // 이 흐름은 "어떤 조치를 했는지"를 따로 묻지 않는다 — 묻지 않은 것을 "조치
+  // 없음"으로 단정하지 않고 미응답으로 남긴다(설계 검토 결정 D4.4).
+  const action = '조치 내용은 미응답.'
+  // "센터가 확인할 사항이 있는지"는 관리자가 검토해 판단할 몫이지, 요양보호사의
+  // 응답 유무로 이 화면이 대신 "확인할 사항 없음"을 단정하지 않는다(D4.4).
+  const reviewPending = '센터의 추가 확인 필요 여부는 아직 검토되지 않음.'
+  const escalation = unclear.length > 0 ? `다음 방문 시 ${joinLabels(unclear)} 상태 확인 필요. ${reviewPending}` : reviewPending
+
   if (same.length === 0 && changed.length === 0 && unclear.length === 0) {
     return {
-      change: '금일 요양보호사가 별도 상태변화를 보고하지 않음. 구체적으로 확인된 관찰영역은 없음.',
-      action: '특이사항이 없어 별도 조치 없음.',
+      change: '금일 요양보호사가 구체적인 관찰영역을 언급하지 않음. 확인된 관찰영역 없음.',
+      action,
       result: '확인되지 않음',
-      escalation: '센터가 별도로 확인할 사항 없음. 다음 방문에서 일반 관찰을 지속함.',
+      escalation,
       caregiverNote,
     }
   }
 
+  // 언급된 영역에 대한 사실만 문장으로 남긴다. "그 밖의 뚜렷한 변화는 관찰되지
+  // 않음"처럼 확인 범위를 넓히는 문장은 붙이지 않는다(설계 검토 결정 D1.5) —
+  // 언급되지 않은 영역은 애초에 entries에 없으므로 이 함수가 알 수 없는 사실이다.
   const sentences: string[] = []
-  if (same.length > 0) sentences.push(`금일 ${joinLabels(same)} 상태는 평소와 유사한 것으로 관찰됨.`)
-  if (changed.length > 0) sentences.push(`${joinLabels(changed)} 상태는 평소와 다르게 관찰됨.`)
-  if (unclear.length > 0) sentences.push(`${joinLabels(unclear)} 상태는 이번 방문에서 확인하지 못함.`)
-  sentences.push('그 밖의 뚜렷한 상태변화는 관찰되지 않음.')
+  if (same.length > 0) sentences.push(`${joinLabels(same)} 상태는 평소와 같다고 보고함.`)
+  if (changed.length > 0) sentences.push(`${joinLabels(changed)} 상태는 평소와 다르다고 보고함.`)
+  if (unclear.length > 0) sentences.push(`${joinLabels(unclear)} 상태는 이번 방문에서 관찰하지 못했다고 보고함.`)
 
   return {
     change: sentences.join(' '),
-    action: '특이사항이 없어 별도 조치 없음.',
-    result: same.length > 0 || changed.length > 0 ? '평소와 유사한 상태로 판단됨.' : '확인되지 않음',
-    escalation:
-      unclear.length > 0
-        ? `다음 방문 시 ${joinLabels(unclear)} 상태 확인 필요.`
-        : '센터가 별도로 확인할 사항 없음.',
+    action,
+    result: same.length > 0 || changed.length > 0 ? '언급된 영역은 평소와 유사하다고 보고됨.' : '확인되지 않음',
+    escalation,
     caregiverNote,
   }
 }

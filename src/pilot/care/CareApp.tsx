@@ -17,6 +17,7 @@ import {
   mergeDomainEntries,
   NO_CHANGE_QUESTION_1,
   NO_CHANGE_QUESTION_2,
+  shouldSkipFirstQuestion,
   shouldSkipSecondQuestion,
 } from '../../../shared/noChangeEngine'
 import { STANDARD_SCENARIOS } from '../../../shared/statsCalc'
@@ -51,6 +52,20 @@ const REPORT_TYPE_LABEL: Record<ReportType, string> = { daily: '기본', additio
  * 다시 고르지 않게 한다. */
 function currentRecipientKey(demo: boolean, participantCode: string) {
   return `${CURRENT_RECIPIENT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}`
+}
+
+/** "오늘 기본보고를 이미 냈는지"를 항상 지금 선택된 수급자 기준으로 판단한다.
+ * (참여자+날짜+종류만으로 판단하면 다른 수급자 몫과 뒤섞인다 — 설계 검토 결정 D3). */
+function computeDailySubmitted(list: CareReportListItem[], recipientCode: string, today: string): boolean {
+  if (!recipientCode) return false
+  return list.some(
+    (r) =>
+      r.recipient_code === recipientCode &&
+      r.report_date === today &&
+      r.report_type === 'daily' &&
+      (r.report_source ?? 'live') === 'live' &&
+      r.status === 'submitted',
+  )
 }
 
 function emptyReport(): StructuredReport {
@@ -346,6 +361,11 @@ function CareApp() {
   // 이 흐름도 어려움 호소를 다룰 수 있어("특이사항 없는데 힘들어요") 매번 이 전체
   // 원문에서 새로 추출한다 — 흐름 시작 시 무조건 빈 문자열로 두지 않는다.
   const noChangeRawTextsRef = useRef<string[]>([])
+  // "특이사항 없음" 흐름에서 실제로 화면에 보여준 질문 수(응답 내용 유무와 무관).
+  // 1번 질문을 건너뛰는 경우(shouldSkipFirstQuestion) noChangeStep이 1이 아니라
+  // 2에서 시작하므로, "단계 번호"를 그대로 "질문 횟수"로 쓰면 실제보다 많이 셀 수
+  // 있어 별도로 센다 — 설계 검토 결정 D2/기록 정확성.
+  const noChangeStepsAskedRef = useRef(0)
   // 응급 화면으로 넘어오기 직전 화면(뒤로가기용) — 정보 손실 없이 돌아갈 수 있게.
   const [emergencyDraftText, setEmergencyDraftText] = useState('')
 
@@ -381,11 +401,11 @@ function CareApp() {
   const loadHome = async (code: string, navigateToHome = true) => {
     const session = await repo.getSession()
     setToday(session.today)
-    setDailySubmitted(session.dailyReportToday?.status === 'submitted')
     // 로그인한 요양보호사에게 배정된 수급자만 표시한다 — 배정이 없으면 빈 목록
     // 그대로 둔다(다른 요양보호사의 수급자로 대체하지 않는다).
     const assigned = session.recipientCodes
     setRecipientCodes(assigned)
+    let activeRecipient = ''
     if (assigned.length > 0) {
       const key = currentRecipientKey(demo, code)
       let current = assigned[0]
@@ -395,12 +415,19 @@ function CareApp() {
       } catch {
         // 저장 공간을 쓸 수 없어도 첫 번째 배정 대상으로 진행한다.
       }
+      activeRecipient = current
       setRecipientCode(current)
     } else {
       setRecipientCode('')
     }
     const list = await repo.listReports()
     setRecentReports(list)
+    // "오늘 기본보고를 남겼는지"는 요양보호사 전체가 아니라 지금 선택된 수급자
+    // 기준이어야 한다 — 다른 수급자(예: A02) 몫을 이미 제출했다고 해서 지금
+    // 보고 있는 수급자(예: A01)까지 완료로 표시되거나 시작 버튼이 숨으면 안
+    // 된다(설계 검토 결정 D3). session.dailyReportToday는 참여자 단위라 이
+    // 목적에 쓰지 않는다.
+    setDailySubmitted(computeDailySubmitted(list, activeRecipient, session.today))
     setScenarioSubmittedCount(list.filter((r) => r.report_source === 'scenario' && r.status === 'submitted').length)
 
     if (!navigateToHome) return
@@ -423,6 +450,11 @@ function CareApp() {
           setFinalReport(draft.finalReport ?? emptyReport())
           setNoChangeEntries(draft.noChangeEntries ?? [])
           setNoChangeStep(draft.noChangeStep ?? 0)
+          // 새로고침으로 복원되는 draft에는 "실제로 몇 번 물었는지" 카운터가
+          // 저장돼 있지 않다 — 기존 draft 필드(noChangeStep)로 근사해 이전
+          // 동작과 동일한 수준을 유지한다(완전한 정확도는 이 draft 스키마
+          // 확장이 필요해 이번 최소 수정 범위 밖).
+          noChangeStepsAskedRef.current = draft.noChangeStep ?? 0
           setNoChangeAnswered(draft.noChangeAnswered ?? 0)
           setInitialInfoCount(draft.initialInfoCount ?? 0)
           initialNoChangeEntriesRef.current = draft.initialNoChangeEntries ?? []
@@ -495,6 +527,9 @@ function CareApp() {
 
   const selectRecipient = (code: string) => {
     setRecipientCode(code)
+    // 대상자를 바꾸면 "오늘 기본보고 제출 여부"도 그 대상자 기준으로 다시
+    // 계산한다 — 이전 대상자의 완료 상태가 그대로 남아 있으면 안 된다(D3).
+    setDailySubmitted(computeDailySubmitted(recentReports, code, today))
     setShowRecipientPicker(false)
     if (participantCode) {
       try {
@@ -651,8 +686,18 @@ function CareApp() {
     setInitialChoice('similar')
     setLoading(false)
     if (shouldSkipSecondQuestion(entries)) {
-      await finalizeNoChangeFlow(entries, 1, entries.length > 0 ? 1 : 0)
+      // 확인·미확인 항목이 최초 발화에 이미 모두 있어 추가 질문 없이 바로 정리한다
+      // (설계 검토 결정 D2 — 정보가 충분하면 질문 0회도 허용).
+      noChangeStepsAskedRef.current = 0
+      await finalizeNoChangeFlow(entries, 0, 0)
+    } else if (shouldSkipFirstQuestion(entries)) {
+      // 1번 질문("평소와 같았던 내용을 말씀해주세요")은 방금 한 말을 그대로
+      // 되묻는 것이므로 건너뛰고 2번 질문(확인 못한 것)만 한다.
+      noChangeStepsAskedRef.current = 1
+      setNoChangeStep(2)
+      setScreen('noChangeQuestion')
     } else {
+      noChangeStepsAskedRef.current = 1
       setNoChangeStep(1)
       setScreen('noChangeQuestion')
     }
@@ -722,15 +767,16 @@ function CareApp() {
     // 정리한다 — newEntries(방금 계산한 값)를 그대로 쓴다. state(noChangeEntries)를
     // 곧바로 읽으면 아직 갱신 전 값을 볼 수 있어 로컬 변수를 직접 넘긴다.
     if (stopRequested || (text && detectStopRequest(text))) {
-      await finalizeNoChangeFlow(newEntries, noChangeStep, answered)
+      await finalizeNoChangeFlow(newEntries, noChangeStepsAskedRef.current, answered)
       return
     }
 
     if (noChangeStep === 1 && !shouldSkipSecondQuestion(newEntries)) {
+      noChangeStepsAskedRef.current += 1
       setNoChangeStep(2)
       return
     }
-    await finalizeNoChangeFlow(newEntries, noChangeStep, answered)
+    await finalizeNoChangeFlow(newEntries, noChangeStepsAskedRef.current, answered)
   }
 
   const runAiTurn = async (history: FollowupItem[], seedInput?: string, forceFinalize = false) => {
@@ -1221,7 +1267,10 @@ function CareApp() {
 
       {screen === 'noChangeQuestion' && (
         <div className="flex flex-col gap-4 pt-2">
-          <p className="text-teal-600 font-semibold text-sm text-center">평소와 비슷했어요 · 추가 확인 {noChangeStep}/2</p>
+          {/* 이제 1번 질문을 건너뛸 수 있어 "몇 번째/총 몇 번" 표시가 항상 맞다고
+              단정할 수 없다(예: 2번만 물으면 "2/2"가 되어 1번이 있었던 것처럼
+              보인다) — 고정 분모 없이 "추가 확인 중"으로만 안내한다. */}
+          <p className="text-teal-600 font-semibold text-sm text-center">평소와 비슷했어요 · 추가 확인</p>
           <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6">
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">
               {noChangeStep === 1 ? NO_CHANGE_QUESTION_1 : NO_CHANGE_QUESTION_2}

@@ -37,6 +37,13 @@ export async function openResearchKpiDetails(page: Page) {
   await page.getByText('실증 지표 자세히 보기 (연구용)').click()
 }
 
+/** 홈 화면에서 "대상자 변경"을 눌러 다른 배정 수급자로 전환한다. 배정된 수급자가
+ * 2명 이상일 때만 노출되는 보조 동작이다(예: C01 → A01/A02). */
+export async function switchRecipient(page: Page, code: string) {
+  await page.getByRole('button', { name: '대상자 변경' }).click()
+  await page.getByRole('button', { name: code, exact: true }).click()
+}
+
 /** 홈에서 "이야기 시작"(기본) 또는 "추가 상태변화 기록하기"를 누른다. "추가 상태변화
  * 기록하기"는 오늘 기본 돌봄보고를 먼저 제출해야만 홈 화면에 나타난다(시작 버튼과
  * 경쟁하지 않게 하기 위함) — 그 상태에서 호출해야 한다. 수급자는 CurrentRecipientCard가
