@@ -1,3 +1,12 @@
+## 2026-09-11 — 생성 인사·대기 영상 운영 반영
+
+사용자가 정지 이미지 대신 생성 영상 적용 후 즉시 푸시·배포하도록 명시적으로 요청했다. 원격 master 7621ca9를 기준으로 최신 대화/음성/저장 코드를 유지하고 아바타 미디어만 교체했다.
+
+- public/avatar-welcome.mp4, avatar-idle.mp4, avatar-poster.webp: 실제 Higgsfield 생성 후 보정한 5초·512p·무음 자산. 인사 1회 후 대기 반복. 원본 명찰 합성 복구 및 대기 손 자세/루프 경계 보정.
+- AvatarVideo.tsx: welcome→idle, muted/playsInline, autoplay/error/초기 재생 시간초과 poster, reduced-motion 우선 정지. AiAvatar의 기존 위치/크기 전환과 실제 앱 상태 표시 유지.
+- 기존 CareApp/speechOutput/API/DB/admin/shared 변경 없음. 실제 립싱크 없음.
+- npm run build 성공, npm test 117/117, lint 오류 없음(경고 4개). 사용자 요청에 따라 상세 오류/실기기 음성/운영 DB 검토는 배포 이후로 남긴다.
+
 # CHANGE_LOG — 60초 AI 돌봄보고 (CARE REPORT) 실증 파일럿
 
 ## 2026-09-11 — 사용자 제공 아바타와 이어지는 대화 화면
@@ -441,3 +450,4 @@ Supabase·Gemini 실계정 없이도 사용자가 실제 브라우저에서 전�
   별개로, 서버가 4번째 턴부터는 무조건 `needFollowup=false`로 마무리하고, AI가
   보고문 생성에 실패해도 원문 그대로를 담은 대체 보고문(fallback)을 만들어 흐름이
   끊기지 않게 했다.
+

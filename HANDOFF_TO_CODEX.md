@@ -1,3 +1,12 @@
+## 2026-09-11 — 생성 인사·대기 영상 운영 반영
+
+사용자가 정지 이미지 대신 생성 영상 적용 후 즉시 푸시·배포하도록 명시적으로 요청했다. 원격 master 7621ca9를 기준으로 최신 대화/음성/저장 코드를 유지하고 아바타 미디어만 교체했다.
+
+- public/avatar-welcome.mp4, avatar-idle.mp4, avatar-poster.webp: 실제 Higgsfield 생성 후 보정한 5초·512p·무음 자산. 인사 1회 후 대기 반복. 원본 명찰 합성 복구 및 대기 손 자세/루프 경계 보정.
+- AvatarVideo.tsx: welcome→idle, muted/playsInline, autoplay/error/초기 재생 시간초과 poster, reduced-motion 우선 정지. AiAvatar의 기존 위치/크기 전환과 실제 앱 상태 표시 유지.
+- 기존 CareApp/speechOutput/API/DB/admin/shared 변경 없음. 실제 립싱크 없음.
+- npm run build 성공, npm test 117/117, lint 오류 없음(경고 4개). 사용자 요청에 따라 상세 오류/실기기 음성/운영 DB 검토는 배포 이후로 남긴다.
+
 # HANDOFF_TO_CODEX.md — 이 워크트리 (elastic-curran-a97171)
 
 ## 2026-09-11 — 사용자 제공 아바타와 이어지는 대화 화면
@@ -313,3 +322,4 @@ Master가 바로 아래(1차) 분석에서 제안한 항목 중 2건을 승인�
   실제 배포까지 이어지는지는 별도 확인 필요.
 - 이 워크트리와 handoff 워크트리의 MASTER_CONTEXT.md/AGENTS.md를 하나로 합칠지는 사용자
   결정 대기 중(이번 세션은 의도적으로 분리해 충돌을 피했다).
+
