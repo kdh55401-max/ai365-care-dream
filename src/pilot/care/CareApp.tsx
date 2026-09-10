@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiClientError } from '../shared/api'
 import { useContinuousVoice } from './useContinuousVoice'
 import { TopCallBar, SafetyFooter, PrivacyNotice } from '../shared/SafetyNotice'
+import { AiAvatar, AVATAR_STATE_LABEL, type AvatarState } from './AiAvatar'
+import { ConversationLog, type ConversationTurn } from './ConversationLog'
+import { speakKorean, cancelSpeech, isSpeechSynthesisSupported } from './speechOutput'
 import type { AiTurnResult, CareReportDetail, CareReportListItem, DomainEntry, FollowupItem, StructuredReport } from '../shared/types'
 import { DOMAIN_LABELS } from '../shared/types'
 import type { CareRepo } from '../shared/careRepo'
@@ -19,6 +22,7 @@ import {
   NO_CHANGE_QUESTION_2,
   shouldSkipFirstQuestion,
   shouldSkipSecondQuestion,
+  splitDomainsByStatus,
 } from '../../../shared/noChangeEngine'
 import { STANDARD_SCENARIOS } from '../../../shared/statsCalc'
 import { detectEmergencyPhrase } from '../../../shared/emergency'
@@ -85,13 +89,6 @@ function MicIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor" />
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -368,6 +365,12 @@ function CareApp() {
   const noChangeStepsAskedRef = useRef(0)
   // 응급 화면으로 넘어오기 직전 화면(뒤로가기용) — 정보 손실 없이 돌아갈 수 있게.
   const [emergencyDraftText, setEmergencyDraftText] = useState('')
+  // 질문 음성 출력·요약 낭독 켬/끔. 지원 브라우저에서는 기본으로 켜 둔다(음성
+  // 중심 경험이 목표) — 다만 이 환경(자동화 브라우저)에서 실제 소리가 나는지는
+  // 검증하지 못했다는 점을 완료 보고에 그대로 남긴다.
+  const [audioEnabled, setAudioEnabled] = useState(() => isSpeechSynthesisSupported())
+  // 같은 텍스트를 리렌더마다 반복해서 읽지 않기 위한 마지막 발화 텍스트 기록.
+  const lastSpokenTextRef = useRef<string | null>(null)
 
   const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}` : null
 
@@ -503,6 +506,31 @@ function CareApp() {
   useEffect(() => {
     if (answerVoice.state === 'idle' && answerVoice.error) setError(answerVoice.error)
   }, [answerVoice.state, answerVoice.error])
+
+  // 질문 음성 출력: 화면에 새 질문(또는 대화 시작 안내)이 나타날 때 한 번만 읽는다.
+  // rawInput 등 타이핑 중인 값에는 반응하지 않는다(같은 화면에 머무는 동안 반복
+  // 낭독하지 않기 위해 screen/currentQuestion/noChangeStep에만 의존한다).
+  useEffect(() => {
+    if (!audioEnabled) return
+    let textToSpeak: string | null = null
+    if (screen === 'record' && !activeScenarioId) {
+      textToSpeak = `오늘 ${recipientCode} 어르신은 어떠셨어요? 돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만 확인할게요.`
+    } else if (screen === 'question' && currentQuestion) {
+      textToSpeak = currentQuestion.question
+    } else if (screen === 'noChangeQuestion') {
+      textToSpeak = noChangeStep === 1 ? NO_CHANGE_QUESTION_1 : NO_CHANGE_QUESTION_2
+    }
+    if (!textToSpeak || textToSpeak === lastSpokenTextRef.current) return
+    lastSpokenTextRef.current = textToSpeak
+    speakKorean(textToSpeak)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, currentQuestion, noChangeStep, audioEnabled, activeScenarioId])
+
+  // 화면을 벗어나거나 언마운트되면 남아 있는 발화를 멈춘다(뒤로 가기·제출 후에도
+  // 이전 질문을 계속 읽고 있으면 안 되므로).
+  useEffect(() => {
+    return () => cancelSpeech()
+  }, [screen])
 
   const handleLogin = async (code: string, pin: string) => {
     await repo.login(code, pin)
@@ -989,7 +1017,15 @@ function CareApp() {
   // 이어서), 듣고 있거나 재연결 대기 중이면 "말하기 완료"와 동일하게 마무리한다.
   const handleVoiceToggle = () => {
     setError(null)
-    if (voice.state === 'listening' || voice.state === 'reconnecting') {
+    // "이어서 말하기"(reconnecting)는 문구 그대로 다시 듣기를 재개해야 한다 —
+    // 여기서 finishVoiceInput()을 부르면 라벨은 "이어서"라면서 실제로는 그 자리에서
+    // 끝내버리는 문구·동작 불일치가 생긴다(발견해 수정). 완료는 별도의 "말하기
+    // 완료" 링크로만 한다.
+    if (voice.state === 'reconnecting') {
+      voice.resume()
+      return
+    }
+    if (voice.state === 'listening') {
       finishVoiceInput()
       return
     }
@@ -1001,6 +1037,49 @@ function CareApp() {
   // rawInput에 반영한다. 완료 후에는 같은 내용을 다시 타이핑할 필요가 없다.
   const finishVoiceInput = () => {
     voice.finish((finalText) => setRawInput(finalText))
+  }
+
+  // 화면 상단 아바타의 상태를 실제 앱 상태에서 그대로 계산한다 — 새 상태를
+  // 만들지 않고, 듣는 중/처리 중/질문/최종 확인/전송 중/완료/오류를 기존
+  // voice.state·loading·screen·error에 매핑만 한다.
+  const getAvatarState = (): AvatarState => {
+    if (error) return 'error'
+    if (voice.state === 'listening' || answerVoice.state === 'listening') return 'listening'
+    if (loading) return screen === 'reportReview' ? 'sending' : 'processing'
+    if (screen === 'reportReview') return 'reviewing'
+    if (screen === 'question' || screen === 'noChangeQuestion') return 'question'
+    if (screen === 'submitted') return 'done'
+    return 'idle'
+  }
+
+  // 기본 돌봄보고 대화창에 실제로 오간 발화만 순서대로 담는다 — 예시나 준비된
+  // 대화를 넣지 않는다. rawInput은 실제로 제출(screen이 record를 벗어남)된
+  // 뒤에만 "말한 것"으로 표시한다(입력 중인 초안을 대화로 보여주지 않기 위함).
+  const buildQuestionTurns = (): ConversationTurn[] => {
+    const turns: ConversationTurn[] = [
+      { role: 'ai', text: `오늘 ${recipientCode} 어르신은 어떠셨어요?\n돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만 확인할게요.` },
+    ]
+    if (rawInput.trim()) turns.push({ role: 'user', text: rawInput.trim() })
+    for (const h of followupHistory) {
+      turns.push({ role: 'ai', text: h.question })
+      turns.push({ role: 'user', text: h.answer })
+    }
+    return turns
+  }
+
+  // "평소와 비슷했어요" 흐름의 실제 문답만 담는다(noChangeQaHistoryRef는 화면
+  // 렌더와 무관하게 handleNoChangeAnswer에서 그때그때 채워지는 참조값이라, 여기서는
+  // 매 렌더마다 그 시점의 최신 값을 그대로 읽기만 한다 — 별도 상태로 복제하지 않음).
+  const buildNoChangeTurns = (): ConversationTurn[] => {
+    const turns: ConversationTurn[] = [
+      { role: 'ai', text: `오늘 ${recipientCode} 어르신은 어떠셨어요?\n돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만 확인할게요.` },
+    ]
+    if (rawInput.trim()) turns.push({ role: 'user', text: rawInput.trim() })
+    for (const h of noChangeQaHistoryRef.current) {
+      turns.push({ role: 'ai', text: h.question })
+      turns.push({ role: 'user', text: h.answer })
+    }
+    return turns
   }
 
   if (phase === 'loading') {
@@ -1016,9 +1095,23 @@ function CareApp() {
     <Shell demo={demo} onResetDemo={handleResetDemo}>
       {screen === 'home' && (
         <div className="flex flex-col gap-5 pt-2">
-          <div className="text-center">
+          <div className="flex items-center justify-center gap-2">
             <p className="text-teal-600 font-bold text-lg">{participantCode}</p>
-            <p className="text-slate-500 text-sm mt-0.5">{today}</p>
+            <span className="text-slate-300">·</span>
+            <p className="text-slate-500 text-sm">{today}</p>
+            {isSpeechSynthesisSupported() && (
+              <button
+                onClick={() => {
+                  if (audioEnabled) cancelSpeech()
+                  setAudioEnabled((v) => !v)
+                }}
+                aria-label={audioEnabled ? '음성 안내 끄기' : '음성 안내 켜기'}
+                title={audioEnabled ? '음성 안내 끄기' : '음성 안내 켜기'}
+                className="ml-1 w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 text-lg"
+              >
+                {audioEnabled ? '🔊' : '🔇'}
+              </button>
+            )}
           </div>
 
           <CurrentRecipientCard
@@ -1029,17 +1122,9 @@ function CareApp() {
             onSelect={selectRecipient}
           />
 
-          {/* 오늘 기록 상태는 참고 정보로 작게 보여준다 — 화면의 중심은 "이야기
-              시작"이지, 아직 작성하지 않았다는 안내가 아니다. */}
-          {recipientCodes.length > 0 && (
-            <div
-              className={`self-center flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold ${
-                dailySubmitted ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {dailySubmitted && <CheckIcon className="w-4 h-4" />}
-              {dailySubmitted ? '오늘 돌봄기록을 남겼어요' : '오늘 돌봄을 함께 기록해요'}
-            </div>
+          {/* 오늘 기록 상태는 작은 한 줄로만 — 화면의 중심은 "이야기 시작"이다. */}
+          {recipientCodes.length > 0 && !dailySubmitted && (
+            <p className="self-center text-slate-400 text-xs font-semibold">오늘 돌봄을 함께 기록해요</p>
           )}
 
           {error && (
@@ -1060,42 +1145,44 @@ function CareApp() {
                   오늘 {recipientCode} 어르신은 어떠셨어요?
                 </h2>
                 <p className="text-slate-500 text-base mt-1.5 leading-relaxed">
-                  평소와 같아도 괜찮아요.
+                  돌봄 이야기를 편하게 말씀해 주세요.
                   <br />
-                  어르신의 상태나 돌보면서 어려웠던 점을 편하게 말씀해주세요.
+                  필요한 것만 확인할게요.
                 </p>
               </div>
+              {/* 아바타(시각) + "이야기 시작"(글자)을 하나의 버튼 안에 함께 둔다 —
+                  아바타만 보고 어떻게 조작하는지 추측하게 하지 않기 위함. */}
               <button
                 onClick={() => void startReport('daily')}
                 disabled={loading || !recipientCode}
                 aria-label="이야기 시작"
-                className="w-40 h-40 rounded-full text-white flex flex-col items-center justify-center gap-2
-                           bg-gradient-to-b from-teal-500 to-slate-900 shadow-xl transition
-                           hover:scale-105 hover:brightness-110 active:scale-100
-                           disabled:opacity-50 disabled:hover:scale-100"
+                className="flex flex-col items-center gap-2 transition hover:scale-[1.03] active:scale-100 disabled:opacity-50 disabled:hover:scale-100"
               >
-                <MicIcon className="w-9 h-9" />
-                <span className="text-lg font-bold">{loading ? '준비 중...' : '이야기 시작'}</span>
+                <AiAvatar state={loading ? 'processing' : 'idle'} size="lg" />
+                <span className="text-lg font-bold text-slate-900">{loading ? '준비 중...' : '이야기 시작'}</span>
               </button>
               <SecondaryButton
                 onClick={() => void startReport('daily', false)}
                 disabled={loading || !recipientCode}
-                className="max-w-[240px]"
+                className="max-w-[220px] min-h-[44px] py-2 text-base"
               >
                 글로 입력하기
               </SecondaryButton>
-              <p className="text-slate-400 text-xs text-center leading-relaxed">
-                목표 시간은 60초예요. 더 걸려도 괜찮으니 편하게 말씀해주세요.
-              </p>
             </div>
           )}
 
           {dailySubmitted && (
-            <SecondaryButton onClick={() => void startReport('additional')} disabled={loading || !recipientCode}>
-              추가 상태변화 기록하기
-            </SecondaryButton>
+            <div className="flex flex-col items-center gap-3 mt-1">
+              <AiAvatar state="done" size="lg" />
+              <p className="text-slate-500 text-sm text-center">오늘 돌봄기록을 남겼어요</p>
+              <SecondaryButton onClick={() => void startReport('additional')} disabled={loading || !recipientCode}>
+                추가 상태변화 기록하기
+              </SecondaryButton>
+            </div>
           )}
-          <SecondaryButton onClick={() => setScreen('history')}>내가 남긴 돌봄기록</SecondaryButton>
+          <SecondaryButton onClick={() => setScreen('history')} className="text-base py-2.5 min-h-[44px]">
+            내가 남긴 돌봄기록
+          </SecondaryButton>
           {/* isDemoMode()는 현재 URL의 query만 본다 — 이 내부 이동 링크가 query 없이
               /care/scenario로만 가면 데모 모드가 풀려 일반 로그인 화면이 뜬다
               (DEP-01). 지금 데모 중일 때만 demo=1을 이어 붙인다. */}
@@ -1182,6 +1269,12 @@ function CareApp() {
 
       {screen === 'record' && (
         <div className="flex flex-col gap-4 pt-2">
+          {/* 홈 화면의 큰 아바타가 작아져 대화 내내 상단에 남는다 — 같은 존재와
+              계속 이야기하고 있다는 연속성을 준다. */}
+          <div className="flex flex-col items-center gap-1">
+            <AiAvatar state={getAvatarState()} size="sm" />
+            <p className="text-slate-400 text-xs font-semibold">{AVATAR_STATE_LABEL[getAvatarState()]}</p>
+          </div>
           <p className="text-teal-600 font-semibold text-sm text-center">
             {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode}
           </p>
@@ -1212,14 +1305,14 @@ function CareApp() {
                   {voice.state === 'listening' ? '듣고 있어요' : voice.state === 'reconnecting' ? '이어서 말하기' : '눌러서 말하기'}
                 </span>
               </button>
-              {voice.state === 'listening' && (
+              {(voice.state === 'listening' || voice.state === 'reconnecting') && (
                 <button onClick={finishVoiceInput} className="text-teal-700 text-sm font-bold underline">
                   말하기 완료
                 </button>
               )}
               {voice.state === 'reconnecting' && (
                 <p className="text-amber-600 text-sm font-bold text-center leading-relaxed">
-                  마이크가 잠시 멈췄어요. 이어서 말씀해주세요.
+                  마이크가 잠시 멈췄어요. 원 버튼을 다시 누르면 이어서 들을게요.
                   <br />
                   지금까지 하신 말씀은 그대로 남아 있어요.
                 </p>
@@ -1273,6 +1366,11 @@ function CareApp() {
 
       {screen === 'noChangeQuestion' && (
         <div className="flex flex-col gap-4 pt-2">
+          <div className="flex flex-col items-center gap-1">
+            <AiAvatar state={getAvatarState()} size="sm" />
+            <p className="text-slate-400 text-xs font-semibold">{AVATAR_STATE_LABEL[getAvatarState()]}</p>
+          </div>
+          <ConversationLog turns={buildNoChangeTurns()} />
           {/* 이제 1번 질문을 건너뛸 수 있어 "몇 번째/총 몇 번" 표시가 항상 맞다고
               단정할 수 없다(예: 2번만 물으면 "2/2"가 되어 1번이 있었던 것처럼
               보인다) — 고정 분모 없이 "추가 확인 중"으로만 안내한다. */}
@@ -1321,14 +1419,19 @@ function CareApp() {
           안전고지만 남고 대화 영역 전체가 비어 보인다("흰 화면") — 반드시 로딩
           안내를 보여준다. */}
       {screen === 'question' && !currentQuestion && (
-        <div className="flex flex-col items-center gap-4 pt-16 flex-1 justify-center">
-          <SpinnerIcon className="w-8 h-8 text-teal-600" />
+        <div className="flex flex-col items-center gap-3 pt-16 flex-1 justify-center">
+          <AiAvatar state="processing" size="sm" />
           <p className="text-slate-500 text-base">말씀하신 내용을 확인하고 있어요</p>
         </div>
       )}
 
       {screen === 'question' && currentQuestion && (
         <div className="flex flex-col gap-4 pt-2">
+          <div className="flex flex-col items-center gap-1">
+            <AiAvatar state={getAvatarState()} size="sm" />
+            <p className="text-slate-400 text-xs font-semibold">{AVATAR_STATE_LABEL[getAvatarState()]}</p>
+          </div>
+          <ConversationLog turns={buildQuestionTurns()} />
           <p className="text-teal-600 font-semibold text-sm text-center">추가 확인 {followupHistory.length + 1}/3 · {recipientCode}</p>
           <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6">
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">{currentQuestion.question}</p>
@@ -1405,7 +1508,11 @@ function CareApp() {
               <div className="flex flex-col items-center gap-2">
                 <button
                   onClick={() => {
-                    if (answerVoice.state === 'listening' || answerVoice.state === 'reconnecting') {
+                    // 위 record 화면의 마이크 버튼과 같은 이유로, reconnecting일 때는
+                    // 재개(resume)한다 — finish로 끝내버리지 않는다.
+                    if (answerVoice.state === 'reconnecting') {
+                      answerVoice.resume()
+                    } else if (answerVoice.state === 'listening') {
                       answerVoice.finish((finalText) => setAnswerText(finalText))
                     } else {
                       answerVoice.start(answerText)
@@ -1529,16 +1636,50 @@ function CareApp() {
 
       {screen === 'reportReview' && (
         <div className="flex flex-col gap-4 pt-2">
+          <div className="flex flex-col items-center gap-1">
+            <AiAvatar state={getAvatarState()} size="sm" />
+            <p className="text-slate-400 text-xs font-semibold">{AVATAR_STATE_LABEL[getAvatarState()]}</p>
+          </div>
           <p className="text-teal-600 font-semibold text-sm text-center">
             {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode} · 아직 보내지 않았어요
           </p>
           <h2 className="text-xl font-bold text-slate-900 text-center">보고 내용을 확인해 주세요</h2>
           <p className="text-slate-500 text-sm text-center">수정이 필요하면 바로 고칠 수 있습니다.</p>
-          {noChangeEntries.length > 0 && (
-            <p className="text-slate-400 text-xs text-center">
-              확인된 영역: {noChangeEntries.map((e) => DOMAIN_LABELS[e.domain]).join(', ')}
-            </p>
+          {isSpeechSynthesisSupported() && (
+            <button
+              onClick={() => {
+                const summary = FIELD_LABELS.filter((f) => f.key !== 'caregiverNote')
+                  .map(({ key, label }) => `${label}: ${finalReport[key]?.trim() || '확인되지 않음'}`)
+                  .join('. ')
+                speakKorean(summary)
+              }}
+              className="self-center text-teal-700 text-sm font-bold underline"
+            >
+              🔊 요약 듣기
+            </button>
           )}
+          {/* "확인된 영역"은 실제로 평소와 같음/변화 있음으로 판단된 영역만이다 —
+              관찰하지 못함(not_observed)·불확실(uncertain)까지 여기 섞으면 "아직
+              모른다"는 사실이 "확인 완료"로 잘못 보인다(발견해 수정). 그 둘은
+              별도 줄로, 다른 문구로 보여준다. */}
+          {noChangeEntries.length > 0 &&
+            (() => {
+              const { same, changed, notObserved, uncertain } = splitDomainsByStatus(noChangeEntries)
+              const confirmed = [...same, ...changed]
+              const unclear = [...notObserved, ...uncertain]
+              return (
+                <div className="text-center">
+                  {confirmed.length > 0 && (
+                    <p className="text-slate-400 text-xs">확인된 영역: {confirmed.map((e) => DOMAIN_LABELS[e.domain]).join(', ')}</p>
+                  )}
+                  {unclear.length > 0 && (
+                    <p className="text-amber-600 text-xs mt-0.5">
+                      아직 확인 못함(관찰하지 못함·불확실): {unclear.map((e) => DOMAIN_LABELS[e.domain]).join(', ')}
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
           {FIELD_LABELS.map(({ key, label }) => (
             <div key={key} className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
               <label className="block font-bold text-slate-900 text-base mb-1">{label}</label>
@@ -1571,9 +1712,7 @@ function CareApp() {
 
       {screen === 'submitted' && (
         <div className="flex flex-col items-center gap-6 pt-16 flex-1 justify-center">
-          <div className="w-20 h-20 rounded-full bg-teal-600 flex items-center justify-center">
-            <CheckIcon className="w-10 h-10 text-white" />
-          </div>
+          <AiAvatar state="done" size="lg" />
           {!activeScenarioId && <p className="text-teal-600 font-semibold text-sm text-center">{recipientCode}</p>}
           <p className="text-2xl font-bold text-slate-900 text-center">
             {activeScenarioId
