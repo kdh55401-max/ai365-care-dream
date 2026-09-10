@@ -5,6 +5,89 @@
 
 ---
 
+## 2026-09-10 (2차) — CD-01/CD-02 통합 + 관리자 응답 연결: Codex 독립 검증 요청
+
+### 목적과 기대 동작
+Master가 바로 아래(1차) 분석에서 제안한 항목 중 2건을 승인해 구현했다. 코드를 직접
+검증하고, 범위 내(review_status/review_note 공개 로직, CD-01/CD-02 관련 코드)에서
+발견한 오류는 직접 고쳐도 좋다 — 사업 방향을 바꾸는 제안이나 이번 제외 범위(아래 참고)
+확장은 별도로 표시해 달라.
+
+### 기준 브랜치·커밋
+- 브랜치: `claude/caregiver-screen-redesign-f5fc74`, 이 문서 작성 시점 HEAD `1d9373f`.
+- 이 커밋은 `origin/master`(당시 `0c8410a`)에 아직 push/병합하지 않았다 — 이 인계의
+  Codex 검증을 거친 뒤에만 병합·배포를 진행한다(사용자 지시).
+- 관련 커밋 4개(오래된 순): `f5de153`(1차 분석 문서만, 코드 없음) → `13e7801`(CD-01/
+  CD-02를 `ai365-care-dream-handoff-4a85b3`의 `2425a4c`/`bc7e36d`에서 그대로 병합 —
+  이 두 커밋 자체는 그 워크트리에서 이미 검증받았으므로 재검증 우선순위 낮음) →
+  `1d9373f`(관리자 응답 연결 신규 구현 — 재검증 우선순위 높음).
+
+### 수정 파일과 핵심 변경 내용 (`1d9373f`만, 신규 구현)
+- `shared/careTypes.ts`: `review_note_visible_to_caregiver: boolean` 필드 추가(기본
+  false), `normalizeReportRecord`에서 옛 기록은 항상 false로 정규화.
+- `db/schema.sql` + `db/migrations/2026-09-10-review-note-visibility.sql`: 위 컬럼을
+  `not null default false`로 추가하는 멱등 마이그레이션(관리자가 Supabase에 직접 적용
+  필요, 아직 미적용).
+- `api/admin/reports.ts`(`handleReviewStage`): 이 컬럼을 명시적 select/기존 update에
+  넣지 않고 **별도 best-effort update로 분리**했다 — 마이그레이션 미적용 상태에서도
+  검토(승인/반려) 저장 자체가 깨지지 않게 하려는 의도(`ai_fallback_used`와 동일 패턴).
+  **Codex 확인 요청**: 이 분리가 실제로 안전한지, 특히 별도 update가 실패했을 때
+  `finalReport`가 여전히 정확한(방금 저장된 review_status 등을 포함한) 값인지 확인해
+  달라.
+- `src/pilot/admin/AdminApp.tsx`: 반려 사유 textarea 옆에 "요양보호사에게 보이기"
+  체크박스(기본 unchecked) 추가, 과거 검토 표시부에 공개/비공개 배지 추가.
+- `src/pilot/care/CareApp.tsx`: `history`(목록) 화면에 상태 한 줄, `historyDetail`
+  화면에 "관리자 확인" 카드 추가 — pending/승인·응답없음/반려·응답있음 3가지 렌더링
+  분기. **Codex 확인 요청**: 문구가 "조치 완료"/"돌봄 반영 완료"처럼 과대 해석되지
+  않는지, `reviewed_at`을 열람/현장반영 시각으로 오인할 수 있는 표현이 없는지 재확인.
+- `src/pilot/demo/demoCareRepo.ts`(`getReport`): 참여자 소유권 검사가 없던 것을
+  발견해 추가(다른 참여자 보고 id로 조회 시 404). **Codex 확인 요청**: 같은 파일의
+  `patchReport`에는 이 검사가 없다(오늘 범위 밖으로 남겨둠) — draft 상태에서만
+  작동하고 현재 UI에서 다른 참여자의 draft id를 얻을 방법이 없어 보이지만, 독립적으로
+  재확인해 달라.
+- `api/care/reports.ts`: `CARE_LIST_COLUMNS`에 `review_status` 추가(목록 배지용,
+  기존 컬럼이라 마이그레이션 이슈 없음).
+- `src/pilot/shared/adminRepo.ts`, `src/pilot/demo/demoAdminRepo.ts`: 위 필드를
+  `ReviewReportInput`/`reviewReport`에 배선.
+
+### 직접 수행한 테스트와 결과
+- `npx tsc -b` 0 오류, `npx vitest run` 113/113(신규 4건: 공개 여부 게이팅 2건,
+  소유권 격리 1건, 기존 충돌처리 테스트 확장 1건 — `src/pilot/demo/demoReview.test.ts`),
+  `npx oxlint` 기존 경고 2건만, `npx vite build` 성공.
+- `npx playwright test`(mobile-390/360, 42개): 41/42 통과. 실패 1건
+  (`no-change-and-scenario.spec.ts`의 "정상 상태 구체화", mobile-390)은 단독 재실행 시
+  23.3초에 통과 — 부하로 인한 타임아웃으로 판단(관련 코드를 이번에 건드리지 않음).
+- 데모 브라우저(C01/A02, C01/A01)로 직접 클릭 재현: CD-01 재현 문구 → 수분이 별도
+  문장으로 분리되고 조치/센터확인이 "미응답"으로 남음 확인. A02 제출 후 A01 시작 버튼
+  유지 확인(CD-02). 반려+공개체크 → 요양보호사 화면에 사유+응답 시각 노출 확인.
+  승인+체크 안 함 → "승인됨"만 보이고 내용 없음 확인.
+- **실행하지 않음**: 실제 Gemini/Supabase 경로(자격증명 없음), 실기기 음성/키보드,
+  Vercel 실제 배포 확인, 다른 참여자 격리를 실제 두 브라우저 프로필로 재현(대신
+  vitest로 저장소 레벨에서 확인).
+
+### 확인할 화면·재현 순서·시험 데이터 조건
+1. `/care?demo=1` 데모 초기화 → `c1`/`6003`로 로그인(C01, A01·A02 배정) → "글로
+   입력하기" → "식사, 이동, 배설 모두 평소와 같아요. 수분 섭취는 관찰하지 못했어요."
+   입력 → 제출까지 진행 → 최종 확인 화면에서 수분이 분리돼 있는지 확인.
+2. 같은 브라우저에서 대상자를 A01로 바꿔 시작 버튼이 여전히 있는지 확인(CD-02).
+3. `/admin?demo=1`(`demo1234`)로 로그인 → 방금 A02 보고를 열어 반려 사유를 적고
+   "요양보호사에게 보이기"를 체크한 뒤 반려 확정.
+4. `/care?demo=1`로 돌아가 "내가 남긴 돌봄기록" → 해당 보고를 열어 반려 사유와
+   응답 시각이 보이는지 확인.
+5. 다른 보고를 하나 더 만들어 이번엔 체크박스를 누르지 않고 승인 → 요양보호사 화면에
+   "관리자 확인: 승인됨"만 보이고 본문은 없는지 확인.
+
+### 남아 있는 불확실성과 Codex에게 요청하는 점검
+- 위 "Codex 확인 요청" 3곳(best-effort update 안전성, 문구 재확인, patchReport 소유권
+  검사 범위)을 우선 봐 달라.
+- `ai365-care-dream-handoff-4a85b3`의 미커밋 변경(D6 라벨, `careReportAi.ts` 프롬프트
+  실험)은 이번 병합에 포함하지 않았다 — 그 세션이 별도로 커밋한 뒤 다시 대조가
+  필요하다.
+- 통과 판정을 주면 이 브랜치를 `origin/master`로 병합·푸시하고 실제 반영 상태를
+  확인해 보고하겠다. 반영/보류를 지적별로 표시해 돌려주면 그대로 처리한다.
+
+---
+
 ## 2026-09-10 — 음성 UX 18개 항목 분석 후 권장 최소 구현 3건 (코드 변경 없음, 제안만)
 
 ### 목적과 기대 동작
