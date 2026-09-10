@@ -46,7 +46,11 @@ function RoleGateway() {
 
   const handleSelect = (role: RoleDef) => {
     rememberRole(role.id)
-    navigate(role.path)
+    // 데모(?demo=1)로 들어온 방문자가 역할을 고른 뒤에도 데모 모드가 풀리지
+    // 않도록 현재 쿼리스트링을 그대로 이어 붙인다 — 그대로 두면 각 역할
+    // 화면(CareApp/AdminApp)의 isDemoMode()가 false로 떨어져 운영 로그인
+    // 화면으로 전환된다.
+    navigate(`${role.path}${window.location.search}`)
   }
 
   return (
