@@ -30,6 +30,8 @@ export function speakKorean(
     utterance.onstart = () => handlers?.onStart?.()
     utterance.onend = () => handlers?.onEnd?.()
     utterance.onerror = (e) => handlers?.onError?.(e.error || '알 수 없는 오류')
+    // 현재 화면의 최신 요청만 읽는다. 요약 연속 클릭도 대기열에 쌓지 않는다.
+    window.speechSynthesis.cancel()
     window.speechSynthesis.speak(utterance)
   } catch (e) {
     handlers?.onError?.(e instanceof Error ? e.message : String(e))

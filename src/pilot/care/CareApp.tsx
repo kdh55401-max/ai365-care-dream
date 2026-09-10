@@ -369,8 +369,6 @@ function CareApp() {
   // 중심 경험이 목표) — 다만 이 환경(자동화 브라우저)에서 실제 소리가 나는지는
   // 검증하지 못했다는 점을 완료 보고에 그대로 남긴다.
   const [audioEnabled, setAudioEnabled] = useState(() => isSpeechSynthesisSupported())
-  // 같은 텍스트를 리렌더마다 반복해서 읽지 않기 위한 마지막 발화 텍스트 기록.
-  const lastSpokenTextRef = useRef<string | null>(null)
 
   const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}` : null
 
@@ -507,24 +505,25 @@ function CareApp() {
     if (answerVoice.state === 'idle' && answerVoice.error) setError(answerVoice.error)
   }, [answerVoice.state, answerVoice.error])
 
-  // 질문 음성 출력: 화면에 새 질문(또는 대화 시작 안내)이 나타날 때 한 번만 읽는다.
-  // rawInput 등 타이핑 중인 값에는 반응하지 않는다(같은 화면에 머무는 동안 반복
-  // 낭독하지 않기 위해 screen/currentQuestion/noChangeStep에만 의존한다).
+  // 객체 재생성이 아니라 실제 질문/화면의 변경에만 반응한다. 정리 함수가 이전
+  // 발화를 취소하므로 같은 화면의 다음 질문과 재진입도 각각 올바르게 읽는다.
+  const questionSpeechText = currentQuestion?.question ?? null
   useEffect(() => {
-    if (!audioEnabled) return
+    if (!audioEnabled || phase !== 'app') return
     let textToSpeak: string | null = null
-    if (screen === 'record' && !activeScenarioId) {
+    if (screen === 'record' && !activeScenarioId && voice.state === 'idle') {
       textToSpeak = `오늘 ${recipientCode} 어르신은 어떠셨어요? 돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만 확인할게요.`
-    } else if (screen === 'question' && currentQuestion) {
-      textToSpeak = currentQuestion.question
+    } else if (screen === 'question' && answerVoice.state === 'idle') {
+      textToSpeak = questionSpeechText
     } else if (screen === 'noChangeQuestion') {
       textToSpeak = noChangeStep === 1 ? NO_CHANGE_QUESTION_1 : NO_CHANGE_QUESTION_2
     }
-    if (!textToSpeak || textToSpeak === lastSpokenTextRef.current) return
-    lastSpokenTextRef.current = textToSpeak
-    speakKorean(textToSpeak)
+    if (textToSpeak) speakKorean(textToSpeak)
+    return () => cancelSpeech()
+    // 음성 종료/타이핑으로 같은 질문을 다시 읽지 않는다. 마이크 시작 동작은
+    // 아래 핸들러에서 먼저 낭독을 취소한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, currentQuestion, noChangeStep, audioEnabled, activeScenarioId])
+  }, [phase, screen, questionSpeechText, followupHistory.length, noChangeStep, audioEnabled, activeScenarioId, recipientCode, reportId])
 
   // 화면을 벗어나거나 언마운트되면 남아 있는 발화를 멈춘다(뒤로 가기·제출 후에도
   // 이전 질문을 계속 읽고 있으면 안 되므로).
@@ -626,6 +625,7 @@ function CareApp() {
       // 진행할 수 있다.
       if (type === 'daily' && !res.resumed && voiceAutoStart && voice.isSupported) {
         setInputMethod('voice')
+        cancelSpeech()
         voice.start()
       }
     } catch {
@@ -856,6 +856,8 @@ function CareApp() {
   // 멈춰도 신호는 남게 하되, 이것 자체를 "관리자 알림 도착"으로 표현하지 않는다 —
   // 저장만 하고, 제출(submit) 전까지는 "미제출·확인 전 주의 신호"로만 다룬다.
   const enterEmergencyScreen = async (text: string) => {
+    voice.cancel()
+    answerVoice.cancel()
     setEmergencyDraftText(text)
     if (reportId) {
       await repo.patchReport({ id: reportId, rawInput: text, inputMethod, emergencyFlagged: true }).catch(() => undefined)
@@ -1017,6 +1019,7 @@ function CareApp() {
   // 이어서), 듣고 있거나 재연결 대기 중이면 "말하기 완료"와 동일하게 마무리한다.
   const handleVoiceToggle = () => {
     setError(null)
+    cancelSpeech()
     // "이어서 말하기"(reconnecting)는 문구 그대로 다시 듣기를 재개해야 한다 —
     // 여기서 finishVoiceInput()을 부르면 라벨은 "이어서"라면서 실제로는 그 자리에서
     // 끝내버리는 문구·동작 불일치가 생긴다(발견해 수정). 완료는 별도의 "말하기
@@ -1044,7 +1047,8 @@ function CareApp() {
   // voice.state·loading·screen·error에 매핑만 한다.
   const getAvatarState = (): AvatarState => {
     if (error) return 'error'
-    if (voice.state === 'listening' || answerVoice.state === 'listening') return 'listening'
+    if ((screen === 'record' && voice.state === 'listening') ||
+        (screen === 'question' && answerVoice.state === 'listening')) return 'listening'
     if (loading) return screen === 'reportReview' ? 'sending' : 'processing'
     if (screen === 'reportReview') return 'reviewing'
     if (screen === 'question' || screen === 'noChangeQuestion') return 'question'
@@ -1056,9 +1060,7 @@ function CareApp() {
   // 대화를 넣지 않는다. rawInput은 실제로 제출(screen이 record를 벗어남)된
   // 뒤에만 "말한 것"으로 표시한다(입력 중인 초안을 대화로 보여주지 않기 위함).
   const buildQuestionTurns = (): ConversationTurn[] => {
-    const turns: ConversationTurn[] = [
-      { role: 'ai', text: `오늘 ${recipientCode} 어르신은 어떠셨어요?\n돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만 확인할게요.` },
-    ]
+    const turns: ConversationTurn[] = []
     if (rawInput.trim()) turns.push({ role: 'user', text: rawInput.trim() })
     for (const h of followupHistory) {
       turns.push({ role: 'ai', text: h.question })
@@ -1071,9 +1073,7 @@ function CareApp() {
   // 렌더와 무관하게 handleNoChangeAnswer에서 그때그때 채워지는 참조값이라, 여기서는
   // 매 렌더마다 그 시점의 최신 값을 그대로 읽기만 한다 — 별도 상태로 복제하지 않음).
   const buildNoChangeTurns = (): ConversationTurn[] => {
-    const turns: ConversationTurn[] = [
-      { role: 'ai', text: `오늘 ${recipientCode} 어르신은 어떠셨어요?\n돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만 확인할게요.` },
-    ]
+    const turns: ConversationTurn[] = []
     if (rawInput.trim()) turns.push({ role: 'user', text: rawInput.trim() })
     for (const h of noChangeQaHistoryRef.current) {
       turns.push({ role: 'ai', text: h.question })
@@ -1508,6 +1508,7 @@ function CareApp() {
               <div className="flex flex-col items-center gap-2">
                 <button
                   onClick={() => {
+                    cancelSpeech()
                     // 위 record 화면의 마이크 버튼과 같은 이유로, reconnecting일 때는
                     // 재개(resume)한다 — finish로 끝내버리지 않는다.
                     if (answerVoice.state === 'reconnecting') {
