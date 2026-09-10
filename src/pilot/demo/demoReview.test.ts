@@ -95,6 +95,66 @@ describe('demoAdminRepo.reviewReport — 충돌 처리 계약 (모의)', () => {
     expect(secondReview.review_history[0].review_status).toBe('approved')
   })
 
+  it('요양보호사에게 공개(review_note_visible_to_caregiver)로 표시하지 않으면 review_note는 내부용으로만 남는다', async () => {
+    const { demoCareRepo } = await import('./demoCareRepo')
+    const { demoAdminRepo } = await import('./demoAdminRepo')
+
+    await demoCareRepo.login('C04', '1234')
+    const created = await demoCareRepo.createReport({ recipientCode: 'A06', reportType: 'daily', inputMethod: 'text' })
+    const submitted = await demoCareRepo.patchReport({
+      id: created.report.id,
+      caregiverFinalReport: { change: '식사량 감소', action: '관찰', result: '안정적', escalation: '경과 관찰', caregiverNote: '' },
+      submit: true,
+    })
+
+    // 기본값(명시적으로 공개하지 않음) — review_note는 저장되지만 비공개로 남는다.
+    const rejectedPrivate = await demoAdminRepo.reviewReport({
+      id: submitted.id,
+      reviewStatus: 'rejected',
+      reviewNote: '관리자 내부 확인용 메모',
+      adminFinalReport: { change: 'x', action: 'x', result: 'x', escalation: 'x', caregiverNote: '' },
+      expectedUpdatedAt: submitted.updated_at,
+      requestId: 'vis-req-1',
+    })
+    expect(rejectedPrivate.review_note).toBe('관리자 내부 확인용 메모')
+    expect(rejectedPrivate.review_note_visible_to_caregiver).toBe(false)
+
+    // 관리자가 명시적으로 공개를 선택하면 그때만 true가 된다.
+    const rejectedVisible = await demoAdminRepo.reviewReport({
+      id: submitted.id,
+      reviewStatus: 'rejected',
+      reviewNote: '다음 방문 때 다시 확인해 주세요.',
+      reviewNoteVisibleToCaregiver: true,
+      adminFinalReport: { change: 'x', action: 'x', result: 'x', escalation: 'x', caregiverNote: '' },
+      expectedUpdatedAt: rejectedPrivate.updated_at,
+      requestId: 'vis-req-2',
+    })
+    expect(rejectedVisible.review_note_visible_to_caregiver).toBe(true)
+    // 직전(비공개) 검토는 이력에도 비공개로 정확히 남아야 한다 — 재검토했다고
+    // 과거 이력까지 소급 공개되지 않는다.
+    expect(rejectedVisible.review_history[0].review_note_visible_to_caregiver).toBe(false)
+  })
+
+  it('다른 참여자의 보고 id로는 조회할 수 없다(요양보호사 화면의 응답 열람 격리)', async () => {
+    const { demoCareRepo } = await import('./demoCareRepo')
+
+    await demoCareRepo.login('C01', '1234')
+    const c01Report = await demoCareRepo.createReport({ recipientCode: 'A01', reportType: 'daily', inputMethod: 'text' })
+    await demoCareRepo.patchReport({
+      id: c01Report.report.id,
+      caregiverFinalReport: { change: 'a', action: 'b', result: 'c', escalation: 'd', caregiverNote: '' },
+      submit: true,
+    })
+
+    // C01 본인은 자기 보고를 조회할 수 있다.
+    await expect(demoCareRepo.getReport(c01Report.report.id)).resolves.toMatchObject({ participant_code: 'C01' })
+
+    // C02로 로그인을 바꾼 뒤, C01의 보고 id를 그대로 넣으면(추측 등) 조회되면 안 된다 —
+    // 다른 작성자의 관리자 응답까지 새어 보이는 경로가 되기 때문이다.
+    await demoCareRepo.login('C02', '1234')
+    await expect(demoCareRepo.getReport(c01Report.report.id)).rejects.toMatchObject({ status: 404 })
+  })
+
   it('반려 시 사유가 없으면 거부한다', async () => {
     const { demoCareRepo } = await import('./demoCareRepo')
     const { demoAdminRepo } = await import('./demoAdminRepo')

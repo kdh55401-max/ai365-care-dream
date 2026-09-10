@@ -64,6 +64,7 @@ function row(overrides: Partial<CareReportRecord>): CareReportRecord {
     admin_final_report: null,
     review_status: 'pending',
     review_note: null,
+    review_note_visible_to_caregiver: false,
     reviewed_at: null,
     review_history: [],
     last_review_request_id: null,

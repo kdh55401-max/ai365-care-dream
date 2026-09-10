@@ -98,6 +98,7 @@ function newReportRecord(input: {
     admin_final_report: null,
     review_status: 'pending',
     review_note: null,
+    review_note_visible_to_caregiver: false,
     reviewed_at: null,
     review_history: [],
     last_review_request_id: null,
@@ -172,8 +173,18 @@ export const demoCareRepo: CareRepo = {
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
   },
   async getReport(id) {
+    // 실서버(api/care/reports.ts)는 GET id 조회에 항상 session.participantCode 필터를
+    // 건다 — 이 데모 경로는 그 필터가 빠져 있어, 다른 참여자의 보고 id를 알면(추측
+    // 등) 그 보고의 관리자 응답까지 그대로 읽을 수 있는 문제가 있었다(이번 작업에서
+    // "다른 작성자의 기록 id로는 조회할 수 없어야 한다"는 요구를 확인하며 발견).
+    // 로그인한 참여자 본인 소유가 아니면 존재 여부도 구분하지 않고 동일하게 404를
+    // 던진다(id가 있는지 없는지로 다른 참여자의 존재를 유추할 수 없게 함).
+    const code = demoCareSession()
+    if (!code) throw Object.assign(new Error('로그인이 필요합니다.'), { status: 401 })
     const report = demoGetReport(id)
-    if (!report) throw Object.assign(new Error('보고를 찾을 수 없습니다.'), { status: 404 })
+    if (!report || report.participant_code !== code) {
+      throw Object.assign(new Error('보고를 찾을 수 없습니다.'), { status: 404 })
+    }
     return report
   },
   async createReport(input) {

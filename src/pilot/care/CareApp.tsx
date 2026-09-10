@@ -1616,6 +1616,15 @@ function CareApp() {
                   </span>
                 </div>
                 <p className="text-slate-400 text-sm mt-1">{r.report_date}</p>
+                {r.status === 'submitted' && (
+                  <p className="text-xs font-semibold mt-1 text-slate-400">
+                    {r.review_status === 'approved'
+                      ? '관리자 확인: 승인됨'
+                      : r.review_status === 'rejected'
+                        ? '관리자 확인: 반려됨'
+                        : '관리자 검토 대기'}
+                  </p>
+                )}
               </button>
             ))}
           <SecondaryButton onClick={() => setScreen('home')}>홈으로</SecondaryButton>
@@ -1650,6 +1659,34 @@ function CareApp() {
                 <p className="text-slate-700 whitespace-pre-wrap">{historyDetail.caregiver_final_report?.[key]}</p>
               </div>
             ))}
+          {/* 관리자 확인 결과 — review_status만이 "미검토/승인/반려"의 유일한 진실
+              소스다. reviewed_at은 이 검토(및 함께 저장된 응답)가 기록된 시각일 뿐,
+              관리자가 "언제 열어봤는지"나 "현장에 실제로 반영됐는지"를 뜻하지 않는다
+              — 그 구분은 이번 범위에 없으므로 여기서도 그런 의미로 쓰지 않는다.
+              review_note는 관리자가 명시적으로 "요양보호사에게 보이기"를 선택했을
+              때만(review_note_visible_to_caregiver) 노출한다 — 이 필드가 생기기
+              전에 저장된 메모는 전부 false이므로 자동으로 노출되지 않는다. */}
+          {historyDetail.status === 'submitted' && (
+            <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
+              <p className="font-bold text-slate-900 text-base mb-1">관리자 확인</p>
+              {historyDetail.review_status === 'pending' && <p className="text-slate-500">관리자 검토 대기</p>}
+              {historyDetail.review_status !== 'pending' && (
+                <>
+                  <p className={`font-bold ${historyDetail.review_status === 'approved' ? 'text-teal-700' : 'text-red-700'}`}>
+                    {historyDetail.review_status === 'approved' ? '승인됨' : '반려됨'}
+                  </p>
+                  {historyDetail.review_note_visible_to_caregiver && historyDetail.review_note && (
+                    <>
+                      <p className="text-slate-700 whitespace-pre-wrap mt-1">{historyDetail.review_note}</p>
+                      {historyDetail.reviewed_at && (
+                        <p className="text-slate-400 text-xs mt-1">응답 시각: {historyDetail.reviewed_at.slice(0, 16).replace('T', ' ')}</p>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           <SecondaryButton onClick={() => setScreen('history')}>목록으로</SecondaryButton>
         </div>
       )}

@@ -682,6 +682,8 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
   // 관리자 검토(승인/반려) — 위 1/2단계 연구용 평가와 별개의 운영 워크플로우.
   const [reviewDraft, setReviewDraft] = useState<StructuredReport>(emptyStructuredReport())
   const [reviewNote, setReviewNote] = useState('')
+  // 기본값 false — 요양보호사에게 보이려면 관리자가 매번 명시적으로 체크해야 한다.
+  const [reviewNoteVisible, setReviewNoteVisible] = useState(false)
   const [showRejectNote, setShowRejectNote] = useState(false)
   const [reviewSaving, setReviewSaving] = useState(false)
   const [reviewError, setReviewError] = useState<string | null>(null)
@@ -704,6 +706,9 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
     // 검토 폼은 관리자 확정본이 있으면 그걸, 없으면 요양보호사 확인본/AI 초안 순으로 채운다.
     setReviewDraft(r.admin_final_report ?? r.caregiver_final_report ?? r.ai_generated_report ?? emptyStructuredReport())
     setReviewNote(r.review_status === 'rejected' ? (r.review_note ?? '') : '')
+    // 이미 저장된 공개 여부를 그대로 이어서 보여준다(다시 검토할 때 실수로 되돌리지
+    // 않도록) — 새 보고를 열 때는 항상 false로 시작한다.
+    setReviewNoteVisible(r.review_status !== 'pending' ? r.review_note_visible_to_caregiver === true : false)
     setShowRejectNote(false)
     setReviewError(null)
   }
@@ -779,6 +784,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
         id,
         reviewStatus,
         reviewNote: reviewNote.trim() || undefined,
+        reviewNoteVisibleToCaregiver: reviewNoteVisible && Boolean(reviewNote.trim()),
         adminFinalReport: reviewDraft,
         expectedUpdatedAt: report.updated_at,
         requestId: `${id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -900,7 +906,14 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
                   {report.admin_final_report?.[key] || '-'}
                 </p>
               ))}
-              {report.review_status === 'rejected' && report.review_note && <p className="text-red-700 mt-1">반려 사유: {report.review_note}</p>}
+              {report.review_status === 'rejected' && report.review_note && (
+                <p className="text-red-700 mt-1">
+                  반려 사유: {report.review_note}{' '}
+                  <span className={`text-[10px] font-bold ${report.review_note_visible_to_caregiver ? 'text-teal-600' : 'text-slate-400'}`}>
+                    ({report.review_note_visible_to_caregiver ? '요양보호사에게 공개됨' : '관리자 전용(비공개)'})
+                  </span>
+                </p>
+              )}
               <p className="text-slate-400 text-[11px] mt-1">{report.reviewed_at}</p>
             </div>
           )}
@@ -919,13 +932,27 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
           ))}
 
           {showRejectNote && (
-            <textarea
-              value={reviewNote}
-              onChange={(e) => setReviewNote(e.target.value)}
-              placeholder="반려 사유를 입력해 주세요 (필수)"
-              rows={2}
-              className="w-full border border-red-200 rounded-lg p-2 text-sm mt-1"
-            />
+            <>
+              <textarea
+                value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                placeholder="반려 사유를 입력해 주세요 (필수)"
+                rows={2}
+                className="w-full border border-red-200 rounded-lg p-2 text-sm mt-1"
+              />
+              <label className="flex items-start gap-2 mt-1.5 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={reviewNoteVisible}
+                  onChange={(e) => setReviewNoteVisible(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  이 사유를 요양보호사의 "내가 남긴 돌봄기록"에 보이기 — 체크하지 않으면 관리자만 볼 수
+                  있는 내부 메모로 남는다(기본값). 실명·개인정보를 적지 않는다.
+                </span>
+              </label>
+            </>
           )}
           {reviewError && <p className="text-red-700 text-xs mt-2">{reviewError}</p>}
           <div className="flex gap-2 mt-3">

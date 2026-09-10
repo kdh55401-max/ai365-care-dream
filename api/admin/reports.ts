@@ -201,6 +201,8 @@ async function handleReviewStage(id: string, body: Record<string, unknown>, res:
   if (!reviewStatus) throw new ApiError(400, '승인 또는 반려를 선택해 주세요.')
   const reviewNote = typeof body.reviewNote === 'string' ? body.reviewNote.trim() : ''
   if (reviewStatus === 'rejected' && !reviewNote) throw new ApiError(400, '반려 사유를 입력해 주세요.')
+  // 관리자가 매번 명시적으로 선택해야 요양보호사 화면에 노출된다 — 기본값 false.
+  const reviewNoteVisibleToCaregiver = body.reviewNoteVisibleToCaregiver === true
   if (!body.adminFinalReport || !isStructuredReport(body.adminFinalReport)) {
     throw new ApiError(400, '검토할 보고 내용이 올바르지 않습니다.')
   }
@@ -208,6 +210,10 @@ async function handleReviewStage(id: string, body: Record<string, unknown>, res:
   const expectedUpdatedAt = typeof body.expectedUpdatedAt === 'string' ? body.expectedUpdatedAt : null
   const requestId = typeof body.requestId === 'string' ? body.requestId : null
 
+  // review_note_visible_to_caregiver는 이 select에 이름으로 넣지 않는다 — 실제
+  // Supabase에 아직 마이그레이션이 적용되지 않은 배포 시점에는 존재하지 않는 컬럼을
+  // 이름으로 지정하면 이 쿼리 자체가 실패해 검토(승인/반려) 전체가 막힌다. 그 값이
+  // 필요한 곳(history 스냅샷)에서는 undefined를 false로 취급한다.
   const { data: existing, error: fetchError } = await supabase
     .from('reports')
     .select('id, status, updated_at, review_status, review_note, reviewed_at, admin_final_report, review_history, last_review_request_id')
@@ -237,6 +243,7 @@ async function handleReviewStage(id: string, body: Record<string, unknown>, res:
       at: existing.reviewed_at,
       review_status: existing.review_status,
       review_note: existing.review_note,
+      review_note_visible_to_caregiver: (existing as { review_note_visible_to_caregiver?: boolean }).review_note_visible_to_caregiver ?? false,
       admin_final_report: existing.admin_final_report,
     })
   }
@@ -262,6 +269,26 @@ async function handleReviewStage(id: string, body: Record<string, unknown>, res:
     sendJson(res, 409, { error: '다른 곳에서 먼저 저장된 내용이 있습니다. 최신 내용을 다시 불러와 주세요.', report: latest ?? null })
     return
   }
-  await logAudit(reviewStatus === 'approved' ? 'review_approve' : 'review_reject', id, { reviewNote })
-  sendJson(res, 200, { report: updated })
+
+  // review_note_visible_to_caregiver는 별도 업데이트로 분리한다 — 이 컬럼이 아직 실제
+  // Supabase에 없는 배포 시점(마이그레이션 수동 적용 전)에도, 검토 저장 자체(위 update)가
+  // 이 컬럼 때문에 실패하지 않도록 하기 위함(ai_fallback_used와 동일한 안전장치 패턴).
+  // 실패해도 검토 결과 자체는 이미 저장됐으므로 응답에는 영향을 주지 않는다 — 다만 이
+  // 경우 공개 여부가 반영되지 않았으므로 서버 로그에 남긴다(요양보호사가 못 볼 뿐,
+  // 데이터 유실이나 잘못된 공개는 아니다).
+  let finalReport = updated
+  const { data: withVisibility, error: visibilityError } = await supabase
+    .from('reports')
+    .update({ review_note_visible_to_caregiver: reviewNoteVisibleToCaregiver })
+    .eq('id', id)
+    .select(DETAIL_COLUMNS)
+    .maybeSingle()
+  if (!visibilityError && withVisibility) {
+    finalReport = withVisibility
+  } else if (visibilityError) {
+    console.error('review_note_visible_to_caregiver 저장 실패(마이그레이션 미적용 가능성):', visibilityError.message)
+  }
+
+  await logAudit(reviewStatus === 'approved' ? 'review_approve' : 'review_reject', id, { reviewNote, reviewNoteVisibleToCaregiver })
+  sendJson(res, 200, { report: finalReport })
 }

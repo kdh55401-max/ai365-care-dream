@@ -119,6 +119,7 @@ export const demoAdminRepo: AdminRepo = {
               at: existing.reviewed_at as string,
               review_status: existing.review_status,
               review_note: existing.review_note,
+              review_note_visible_to_caregiver: existing.review_note_visible_to_caregiver ?? false,
               admin_final_report: existing.admin_final_report,
             },
           ]
@@ -132,6 +133,7 @@ export const demoAdminRepo: AdminRepo = {
       {
         review_status: input.reviewStatus,
         review_note: reviewNote,
+        review_note_visible_to_caregiver: input.reviewNoteVisibleToCaregiver === true,
         reviewed_at: new Date().toISOString(),
         admin_final_report: adminFinalReport,
         review_history: history,

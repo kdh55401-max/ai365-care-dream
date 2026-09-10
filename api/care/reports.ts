@@ -9,7 +9,7 @@ const CARE_DETAIL_COLUMNS = '*'
 
 const CARE_LIST_COLUMNS =
   'id, recipient_code, report_type, report_date, status, submitted_at, completion_seconds, ' +
-  'initial_status_choice, no_information_report, report_source, scenario_id, created_at'
+  'initial_status_choice, no_information_report, report_source, scenario_id, created_at, review_status'
 
 interface StructuredReport {
   change: string

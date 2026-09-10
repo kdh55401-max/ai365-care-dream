@@ -48,6 +48,9 @@ export interface ReviewReportInput {
   id: string
   reviewStatus: 'approved' | 'rejected'
   reviewNote?: string
+  /** true면 reviewNote를 요양보호사의 "내가 남긴 돌봄기록" 상세 화면에 공개한다.
+   * 관리자가 매번 명시적으로 선택해야 하며, 기본값은 false다. */
+  reviewNoteVisibleToCaregiver?: boolean
   adminFinalReport: StructuredReport
   /** CAS용: 관리자가 마지막으로 읽은 updated_at. 서버 값과 다르면 충돌(409)로 거부된다. */
   expectedUpdatedAt?: string
@@ -131,6 +134,7 @@ export const realAdminRepo: AdminRepo = {
         stage: 'review',
         reviewStatus: input.reviewStatus,
         reviewNote: input.reviewNote,
+        reviewNoteVisibleToCaregiver: input.reviewNoteVisibleToCaregiver === true,
         adminFinalReport: input.adminFinalReport,
         expectedUpdatedAt: input.expectedUpdatedAt,
         requestId: input.requestId,

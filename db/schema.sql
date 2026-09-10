@@ -96,6 +96,9 @@ create table if not exists reports (
   admin_final_report jsonb,
   review_status text not null default 'pending' check (review_status in ('pending', 'approved', 'rejected')),
   review_note text,
+  -- review_note가 요양보호사 본인에게 공개된 응답인지 관리자 내부 메모인지 구분한다.
+  -- 기본값 false — 이 컬럼이 생기기 전에 저장된 review_note는 소급 공개하지 않는다.
+  review_note_visible_to_caregiver boolean not null default false,
   reviewed_at timestamptz,
   review_history jsonb not null default '[]'::jsonb,
   last_review_request_id text,
@@ -161,6 +164,7 @@ alter table reports add column if not exists emergency_flagged boolean not null 
 alter table reports add column if not exists admin_final_report jsonb;
 alter table reports add column if not exists review_status text not null default 'pending';
 alter table reports add column if not exists review_note text;
+alter table reports add column if not exists review_note_visible_to_caregiver boolean not null default false;
 alter table reports add column if not exists reviewed_at timestamptz;
 alter table reports add column if not exists review_history jsonb not null default '[]'::jsonb;
 alter table reports add column if not exists last_review_request_id text;

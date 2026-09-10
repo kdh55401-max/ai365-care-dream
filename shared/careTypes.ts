@@ -150,6 +150,12 @@ export interface CareReportRecord {
   admin_final_report: StructuredReport | null
   review_status: ReviewStatus
   review_note: string | null
+  /** review_note가 요양보호사 본인에게 공개된 응답인지, 관리자 내부용 메모인지 구분한다.
+   * 이 필드가 생기기 전에 저장된 review_note는 전부 내부용으로만 쓰였으므로(요양보호사
+   * 화면에 노출된 적이 한 번도 없음), false로 정규화하고 절대 소급해서 true로 채우지
+   * 않는다 — "과거 메모를 일괄 공개하지 않는다"는 원칙. 관리자가 검토를 저장할 때마다
+   * 매번 명시적으로 다시 선택해야 true가 된다(기본값 false). */
+  review_note_visible_to_caregiver: boolean
   reviewed_at: string | null
   review_history: ReviewHistoryEntry[]
   /** 검토 요청 중복방지용 클라이언트 요청 식별자. 화면에는 노출하지 않는다. */
@@ -166,6 +172,7 @@ export interface ReviewHistoryEntry {
   at: string
   review_status: ReviewStatus
   review_note: string | null
+  review_note_visible_to_caregiver?: boolean
   admin_final_report: StructuredReport | null
 }
 
@@ -186,6 +193,7 @@ export function normalizeReportRecord<T extends Partial<CareReportRecord>>(raw: 
     admin_final_report: normalizeStructured(r.admin_final_report),
     review_status: r.review_status ?? 'pending',
     review_note: r.review_note ?? null,
+    review_note_visible_to_caregiver: r.review_note_visible_to_caregiver ?? false,
     reviewed_at: r.reviewed_at ?? null,
     review_history: Array.isArray(r.review_history) ? r.review_history : [],
     last_review_request_id: r.last_review_request_id ?? null,
