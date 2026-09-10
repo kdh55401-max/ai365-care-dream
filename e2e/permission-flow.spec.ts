@@ -25,9 +25,9 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
     await loginCare(p1, 'c1', '6003')
     await startReport(p1)
     await p1.getByPlaceholder(/음성 대신/).fill('C01의 보고입니다.')
-    await p1.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await p1.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerAllFollowups(p1, ['오전 9시입니다', '확인했습니다', '지금은 괜찮습니다'])
-    await p1.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await p1.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(p1.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const context2 = await browser.newContext()
@@ -40,6 +40,7 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
 
   test('로그아웃 후에는 다시 로그인 화면으로 돌아간다', async ({ page }) => {
     await loginCare(page)
+    await page.getByText('연습 및 계정', { exact: true }).click()
     await page.getByRole('button', { name: '로그아웃' }).click()
     await expect(page.getByText('참여자 코드')).toBeVisible()
     await expect(page.getByRole('button', { name: '이야기 시작' })).not.toBeVisible()

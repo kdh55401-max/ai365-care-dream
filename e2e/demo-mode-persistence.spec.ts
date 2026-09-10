@@ -14,6 +14,7 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
   test('care: 표준상황 연습 왕복 및 새로고침에도 데모 모드 유지', async ({ page }) => {
     await loginCare(page, 'c1', '6003')
 
+    await page.getByText('연습 및 계정', { exact: true }).click()
     await page.getByRole('link', { name: /표준상황 연습/ }).click()
     await expect(page.getByRole('heading', { name: '표준상황 연습' })).toBeVisible()
     // 운영 로그인 화면으로 빠졌다면 이 참여자 코드 입력칸(데모 전용 placeholder)이

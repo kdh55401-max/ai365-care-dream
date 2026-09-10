@@ -14,6 +14,7 @@ export type ContinuousVoiceState = 'idle' | 'listening' | 'reconnecting'
  * 위함이다. */
 export function useContinuousVoice() {
   const [state, setState] = useState<ContinuousVoiceState>('idle')
+  const [isListening, setIsListening] = useState(false)
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -61,6 +62,7 @@ export function useContinuousVoice() {
   }
 
   const stopHard = () => {
+    setIsListening(false)
     manualStopRef.current = true
     clearStartupWatchdog()
     try {
@@ -95,10 +97,14 @@ export function useContinuousVoice() {
     recognitionRef.current = recognition
 
     recognition.onstart = () => {
+      if (manualStopRef.current || recognitionRef.current !== recognition) return
+      setIsListening(true)
       clearStartupWatchdog()
     }
 
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return
+      setIsListening(true)
       clearStartupWatchdog()
       let interim = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -110,6 +116,7 @@ export function useContinuousVoice() {
     }
 
     recognition.onerror = (event) => {
+      setIsListening(false)
       clearStartupWatchdog()
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         manualStopRef.current = true
@@ -122,6 +129,7 @@ export function useContinuousVoice() {
     }
 
     recognition.onend = () => {
+      setIsListening(false)
       clearStartupWatchdog()
       if (manualStopRef.current) {
         setState('idle')
@@ -157,6 +165,7 @@ export function useContinuousVoice() {
 
   /** seedText: 이미 확정된 텍스트(예: 재개 시 지금까지 인식된 내용)를 이어붙일 기준. */
   const start = (seedText = '') => {
+    setIsListening(false)
     setError(null)
     finalTranscriptRef.current = seedText ? seedText.trim() + ' ' : ''
     setText(seedText.trim())
@@ -206,5 +215,5 @@ export function useContinuousVoice() {
     setError(null)
   }
 
-  return { state, text, error, isSupported, start, resume, finish, cancel }
+  return { state, isListening, text, error, isSupported, start, resume, finish, cancel }
 }

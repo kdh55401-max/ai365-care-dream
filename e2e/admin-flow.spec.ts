@@ -50,9 +50,9 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await loginCare(carePage, 'c1', '6003')
     await startReport(carePage)
     await carePage.getByPlaceholder(/음성 대신/).fill('오늘 어르신이 두 번 휘청거리셨어요.')
-    await carePage.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await carePage.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerAllFollowups(carePage, ['오전 10시경입니다', '부축했습니다', '지금은 괜찮습니다'])
-    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await carePage.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(carePage.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     // 관리자는 재접속(새로고침)해서 최신 폴링 결과를 즉시 확인한다 (3초 폴링).
@@ -67,7 +67,7 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await startReport(carePage, '추가 상태변화 기록하기')
     await submitChangedReport(carePage, '오늘 점심을 잘 안 드셨어요.')
     await answerAllFollowups(carePage, ['오늘 낮 12시경입니다', '조금 더 드시라고 권했습니다', '지금은 평소와 비슷합니다'])
-    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await carePage.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(carePage.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     // 재사용률은 "첫 제출일이 오늘보다 이전인" 참여자만 분모로 센다(다시 쓸 기회가

@@ -10,9 +10,9 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
     await loginCare(page)
     await startReport(page)
     await page.getByPlaceholder(/음성 대신/).fill('오늘 어르신 컨디션이 평소와 달랐어요.')
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerAllFollowups(page, ['오전입니다', '확인했습니다', '지금은 괜찮습니다'])
-    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await page.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     await page.getByRole('button', { name: '홈으로' }).click()
@@ -35,9 +35,9 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
     await loginCare(carePage, 'c1', '6003')
     await startReport(carePage)
     await carePage.getByPlaceholder(/음성 대신/).fill('평가 유지 테스트용 보고입니다.')
-    await carePage.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await carePage.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerAllFollowups(carePage, ['오전입니다', '확인했습니다', '지금은 괜찮습니다'])
-    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await carePage.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(carePage.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const adminPage = await context.newPage()

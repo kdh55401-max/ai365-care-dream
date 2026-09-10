@@ -69,10 +69,10 @@ export async function startReport(page: Page, kind: '이야기 시작' | '추가
 export async function completeDailyReport(page: Page, text = '식사를 평소보다 조금 적게 하셨어요') {
   await startReport(page, '이야기 시작')
   await page.getByPlaceholder(/음성 대신/).fill(text)
-  await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+  await page.getByRole('button', { name: '이야기 전달하기' }).click()
   await answerFollowupsWithOptions(page)
-  if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+  if (await page.getByText('말씀해주신 내용을 정리했어요.').isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: '센터에 보고하기' }).click()
   }
   await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
   await page.getByRole('button', { name: '홈으로' }).click()
@@ -84,7 +84,7 @@ export async function completeDailyReport(page: Page, text = '식사를 평소�
 export async function submitChangedReport(page: Page, text: string) {
   await page.getByRole('button', { name: '평소와 다른 점이 있었어요' }).click()
   await page.getByPlaceholder(/음성 대신/).fill(text)
-  await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+  await page.getByRole('button', { name: '이야기 전달하기' }).click()
 }
 
 /** 후속 질문 화면에서 선택 버튼(옵션)으로만 답해 진행한다 — 이번 변경의 핵심인
@@ -110,7 +110,7 @@ export async function answerFollowupsWithOptions(page: Page, maxSteps = 3) {
     }
     // 단일 선택은 버튼을 누르면 바로 다음 단계로 진행한다(추가 클릭 불필요).
 
-    if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) break
+    if (await page.getByText('말씀해주신 내용을 정리했어요.').isVisible().catch(() => false)) break
   }
 }
 
@@ -133,6 +133,6 @@ export async function answerAllFollowups(page: Page, answers: string[]) {
     await page.getByPlaceholder('답변을 입력하거나 마이크로 말씀해 주세요.').fill(answer)
     await page.getByRole('button', { name: '다음', exact: true }).click()
 
-    if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) break
+    if (await page.getByText('말씀해주신 내용을 정리했어요.').isVisible().catch(() => false)) break
   }
 }

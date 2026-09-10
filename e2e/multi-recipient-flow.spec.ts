@@ -14,21 +14,21 @@ test.describe('multi-recipient-flow: 대상자별 기본보고 완료 상태 분
     test.setTimeout(60_000)
     await loginCare(page, 'c1', '6003')
     await expect(page.getByText('A01 어르신', { exact: true })).toBeVisible()
-    await expect(page.getByText('오늘 돌봄을 함께 기록해요')).toBeVisible()
+    await expect(page.getByText('이야기할 준비가 됐어요', { exact: true })).toBeVisible()
 
     // 대상자를 A02로 바꾼다 — 아직 아무 것도 제출하지 않았으므로 A02도 미제출이어야 한다.
     await switchRecipient(page, 'A02')
     await expect(page.getByText('A02 어르신', { exact: true })).toBeVisible()
-    await expect(page.getByText('오늘 돌봄을 함께 기록해요')).toBeVisible()
+    await expect(page.getByText('이야기할 준비가 됐어요', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '이야기 시작' })).toBeVisible()
 
     // A02의 기본보고를 먼저 제출한다.
     await startReport(page)
     await page.getByPlaceholder(/음성 대신/).fill('A02 어르신은 오늘 식사를 잘 하셨어요')
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerFollowupsWithOptions(page)
-    if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    if (await page.getByText('말씀해주신 내용을 정리했어요.').isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: '센터에 보고하기' }).click()
     }
     await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
     await page.getByRole('button', { name: '홈으로' }).click()
@@ -42,17 +42,17 @@ test.describe('multi-recipient-flow: 대상자별 기본보고 완료 상태 분
     // 핵심 회귀 조건).
     await switchRecipient(page, 'A01')
     await expect(page.getByText('A01 어르신', { exact: true })).toBeVisible()
-    await expect(page.getByText('오늘 돌봄을 함께 기록해요')).toBeVisible()
+    await expect(page.getByText('이야기할 준비가 됐어요', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '이야기 시작' })).toBeVisible()
 
     // A01의 기본보고도 별도로 정상 제출할 수 있어야 한다(다른 수급자 제출
     // 때문에 "이미 제출했습니다" 오류가 나면 안 된다).
     await startReport(page)
     await page.getByPlaceholder(/음성 대신/).fill('A01 어르신은 오늘 산책을 하셨어요')
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerFollowupsWithOptions(page)
-    if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    if (await page.getByText('말씀해주신 내용을 정리했어요.').isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: '센터에 보고하기' }).click()
     }
     await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
     await page.getByRole('button', { name: '홈으로' }).click()

@@ -22,20 +22,20 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     await startReport(page)
 
     await page.getByPlaceholder(/음성 대신/).fill('물을 적게 드셨어요')
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
 
     // 최대 3회, 한 번에 하나씩 질문 — 선택 버튼만으로 진행한다(타이핑 없음).
     await expect(page.getByText(/추가 확인 1\/3/)).toBeVisible()
     await answerFollowupsWithOptions(page)
 
-    await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
+    await expect(page.getByText('말씀해주신 내용을 정리했어요.')).toBeVisible()
 
     // 보고문 수정 — 선택 답변이 임의로 확장되지 않고 그대로 반영됐는지 확인.
     const changeField = page.locator('textarea').first()
     await expect(changeField).toHaveValue('물을 적게 드셨어요')
     await changeField.fill('[검수] ' + (await changeField.inputValue()))
 
-    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await page.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
   })
 
@@ -49,16 +49,16 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     await startReport(page, '추가 상태변화 기록하기')
     await submitChangedReport(page, '식사량이 평소보다 적었습니다.')
     await answerFollowupsWithOptions(page)
-    await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
+    await expect(page.getByText('말씀해주신 내용을 정리했어요.')).toBeVisible()
   })
 
   test('제출한 보고를 관리자 화면에서 올바른 참여자·수급자로 확인할 수 있다', async ({ context, page: carePage }) => {
     await loginCare(carePage, 'c7', '6003')
     await startReport(carePage)
     await carePage.getByPlaceholder(/음성 대신/).fill('식사를 평소보다 적게 하셨어요')
-    await carePage.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await carePage.getByRole('button', { name: '이야기 전달하기' }).click()
     await answerFollowupsWithOptions(carePage)
-    await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await carePage.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(carePage.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const adminPage = await context.newPage()
@@ -81,7 +81,7 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     await startReport(page)
 
     await page.getByPlaceholder(/음성 대신/).fill('물을 적게 드셨어요')
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
     await expect(page.getByText(/추가 확인 1\/3/)).toBeVisible()
 
     await page.locator('button[type="button"]').first().click()

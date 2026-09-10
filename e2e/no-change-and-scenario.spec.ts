@@ -22,7 +22,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     // "직접 말하기"를 따로 누를 필요가 없다 — 특이사항 없음 표현은 자유 입력에서도
     // 자동으로 이 흐름에 연결된다.
     await page.getByPlaceholder(/음성 대신/).fill('오늘은 특별히 달라진 점이 없었어요')
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
 
     await expect(page.getByText('평소와 비슷했어요 · 추가 확인')).toBeVisible()
     await page.getByPlaceholder(/없어요/).fill('식사는 평소와 같고 이동도 평소와 같아요')
@@ -32,12 +32,12 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     await page.getByPlaceholder(/없어요/).fill('배설은 확인하지 못했어요')
     await page.getByRole('button', { name: '다음' }).click()
 
-    await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
+    await expect(page.getByText('말씀해주신 내용을 정리했어요.')).toBeVisible()
     const change = await page.locator('textarea').first().inputValue()
     expect(change).toContain('평소와 같다고 보고함')
     expect(change).toContain('관찰하지 못했다고 보고함')
 
-    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await page.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     // 관리자 대시보드의 "무정보 보고 구체화율"에 반영된다.
@@ -67,11 +67,11 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     await page.getByPlaceholder(/없어요/).fill('없어요')
     await page.getByRole('button', { name: '다음' }).click()
 
-    await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
+    await expect(page.getByText('말씀해주신 내용을 정리했어요.')).toBeVisible()
     const change = await page.locator('textarea').first().inputValue()
     expect(change).toBe('금일 요양보호사가 구체적인 관찰영역을 언급하지 않음. 확인된 관찰영역 없음.')
 
-    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await page.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const admin = await page.context().newPage()
@@ -89,13 +89,13 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
     await expect(page.getByText('지금까지 0/2건 완료')).toBeVisible()
     await page.getByText('상황 1 · 식사량 감소와 휘청거림').click()
     await expect(page.locator('textarea')).toHaveValue(/점심을 평소의 절반/)
-    await page.getByRole('button', { name: '이 내용으로 보고하기' }).click()
+    await page.getByRole('button', { name: '이야기 전달하기' }).click()
 
     // 후속질문은 선택형 버튼으로 온다(자유 텍스트 placeholder가 아니다).
     await answerFollowupsWithOptions(page)
-    await expect(page.getByText('보고 내용을 확인해 주세요')).toBeVisible()
+    await expect(page.getByText('말씀해주신 내용을 정리했어요.')).toBeVisible()
 
-    await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
+    await page.getByRole('button', { name: '센터에 보고하기' }).click()
     await expect(page.getByText('표준상황 연습이 저장되었습니다.')).toBeVisible()
 
     const admin = await page.context().newPage()
