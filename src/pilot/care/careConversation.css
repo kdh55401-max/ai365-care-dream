@@ -90,3 +90,9 @@
 @media (prefers-reduced-motion: reduce) {
   .care-shell *, .care-shell *::before, .care-shell *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Silent avatar clips keep the existing portrait layout and shrink transition. */
+.companion-video { position: relative; width: 100%; height: 100%; background: white; }
+.companion-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; background: white; transition: opacity .15s linear; }
+.companion-video video.is-visible { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .companion-video video { transition: none; } }

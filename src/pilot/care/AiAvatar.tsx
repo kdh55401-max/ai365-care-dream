@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from 'react'
+import { AvatarVideo } from './AvatarVideo'
 
 export type AvatarState = 'idle' | 'connecting' | 'listening' | 'processing' | 'speaking' | 'question' | 'reviewing' | 'sending' | 'done' | 'error'
 export const AVATAR_STATE_LABEL: Record<AvatarState, string> = {
@@ -7,7 +8,7 @@ export const AVATAR_STATE_LABEL: Record<AvatarState, string> = {
   sending: '센터에 보고하는 중이에요', done: '기록을 남겼어요', error: '잠시 확인해주세요',
 }
 
-/** 사용자 제공 정지 이미지 원본. 얼굴 변형·립싱크 없이 같은 DOM을 화면 사이에 유지한다. */
+/** 실제 생성한 무음 인사/대기 영상. 같은 DOM과 기존 이동 동작을 유지하며 립싱크는 없다. */
 export function AiAvatar({ state, size = 'lg' }: { state: AvatarState; size?: 'lg' | 'sm' }) {
   const ref = useRef<HTMLDivElement>(null)
   const previous = useRef<DOMRect | null>(null)
@@ -26,7 +27,7 @@ export function AiAvatar({ state, size = 'lg' }: { state: AvatarState; size?: 'l
   }, [size])
   return (
     <div ref={ref} className={'companion-portrait companion-portrait--' + size} data-testid="companion-avatar" data-state={state}>
-      <img src="/assets/ai365-companion.png" alt="AI 돌봄 동료 안내 아바타" width="2048" height="2048" fetchPriority="high" />
+      <AvatarVideo home={size === 'lg'} />
     </div>
   )
 }
