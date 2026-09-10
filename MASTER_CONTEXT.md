@@ -1,7 +1,7 @@
 # MASTER_CONTEXT — AI365 CARE DREAM (이 워크트리, 음성 UX 분석 추가분)
 
 기준일: 2026-09-10 · 워크트리: `elastic-curran-a97171` · 브랜치: `claude/caregiver-screen-redesign-f5fc74`
-· HEAD `0c8410a` (당시 `origin/master`와 동일 — diff 없음, 아래 §1 참고)
+· HEAD `d505313` (3차 — 아바타·대화 화면 구현. 아래 §1 참고)
 
 **이 문서는 저장소의 단일 정본이 아니다.** 더 상세한 정본 MASTER_CONTEXT.md/AGENTS.md는
 `ai365-care-dream-handoff-4a85b3` 워크트리(Claude/Codex/Astra 협업 인계 체계)에 있으며, 이번
@@ -10,6 +10,12 @@
 
 ## 1. 브랜치·HEAD·배포 버전 구분
 
+- **2026-09-10 (3차) 갱신**: 아래 §2에서 "방향만 검토 대상으로 남긴다"고 했던 캐릭터
+  (아바타)와 §3에서 "부재를 확인했다"던 TTS를 실제로 구현했다(커밋 `d505313`).
+  `AiAvatar.tsx`/`ConversationLog.tsx`/`speechOutput.ts` 신규 + `CareApp.tsx` 홈/대화/
+  reportReview/submitted 화면 재구성. 질문 프로토콜·모델 공급자는 미변경. 이 브랜치는
+  아직 `origin/master`에 push하지 않았다(Codex 검증 대기, §4 참고). 자세한 내용은
+  CHANGE_LOG.md 2026-09-10 (3차) 항목과 [HANDOFF_TO_CODEX.md](HANDOFF_TO_CODEX.md).
 - **2026-09-10 (2차) 갱신**: CD-01/CD-02를 `ai365-care-dream-handoff-4a85b3`에서 이
   워크트리로 병합(커밋 `13e7801`)하고, 관리자 응답을 요양보호사 화면에 연결(커밋
   `1d9373f`)했다 — 아래 §2의 5단계 핵심 흐름 중 마지막 단계가 이제 코드로 존재한다.
@@ -34,8 +40,10 @@
   때도 이 조건을 반드시 유지한다.
 - 듣는 중 / 처리 중 / 질문 중 / 확인 대기 / 전송 중 / 전송 완료는 서로 다른 화면·문구로
   구분하고, 실패를 전송 완료로 표시하지 않는다(기존 원칙 유지).
-- 캐릭터(친근함·신뢰감·전문성)는 이번에 이미지·애니메이션을 새로 만들지 않는다 — 방향만
-  검토 대상으로 남긴다.
+- 캐릭터(친근함·신뢰감·전문성)는 **2026-09-10 (3차)에서 구현 완료** — 완전 추상
+  그라디언트 원(얼굴·눈·입 없음)으로 유아용/동물 캐릭터·의료인 오인 둘 다 피했다.
+  질문 음성 출력·요약 낭독(TTS)도 Web Speech Synthesis로 최소 연결했다(새 모델/
+  공급자 아님). 자세한 내용은 CHANGE_LOG.md 2026-09-10 (3차) 항목.
 - 응급 안내(119/센터), 대상자 맥락, 배정, 중복 방지, 데모/실증 데이터 분리, 지표 분리는
   모두 기존 그대로 보존한다.
 - **핵심 흐름이 5단계로 확장됐다**: 기존 "요양보호사 말하기 → AI 확인 → 관리자 검토"에
@@ -52,11 +60,13 @@ grep으로 `speechSynthesis`/TTS/캐릭터 관련 코드 부재를 직접 확인
 확인했다(관리자 → 현장 역방향 연결 없음, 2차에서 구현). 상세 근거와 판정표는 이번 세션
 보고(대화 기록) 및 [HANDOFF_TO_CODEX.md](HANDOFF_TO_CODEX.md)를 참고한다.
 
-## 4. 다음 단계 (2026-09-10 (2차) 이후)
+## 4. 다음 단계 (2026-09-10 (3차) 이후)
 
-- 이 브랜치(`13e7801`, `1d9373f`)는 아직 `origin/master`에 push하지 않았다 — Codex
-  독립 검증 요청을 [HANDOFF_TO_CODEX.md](HANDOFF_TO_CODEX.md)에 남겨 뒀고, 통과 후에
-  기존 승인된 절차대로 병합·푸시를 진행한다(사용자 지시).
+- 이 브랜치(`13e7801`, `1d9373f`, `d505313`)는 아직 `origin/master`에 push하지
+  않았다 — Codex 독립 검증 요청을 [HANDOFF_TO_CODEX.md](HANDOFF_TO_CODEX.md)에
+  남겨 뒀고, 통과 후에 기존 승인된 절차대로 병합·푸시를 진행한다(사용자 지시).
+- TTS는 API 호출·이벤트 발생만 이 환경에서 확인했다 — 실기기 음질/발음/속도 검증은
+  범위 밖으로 남겨 뒀다.
 - `db/migrations/2026-09-10-review-note-visibility.sql`은 실제 Supabase에 아직 적용되지
   않았다 — 관리자가 SQL Editor에서 직접 실행해야 한다.
 - `ai365-care-dream-handoff-4a85b3`의 나머지 미커밋 변경(D6 라벨, `careReportAi.ts`

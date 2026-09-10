@@ -3,6 +3,43 @@
 이 로그는 `claude/care-report-pilot-mvp-a58535` 브랜치에서 진행한 실증 파일럿 구현만
 기록한다. 기존 확장형 MVP(TEAM/CARE/COMMUNITY, 생활안전스캐너 등)는 손대지 않았다.
 
+## 2026-09-10 (3차) — 요양보호사 화면을 "돌봄 AI와 대화하는 경험"으로 개선
+
+커밋 `d505313`. Master 지시대로 아바타·대화 화면 개선을 제안이 아니라 실제 구현으로
+전달했다. 질문 프로토콜/모델 공급자(`api/`, `shared/careReportAi.ts`)는 손대지 않았다.
+
+### 무엇을 바꿨는지
+홈 화면을 "AiAvatar(신규, 완전 추상 그라디언트 원 — 얼굴/눈/입 없음, 유아용·동물
+캐릭터나 의료인으로 오인되지 않도록 의도적으로 비인격화) + '이야기 시작'"을 하나의
+`<button>`으로 묶은 단일 시작 동작으로 재구성하고, 요구된 문구("오늘 {실제 배정
+코드} 어르신은 어떠셨어요? 돌봄 이야기를 편하게 말씀해 주세요. 필요한 것만
+확인할게요.")로 교체했다. 대화 화면 상단에 같은 아바타가 축소된 형태로 남아
+시각적 연속성을 주고, `ConversationLog`(신규)가 실제 rawInput/followupHistory/
+noChangeQaHistory에서만 구성한 대화 말풍선을 보여준다(가상 대화 없음). 아바타
+상태(idle/listening/processing/question/reviewing/sending/done/error)는 전부 실제
+voice.state/loading/screen과 연결했다. `speechOutput.ts`(신규)로 Web Speech
+Synthesis(질문 음성 출력, reportReview "요약 듣기")를 최소 연결했다 — 새 모델/
+공급자 아님, 이미 쓰던 Web Speech API의 출력 쪽. 미지원/실패 시 항상 조용히
+무시한다. 명시적 전송 버튼은 그대로 유지했고 음성 "네" 자동전송은 추가하지
+않았다.
+
+부수적으로 이번 구현 중 발견한 버그 3건도 고쳤다: 기록/질문 화면 마이크 버튼이
+`reconnecting` 상태를 `listening`과 동일하게 취급해 "이어서 말하기"가 실제로는
+입력을 끝내버리던 문제(각각 `resume()` 호출로 수정), reportReview의 "확인된
+영역"이 not_observed/uncertain 항목까지 "확인됨"으로 잘못 표시하던 문제
+(`splitDomainsByStatus`로 확인됨/미확인 분리).
+
+### 검증
+`npx tsc -b` 0 오류, `npx vitest run` 113/113, `npx oxlint` 기존 경고만(신규
+AiAvatar.tsx fast-refresh 경고 1건, 하네스 성격상 무해), `npx vite build` 성공.
+`npx playwright test`(mobile-390/360, 48개) 48/48 통과. 라이브 브라우저로 로그인→
+홈→대화 시작(마이크 차단 시 오류 상태+텍스트 폴백 정상)→후속 질문(전사 로그에
+실제 발화만 표시, 중복 없음)→reportReview("요약 듣기" 클릭 시
+`window.speechSynthesis.speak`가 실제 요약 텍스트로 호출되고 `start` 이벤트가
+실제로 발생함을 스파이로 확인)→전송→완료 화면(데모 미전송 고지 확인)→홈
+(dailySubmitted 상태 확인)까지 전체 경로를 재현했다. 실제 Gemini/Supabase 경로,
+실기기 음성 인식/TTS 음질, Vercel 실배포는 이 환경에서 미검증.
+
 ## 2026-09-10 (2차) — CD-01/CD-02 통합, 관리자 응답을 요양보호사 기록에 연결
 
 Master 승인 하에 바로 위 분석(1차) 항목의 "권장 최소 구현" 2건을 구현했다. 커밋
