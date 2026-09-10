@@ -1,5 +1,10 @@
 import { expect, type Page } from '@playwright/test'
 
+/** care 완료 화면 문구(DEP-03): 데모(?demo=1)는 실제로 센터에 전송되지 않고 이
+ * 브라우저의 localStorage에만 저장되므로, 실제 제출과 구분되는 문구를 쓴다.
+ * 이 스위트의 모든 시나리오는 데모 모드에서 실행되므로 항상 이 문구를 쓴다. */
+export const DEMO_SUBMITTED_TEXT = '이 브라우저에 데모 기록을 저장했어요 · 실제 센터로 전송하지 않았어요.'
+
 /** 데모 모드는 요구사항대로 브라우저(프로필)당 localStorage에만 저장되므로,
  * 각 테스트를 독립적으로 만들기 위해 시작할 때 항상 초기화한다. */
 export async function resetDemo(page: Page) {
@@ -37,6 +42,13 @@ export async function openResearchKpiDetails(page: Page) {
   await page.getByText('실증 지표 자세히 보기 (연구용)').click()
 }
 
+/** 홈 화면에서 "대상자 변경"을 눌러 다른 배정 수급자로 전환한다. 배정된 수급자가
+ * 2명 이상일 때만 노출되는 보조 동작이다(예: C01 → A01/A02). */
+export async function switchRecipient(page: Page, code: string) {
+  await page.getByRole('button', { name: '대상자 변경' }).click()
+  await page.getByRole('button', { name: code, exact: true }).click()
+}
+
 /** 홈에서 "이야기 시작"(기본) 또는 "추가 상태변화 기록하기"를 누른다. "추가 상태변화
  * 기록하기"는 오늘 기본 돌봄보고를 먼저 제출해야만 홈 화면에 나타난다(시작 버튼과
  * 경쟁하지 않게 하기 위함) — 그 상태에서 호출해야 한다. 수급자는 CurrentRecipientCard가
@@ -62,7 +74,7 @@ export async function completeDailyReport(page: Page, text = '식사를 평소�
   if (await page.getByText('보고 내용을 확인해 주세요').isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
   }
-  await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+  await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
   await page.getByRole('button', { name: '홈으로' }).click()
 }
 

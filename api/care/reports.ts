@@ -112,11 +112,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const today = todayKstDateString()
 
       // 표준상황 연습은 실제 현장보고의 "하루 1회" 규칙과 완전히 무관하다.
+      // "하루 1회"는 요양보호사 전체가 아니라 지금 이 수급자 기준이다 — 다른
+      // 수급자(예: A02) 몫을 이미 제출했다고 해서 이 수급자(예: A01)의 기본보고
+      // 시작이 막히면 안 된다(설계 검토 결정 D3, C01 사례). recipient_code
+      // 조건을 반드시 함께 건다.
       if (reportSource === 'live' && reportType === 'daily') {
         const { data: existing } = await supabase
           .from('reports')
           .select(CARE_DETAIL_COLUMNS)
           .eq('participant_code', session.participantCode)
+          .eq('recipient_code', recipientCode)
           .eq('report_date', today)
           .eq('report_type', 'daily')
           .eq('report_source', 'live')
@@ -124,7 +129,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           .maybeSingle()
         if (existing) {
           if (existing.status === 'submitted') {
-            throw new ApiError(409, '오늘의 기본 돌봄보고를 이미 제출했습니다. 추가 상태변화 보고를 이용해 주세요.')
+            throw new ApiError(409, '오늘 이 수급자의 기본 돌봄보고를 이미 제출했습니다. 추가 상태변화 보고를 이용해 주세요.')
           }
           sendJson(res, 200, { report: existing, resumed: true })
           return

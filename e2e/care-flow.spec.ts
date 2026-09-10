@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { answerFollowupsWithOptions, completeDailyReport, loginAdmin, loginCare, resetDemo, startReport, submitChangedReport } from './helpers'
+import {
+  DEMO_SUBMITTED_TEXT,
+  answerFollowupsWithOptions,
+  completeDailyReport,
+  loginAdmin,
+  loginCare,
+  resetDemo,
+  startReport,
+  submitChangedReport,
+} from './helpers'
 
 test.describe('care-flow: /care?demo=1 골든 패스', () => {
   test.beforeEach(async ({ page }) => {
@@ -27,7 +36,7 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     await changeField.fill('[검수] ' + (await changeField.inputValue()))
 
     await page.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(page.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
   })
 
   test('음성 인식 미지원 기기에서도 텍스트만으로 끝까지 제출할 수 있다(추가 상태변화 기록하기)', async ({ page }) => {
@@ -50,7 +59,7 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     await carePage.getByRole('button', { name: '이 내용으로 보고하기' }).click()
     await answerFollowupsWithOptions(carePage)
     await carePage.getByRole('button', { name: '이대로 센터에 보내기' }).click()
-    await expect(carePage.getByText('센터에 보고되었습니다.')).toBeVisible()
+    await expect(carePage.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
 
     const adminPage = await context.newPage()
     await loginAdmin(adminPage)
