@@ -53,4 +53,38 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
     // 요청을 보내지 않는다 — 데모 데이터/운영 데이터가 섞이지 않는다는 최소 확인.
     expect(realApiCalls).toEqual([])
   })
+
+  // 홈페이지 → 역할 선택(RoleGateway) → 로그인 진입 흐름 자체의 데모 유지 확인.
+  // AI365 — 홈페이지 역할 선택·로그인 경로 작업: RoleGateway.handleSelect가 현재
+  // 쿼리스트링(?demo=1)을 이어 붙이지 않으면, 역할을 고르는 순간 운영 로그인
+  // 화면으로 떨어진다.
+  test('역할 선택(/?demo=1)에서 요양보호사를 고르면 /care?demo=1로 이동해 데모 로그인 화면이 보인다', async ({
+    page,
+  }) => {
+    await page.goto('/?demo=1')
+    await expect(page.getByRole('heading', { name: '어떤 업무를 시작할까요?' })).toBeVisible()
+
+    await page.getByRole('button', { name: /요양보호사/ }).click()
+    await expect(page).toHaveURL(/\/care\?demo=1/)
+    // 운영 로그인 화면이었다면 데모 전용 placeholder(별칭 c1~c9)가 없다.
+    await expect(page.getByPlaceholder('예: c1')).toBeVisible()
+  })
+
+  test('역할 선택(/?demo=1)에서 관리자를 고르면 /admin?demo=1로 이동해 데모 로그인 화면이 보인다', async ({
+    page,
+  }) => {
+    await page.goto('/?demo=1')
+    await page.getByRole('button', { name: /관리자/ }).click()
+    await expect(page).toHaveURL(/\/admin\?demo=1/)
+    await expect(page.getByPlaceholder('비밀번호')).toBeVisible()
+  })
+
+  // /support: 생활지원사 공개 진입 별칭. 기존 /community와 같은 화면(App.tsx,
+  // '현장 대응 도우미')을 그대로 보여줘야 한다 — 새 로그인/데이터 계층을 만들지
+  // 않는다는 요청 범위를 지킨다.
+  test('/support는 /community와 같은 생활지원사 화면(현장 대응 도우미)을 보여준다', async ({ page }) => {
+    await page.goto('/support')
+    await expect(page.getByText('현장 대응 도우미')).toBeVisible()
+    await expect(page.getByText('COMMUNITY')).toBeVisible()
+  })
 })

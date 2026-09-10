@@ -14,6 +14,7 @@ import AdminApp from './pilot/admin/AdminApp.tsx'
 // /            역할 선택(RoleGateway) — 기존 확장형 MVP, 보존
 // /team        관리자(TEAM) — 기존 확장형 MVP, 보존
 // /community   생활지원사(COMMUNITY) — 기존 App(현장 대응 도우미) 보존
+// /support     /community의 공개 진입 별칭(관리자/care와 이름 규칙을 맞춤, 화면·데이터는 동일)
 // /safety-scanner  생활안전스캐너(기존 기능, COMMUNITY에서 진입)
 //
 // /care, /admin  60초 AI 돌봄보고(CARE REPORT) 실증 파일럿 (2026-09-07~09-18).
@@ -33,7 +34,9 @@ function Root() {
   if (pathname.startsWith('/team')) return <TeamWorkspace />
   if (pathname.startsWith('/admin')) return <AdminApp />
   if (pathname.startsWith('/care')) return <CareApp />
-  if (pathname.startsWith('/community')) return <CommunityWorkspace />
+  // /support: 생활지원사 공개 진입 별칭(관리자/care와 같은 역할-이름 규칙을
+  // 맞추기 위함일 뿐, 기존 /community 경로·화면·데이터는 그대로 유지한다).
+  if (pathname.startsWith('/community') || pathname.startsWith('/support')) return <CommunityWorkspace />
   return <RoleGateway />
 }
 
