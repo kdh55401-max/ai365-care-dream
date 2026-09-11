@@ -4,8 +4,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 const state = vi.hoisted(() => ({ row: {} as any, updates: 0 }))
 vi.mock('./api/_lib/auth.js',()=>({requireCareSession:async()=>({participantCode:'C01'})}))
 vi.mock('./api/_lib/supabase.js',()=>({getSupabaseAdmin:()=>({from:()=>{
- let patch:any=null
- const q:any={select:()=>q,eq:()=>q,maybeSingle:async()=>({data:state.row,error:null}),update:(p:any)=>{patch=p;return q},single:async()=>{state.updates++;state.row={...state.row,...patch};return {data:state.row,error:null}}}
+ let patch:any=null;const filters:Record<string,unknown>={}
+ const q:any={select:()=>q,eq:(k:string,v:unknown)=>{filters[k]=v;return q},maybeSingle:async()=>({data:state.row,error:null}),update:(p:any)=>{patch=p;return q},single:async()=>{if(filters.status && state.row.status!==filters.status)return {data:null,error:{code:'PGRST116'}};state.updates++;state.row={...state.row,...patch};return {data:state.row,error:null}}}
  return q
 }})}))
 import handler from './api/care/reports.js'
@@ -29,3 +29,12 @@ it('different content cannot overwrite a submitted report',async()=>{
  expect(state.updates).toBe(1)
 })
 
+
+it('concurrent handler submissions update the isolated atomic store once and recover on retry',async()=>{
+ const body={id:'test-id',submit:true,caregiverFinalReport:final}
+ const results=await Promise.all([submit(body),submit(body)])
+ expect(results.some(r=>r.status===200)).toBe(true)
+ expect(state.updates).toBe(1)
+ expect((await submit(body)).status).toBe(200)
+ expect(state.updates).toBe(1)
+})
