@@ -660,6 +660,20 @@ function emptyStructuredReport(): StructuredReport {
   return { change: '', action: '', result: '', escalation: '', caregiverNote: '' }
 }
 
+/** "관리자 재확인·수정 시간"(사업계획서 핵심 실증 지표)의 원재료 — 열람 시각과
+ * 처리(승인/반려) 시각의 차이를 분 단위로 보여준다. 둘 중 하나라도 없으면 계산하지
+ * 않는다(추정해서 채우지 않음). 음수(예: 데이터 이상)는 표시하지 않는다. */
+function formatElapsedMinutes(fromIso: string | null, toIso: string | null): string | null {
+  if (!fromIso || !toIso) return null
+  const from = new Date(fromIso).getTime()
+  const to = new Date(toIso).getTime()
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return null
+  const minutes = Math.round((to - from) / 60000)
+  if (minutes < 1) return '1분 미만'
+  if (minutes < 60) return `${minutes}분`
+  return `${Math.floor(minutes / 60)}시간 ${minutes % 60}분`
+}
+
 function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; id: string; onBack: () => void; onChanged: () => void }) {
   const [report, setReport] = useState<ReportDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -868,6 +882,12 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
         {report.initial_status_choice === 'changed' ? '평소와 다름' : report.initial_status_choice === 'similar' ? '평소와 비슷' : report.initial_status_choice === 'uncertain' ? '확인 필요' : '-'}
         {report.no_information_report && ' · 무정보 보고'}
       </p>
+      <p className="text-slate-400 text-xs">
+        관리자 최초 열람: {report.admin_first_viewed_at ?? '아직 안 봄'}
+        {report.admin_first_viewed_at && report.reviewed_at && (
+          <> · 열람→처리 소요: {formatElapsedMinutes(report.admin_first_viewed_at, report.reviewed_at) ?? '-'}</>
+        )}
+      </p>
 
       {report.status !== 'submitted' ? (
         <section className="rounded-2xl bg-amber-50 border border-amber-200 p-4">
@@ -916,6 +936,18 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
               )}
               <p className="text-slate-400 text-[11px] mt-1">{report.reviewed_at}</p>
             </div>
+          )}
+
+          {/* 원문 대조 — 지금까지는 이 화면 아래(1단계 연구용 평가 섹션)까지 스크롤해야
+              원문을 볼 수 있었다. 실제 승인/반려 판단에 쓰는 원문은 바로 여기, 수정 폼
+              바로 위에서 대조할 수 있어야 재확인·수정 시간이 줄어든다. */}
+          {report.raw_input && (
+            <details className="mb-3 rounded-xl border border-slate-200 bg-slate-50" open>
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-600">
+                원문 대조 보기 (요양보호사가 실제로 말/입력한 내용)
+              </summary>
+              <div className="px-3 pb-3 whitespace-pre-wrap text-sm text-slate-700">{report.raw_input}</div>
+            </details>
           )}
 
           <p className="text-slate-500 text-xs mb-2">필요하면 아래 내용을 수정한 뒤 승인 또는 반려하세요.</p>

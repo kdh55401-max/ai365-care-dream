@@ -141,6 +141,11 @@ export interface CareReportRecord {
   manager_status: 'confirmed' | 'needs_followup' | 'called' | 'closed' | null
   ai_evaluated_at: string | null
 
+  /** 관리자가 이 보고 상세를 처음 연 시각 — 1회만 기록하고 재열람으로 갱신하지 않는다.
+   * reviewed_at(승인/반려 처리 시각)과는 다른 시점이다. 이 컬럼이 생기기 전 기록은
+   * null이며, 과거 열람 시각을 추정해서 채우지 않는다. */
+  admin_first_viewed_at: string | null
+
   // 관리자 검토(승인/반려) — 위 1/2단계 연구용 평가와는 별개의, 실제 운영 워크플로우.
   // 이 앱은 공유 관리자 비밀번호 하나뿐이라 개별 검토자 신원은 기록하지 않는다
   // ("누가 검토했는지"는 확인 불가 — 행위주체 범위만 이력에 남긴다).
@@ -190,6 +195,7 @@ export function normalizeReportRecord<T extends Partial<CareReportRecord>>(raw: 
     ai_generated_report: normalizeStructured(r.ai_generated_report),
     caregiver_final_report: normalizeStructured(r.caregiver_final_report),
     emergency_flagged: r.emergency_flagged ?? false,
+    admin_first_viewed_at: r.admin_first_viewed_at ?? null,
     admin_final_report: normalizeStructured(r.admin_final_report),
     review_status: r.review_status ?? 'pending',
     review_note: r.review_note ?? null,

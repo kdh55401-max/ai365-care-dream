@@ -15,7 +15,7 @@ const LIST_COLUMNS_BASE =
 // 관리자가 수동으로 마이그레이션을 적용해야 생긴다 — 배포 시점에 아직 컬럼이 없으면
 // 이 두 필드를 select에 넣는 순간 목록 조회 전체가 깨지므로, 먼저 포함해서 시도하고
 // 실패하면(컬럼 없음 등) 이 필드 없이 한 번 더 시도해 목록 자체는 항상 뜨게 한다.
-const LIST_COLUMNS_WITH_FALLBACK = `${LIST_COLUMNS_BASE}, ai_fallback_used, ai_fallback_stage`
+const LIST_COLUMNS_WITH_FALLBACK = `${LIST_COLUMNS_BASE}, ai_fallback_used, ai_fallback_stage, admin_first_viewed_at`
 
 const DETAIL_COLUMNS = '*'
 
@@ -43,7 +43,27 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         if (error) throw new ApiError(500, '보고를 불러오지 못했습니다.')
         if (!data) throw new ApiError(404, '보고를 찾을 수 없습니다.')
         await logAudit('view_report', id)
-        sendJson(res, 200, { report: data })
+        let report = data
+        // 관리자가 이 보고를 처음 여는 순간만 1회 기록한다(재열람으로 갱신하지 않음)
+        // — reviewed_at(처리 시각)과 분리해 "재확인·수정에 실제로 걸린 시간"을 잴 수
+        // 있게 한다. 별도 update로 분리한 이유는 review_note_visible_to_caregiver와
+        // 동일하다 — 이 컬럼이 아직 실제 Supabase에 없는 배포 시점에도 상세 조회 자체가
+        // 깨지지 않게 하기 위함. 실패해도 조회 결과에는 영향을 주지 않는다.
+        if (!(data as { admin_first_viewed_at?: string | null }).admin_first_viewed_at) {
+          const { data: viewed, error: viewError } = await supabase
+            .from('reports')
+            .update({ admin_first_viewed_at: new Date().toISOString() })
+            .eq('id', id)
+            .is('admin_first_viewed_at', null)
+            .select(DETAIL_COLUMNS)
+            .maybeSingle()
+          if (!viewError && viewed) {
+            report = viewed
+          } else if (viewError) {
+            console.error('admin_first_viewed_at 저장 실패(마이그레이션 미적용 가능성):', viewError.message)
+          }
+        }
+        sendJson(res, 200, { report })
         return
       }
 

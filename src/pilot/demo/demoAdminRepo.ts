@@ -67,6 +67,11 @@ export const demoAdminRepo: AdminRepo = {
   async getReport(id) {
     const report = demoGetReport(id)
     if (!report) throw Object.assign(new Error('보고를 찾을 수 없습니다.'), { status: 404 })
+    // 실서버와 동일한 계약: 관리자가 처음 열 때만 1회 기록하고 재열람으로 갱신하지 않는다.
+    if (!report.admin_first_viewed_at) {
+      const updated = demoUpdateReport(id, { admin_first_viewed_at: new Date().toISOString() } as Partial<CareReportRecord>)
+      if (updated) return updated as ReportDetail
+    }
     return report as ReportDetail
   },
   async evaluateRaw(id, payload) {

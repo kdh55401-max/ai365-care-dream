@@ -61,6 +61,7 @@ function row(overrides: Partial<CareReportRecord>): CareReportRecord {
     ai_eval_note: null,
     manager_status: null,
     ai_evaluated_at: null,
+    admin_first_viewed_at: null,
     admin_final_report: null,
     review_status: 'pending',
     review_note: null,

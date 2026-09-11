@@ -91,6 +91,10 @@ create table if not exists reports (
   -- 기록되며 status(제출여부)와 무관 — "전달 성공"/"검토완료" 집계에는 포함하지 않는다.
   emergency_flagged boolean not null default false,
 
+  -- 관리자가 이 보고 상세를 처음 연 시각 — 1회만 기록하고 재열람으로 갱신하지 않는다.
+  -- "언제 처리했는지"(reviewed_at)와 "언제 처음 봤는지"를 분리해야 재확인·수정에
+  -- 실제로 걸린 시간(사업계획서가 약속한 핵심 실증 지표)을 계산할 수 있다.
+  admin_first_viewed_at timestamptz,
   -- 관리자 검토(승인/반려) — 아래 1/2단계 연구용 평가와 별개의 운영 워크플로우.
   -- 이 앱은 공유 관리자 비밀번호뿐이라 개별 검토자 신원은 저장하지 않는다.
   admin_final_report jsonb,
@@ -170,6 +174,7 @@ alter table reports add column if not exists review_history jsonb not null defau
 alter table reports add column if not exists last_review_request_id text;
 alter table reports add column if not exists ai_fallback_used boolean;
 alter table reports add column if not exists ai_fallback_stage text;
+alter table reports add column if not exists admin_first_viewed_at timestamptz;
 
 -- ── 관리자 감사 로그 (열람/평가/다운로드/PIN초기화/삭제) ──────────────
 create table if not exists admin_audit_log (
