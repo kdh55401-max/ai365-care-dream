@@ -1,3 +1,4 @@
+import { sameFinalReport } from '../../../shared/reportRetry'
 import type { CareRepo } from '../shared/careRepo'
 import type { CareReportRecord } from '../../../shared/careTypes'
 import {
@@ -240,6 +241,10 @@ export const demoCareRepo: CareRepo = {
       if (recentEmptyDraft) return { report: recentEmptyDraft, resumed: true }
     }
 
+    if (reportSource === 'scenario') {
+      const draft = demoAllReports().find(r => r.participant_code === code && r.recipient_code === input.recipientCode && r.report_source === 'scenario' && r.scenario_id === scenarioId && r.status === 'draft')
+      if (draft) return { report: draft, resumed: true }
+    }
     const record = newReportRecord({
       participantCode: code,
       recipientCode: input.recipientCode,
@@ -254,6 +259,7 @@ export const demoCareRepo: CareRepo = {
   async patchReport(input) {
     const existing = demoGetReport(input.id)
     if (!existing) throw Object.assign(new Error('보고를 찾을 수 없습니다.'), { status: 404 })
+    if (existing.status === 'submitted' && input.submit && sameFinalReport(existing.caregiver_final_report, input.caregiverFinalReport)) return existing
     if (existing.status !== 'draft') throw Object.assign(new Error('이미 제출된 보고는 수정할 수 없습니다.'), { status: 409 })
 
     const patch = patchToRecord(input as unknown as Record<string, unknown>)
