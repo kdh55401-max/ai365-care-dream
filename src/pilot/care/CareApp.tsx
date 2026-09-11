@@ -214,7 +214,7 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
               className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
-          {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p>}
+          {error && <p role="alert" className="care-error">{error}</p>}
           <PrimaryButton onClick={submit} disabled={!code || !pin || loading}>
             {loading ? '확인 중...' : '로그인'}
           </PrimaryButton>
@@ -334,12 +334,21 @@ function CareApp() {
   const [showRecipientPicker, setShowRecipientPicker] = useState(false)
 
   const [loading, setLoading] = useState(false)
+  const requestBusy = useRef(false)
   const [error, setError] = useState<string | null>(null)
   // 저장/AI 호출이 실패했을 때, 방금 하려던 동작을 그대로 다시 시도할 수 있게
   // 보관해 둔다("재시도로 같은 보고가 중복 저장되지 않게" — reportId가 이미
   // 만들어진 뒤의 재시도이므로 patch만 반복될 뿐 새 보고가 다시 생기지 않는다).
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null)
-  const CONNECTION_ERROR_MESSAGE = '잠시 연결이 어려워요. 다시 시도해주세요.'
+  const CONNECTION_ERROR_MESSAGE = '저장 결과를 확인하지 못했어요. 입력은 유지됩니다. 다시 시도해 주세요.'
+  const requestError = (e: unknown, stage: string) => {
+    const status = e instanceof ApiClientError ? e.status : 0
+    // 돌봄 원문·인증 정보는 로그에 남기지 않는다.
+    console.warn('care-request-failed', { stage, status })
+    return status === 401 ? '로그인 시간이 만료됐어요. 입력은 유지됩니다. 다시 로그인한 뒤 이어서 진행해 주세요.'
+      : status === 403 ? '이 대상자의 보고 권한을 확인해 주세요. 입력은 유지됩니다.'
+      : stage + ' 결과를 확인하지 못했어요' + (status ? ' (HTTP ' + status + ')' : '') + '. 입력은 유지됩니다. 다시 시도해 주세요.'
+  }
   // 최초 관찰 입력용 음성 인식(홈에서 버튼을 누르면 바로 시작). 짧은 무음이나
   // 브라우저의 예기치 않은 세션 종료에도 이어서 들을 수 있도록 useContinuousVoice가
   // 재연결을 흡수한다 — 사용자가 "말하기 완료"를 눌러야 끝난다.
@@ -372,7 +381,7 @@ function CareApp() {
   const [audioEnabled, setAudioEnabled] = useState(() => isSpeechSynthesisSupported())
   const isSpeaking = useSyncExternalStore(subscribeSpeech, getSpeechSnapshot, () => false)
 
-  const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${participantCode}` : null
+  const draftKey = participantCode ? `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${scenarioRoute ? 'scenario_' : ''}${participantCode}` : null
 
   const saveDraft = () => {
     if (!draftKey || !reportId) return
@@ -380,7 +389,7 @@ function CareApp() {
       localStorage.setItem(
         draftKey,
         JSON.stringify({
-          reportId, reportType, recipientCode, rawInput, initialChoice, followupHistory, currentQuestion,
+          reportId, reportType, activeScenarioId, recipientCode, rawInput, initialChoice, followupHistory, currentQuestion,
           aiGeneratedReport, finalReport, screen, noChangeEntries, noChangeStep, noChangeAnswered, initialInfoCount,
           noChangeInitialInput, initialNoChangeEntries: initialNoChangeEntriesRef.current,
           noChangeQaHistory: noChangeQaHistoryRef.current, noChangeRawTexts: noChangeRawTextsRef.current,
@@ -437,15 +446,17 @@ function CareApp() {
 
     if (!navigateToHome) return
 
-    const draftKeyLocal = `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${code}`
+    const draftKeyLocal = `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${scenarioRoute ? 'scenario_' : ''}${code}`
     try {
-      const raw = localStorage.getItem(draftKeyLocal)
+      const legacyKey = `${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}${code}`
+      const raw = localStorage.getItem(draftKeyLocal) ?? (scenarioRoute ? localStorage.getItem(legacyKey) : null)
       if (raw) {
         const draft = JSON.parse(raw)
         const detail = await repo.getReport(draft.reportId)
-        if (detail.status === 'draft') {
+        if (detail.status === 'draft' && (detail.report_source === 'scenario') === scenarioRoute) {
           setReportId(draft.reportId)
           setReportType(draft.reportType)
+          setActiveScenarioId(detail.scenario_id ?? null)
           setRecipientCode(draft.recipientCode)
           setRawInput(draft.rawInput)
           setInitialChoice(draft.initialChoice ?? null)
@@ -467,7 +478,12 @@ function CareApp() {
           setScreen(draft.screen)
           return
         }
-        localStorage.removeItem(draftKeyLocal)
+        // 구형 공용 키에 남은 연습 입력도 별도 키로 보존한다. 서버 기록은 변경하지 않는다.
+        if (detail.status === 'draft' && detail.report_source === 'scenario') {
+          localStorage.setItem(`${DRAFT_KEY_PREFIX}${demo ? 'demo_' : ''}scenario_${code}`, raw)
+        }
+        // 다른 모드의 구형 초안은 삭제하지 않는다.
+        if (detail.status !== 'draft') localStorage.removeItem(draftKeyLocal)
       }
     } catch {
       // 복원 실패는 조용히 무시하고 홈 화면부터 시작한다.
@@ -621,6 +637,8 @@ function CareApp() {
       setError('배정된 수급자가 없습니다. 관리자에게 문의해 주세요.')
       return
     }
+    if (requestBusy.current) return
+    requestBusy.current = true
     setError(null)
     setRetryAction(null)
     setLoading(true)
@@ -655,8 +673,9 @@ function CareApp() {
       // createReport는 daily/additional 모두 "최근 빈 draft 재사용"으로 재시도-안전하다
       // (같은 요청을 다시 보내도 새 보고가 중복 생성되지 않는다).
       setError(CONNECTION_ERROR_MESSAGE)
-      setRetryAction(() => () => void startReport(type))
+      setRetryAction(() => () => void startReport(type, voiceAutoStart))
     } finally {
+      requestBusy.current = false
       setLoading(false)
     }
   }
@@ -668,6 +687,8 @@ function CareApp() {
     }
     const def = STANDARD_SCENARIOS.find((s) => s.id === scenarioId)
     if (!def) return
+    if (requestBusy.current) return
+    requestBusy.current = true
     setError(null)
     setLoading(true)
     try {
@@ -682,12 +703,15 @@ function CareApp() {
       setReportType('additional')
       setActiveScenarioId(scenarioId)
       setInitialChoice('changed')
-      setRawInput(def.prompt)
-      await repo.patchReport({ id: res.report.id, initialStatusChoice: 'changed', rawInput: def.prompt, inputMethod: 'text' })
+      const scenarioInput = res.report.raw_input || def.prompt
+      setRawInput(scenarioInput)
+      await repo.patchReport({ id: res.report.id, initialStatusChoice: 'changed', rawInput: scenarioInput, inputMethod: 'text' })
       setScreen('record')
     } catch (e) {
-      setError(e instanceof ApiClientError || e instanceof Error ? e.message : '표준상황을 시작하지 못했습니다.')
+      setError(requestError(e, '시뮬레이션 준비'))
+      setRetryAction(() => () => void startScenario(scenarioId))
     } finally {
+      requestBusy.current = false
       setLoading(false)
     }
   }
@@ -836,10 +860,15 @@ function CareApp() {
     if (!reportId) return
     const text = seedInput ?? rawInput
     setLoading(true)
+    if (requestBusy.current) return
+    requestBusy.current = true
+    setLoading(true)
     setError(null)
     setRetryAction(null)
+    let stage = '원문 저장'
     try {
       await repo.patchReport({ id: reportId, rawInput: text, inputMethod, followupQuestions: history, followupAnswers: history })
+      stage = 'AI 응답'
       const result: AiTurnResult = await repo.aiTurn(text, history, forceFinalize)
       if (result.needFollowup && result.question) {
         setCurrentQuestion({
@@ -858,6 +887,7 @@ function CareApp() {
         // usedFallback을 함께 저장해 관리자 화면이 "저장됨"과 "AI가 실제로 만들었음"을
         // 구분할 수 있게 한다. 데모 모드는 result.usedFallback이 항상 undefined이므로
         // 이 필드를 건드리지 않는다(의미 없는 값을 채우지 않음).
+        stage = '정리본 저장'
         await repo.patchReport({
           id: reportId,
           aiGeneratedReport: result.report,
@@ -865,13 +895,13 @@ function CareApp() {
         })
         setScreen('reportReview')
       }
-    } catch {
-      // 요양보호사에게는 서버 원인 문구를 그대로 보여주지 않고 항상 같은 안내로
-      // 통일한다 — 최초 입력(rawInput/history)은 그대로 남아 있으므로 재시도는
+    } catch (e) {
+      // 원문은 노출하지 않고 실패한 단계와 HTTP 상태를 구분한다 — 최초 입력(rawInput/history)은 그대로 남아 있으므로 재시도는
       // 같은 reportId에 patch만 다시 하는 것이라 중복 보고가 생기지 않는다.
-      setError(CONNECTION_ERROR_MESSAGE)
+      setError(requestError(e, stage))
       setRetryAction(() => () => void runAiTurn(history, seedInput, forceFinalize))
     } finally {
+      requestBusy.current = false
       setLoading(false)
     }
   }
@@ -919,6 +949,8 @@ function CareApp() {
   }
 
   const handleSubmitRaw = () => {
+    if (requestBusy.current || loading) return
+    cancelSpeech()
     const text = rawInput.trim()
     if (!text) return
     // 제출 시점에는 마이크가 켜져 있을 이유가 없다 — 화면 이탈이므로 확실히 끈다.
@@ -941,7 +973,7 @@ function CareApp() {
   // 화면에서 직접 조작하지 않고 항상 이 함수에 최종 답변 문자열을 넘긴다 — 어느
   // 경로로 답했든 followup_answers에는 실제로 말/선택한 내용만 그대로 남는다.
   const submitAnswerText = (text: string, stopRequested = false) => {
-    if (!currentQuestion) return
+    if (!currentQuestion || requestBusy.current || loading) return
     cancelSpeech()
     if (text && detectEmergencyPhrase(text)) {
       void enterEmergencyScreen(text)
@@ -1009,22 +1041,25 @@ function CareApp() {
   }
 
   const handleSubmitReport = async () => {
-    if (!reportId) return
+    if (!reportId || requestBusy.current) return
+    requestBusy.current = true
     cancelSpeech()
     setLoading(true)
     setError(null)
     setRetryAction(null)
     try {
       await repo.patchReport({ id: reportId, caregiverFinalReport: finalReport, submit: true })
-    } catch {
+    } catch (e) {
       // 저장 자체가 실패했을 때만 오류·재시도를 보여준다 — 완료 화면으로 넘어가지 않는다.
-      setError(CONNECTION_ERROR_MESSAGE)
+      setError(requestError(e, '최종 제출'))
       setRetryAction(() => () => void handleSubmitReport())
+      requestBusy.current = false
       setLoading(false)
       return
     }
     clearDraft()
     setScreen('submitted')
+    requestBusy.current = false
     setLoading(false)
     // 제출은 이미 성공했다 — 홈 화면 새로고침(오늘 기록 상태·목록)이 실패해도 방금
     // 제출이 성공했다는 사실과는 무관하므로, 이미 보여준 완료 화면 위에 저장
@@ -1126,7 +1161,8 @@ function CareApp() {
 
   return (
     <Shell demo={demo} onResetDemo={handleResetDemo}>
-      <div className="care-experience" data-screen={screen}>
+      <div className="care-experience" data-screen={screen} onFocusCapture={(e) => { if (e.target instanceof HTMLTextAreaElement) cancelSpeech() }}>
+      {scenarioRoute && <aside className="care-simulation" aria-label="시뮬레이션 안내"><strong>시뮬레이션 · 연습용 상황</strong><p>예시 상황이며 실제 관찰 기록이 아닙니다. 실제 돌봄 기록·실증 지표와 별도로 저장·집계합니다.</p><a href={demo ? '/care?demo=1' : '/care'}>실제 돌봄 화면으로 돌아가기</a></aside>}
       <div className="care-context">
         {screen === 'home' && <>
           <div className="care-account"><span>{participantCode}</span><span>{today}</span></div>
@@ -1139,13 +1175,13 @@ function CareApp() {
           audioControl={isSpeechSynthesisSupported() && <button
             className="care-audio-toggle" aria-label={audioEnabled ? '음성 안내 끄기' : '음성 안내 켜기'}
             aria-pressed={audioEnabled} onClick={() => { cancelSpeech(); setAudioEnabled((v) => !v) }}>
-            {audioEnabled ? '음성 켬' : '음성 끔'}
+            {audioEnabled ? '안내 음성 켜짐' : '안내 음성 꺼짐'}
           </button>} />
       )}
       {screen === 'home' && (
         <div className="care-home-actions">
           {error && <div className="care-error" role="alert"><p>{error}</p>
-            {retryAction && <button onClick={retryAction}>다시 시도</button>}</div>}
+            {retryAction && <button disabled={loading} onClick={retryAction}>다시 시도</button>}</div>}
           {recipientCodes.length > 0 && !dailySubmitted && <>
             <PrimaryButton onClick={() => void startReport('daily')} disabled={loading || !recipientCode}>
               <MicIcon className="w-6 h-6" />{loading ? '준비 중...' : '이야기 시작'}
@@ -1205,7 +1241,7 @@ function CareApp() {
       {screen === 'statusChoice' && (
         <div className="flex flex-col gap-4 pt-2">
           <p className="text-teal-600 font-semibold text-sm text-center">
-            {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode}
+            {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode}
           </p>
           <h2 className="text-xl font-bold text-slate-900 text-center">오늘 방문은 어땠나요?</h2>
           <button
@@ -1237,11 +1273,11 @@ function CareApp() {
           {/* 홈 화면의 큰 아바타가 작아져 대화 내내 상단에 남는다 — 같은 존재와
               계속 이야기하고 있다는 연속성을 준다. */}
           <p className="text-teal-600 font-semibold text-sm text-center">
-            {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode}
+            {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode}
           </p>
           <h2 className="text-xl font-bold text-slate-900 text-center leading-relaxed">
             {activeScenarioId
-              ? '아래 상황을 그대로 제출해 주세요'
+              ? '아래 예시로 대화를 연습해 주세요'
               : voice.isListening
                 ? '천천히 말씀하셔도 괜찮아요. 다 말씀하시면 완료를 눌러주세요.'
                 : '오늘 어르신 이야기를 들려주세요'}
@@ -1300,7 +1336,7 @@ function CareApp() {
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
               <p>{error}</p>
               {retryAction && (
-                <button onClick={retryAction} className="mt-2 font-bold underline">
+                <button disabled={loading} onClick={retryAction} className="mt-2 font-bold underline">
                   다시 시도
                 </button>
               )}
@@ -1365,7 +1401,7 @@ function CareApp() {
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
               <p>{error}</p>
               {retryAction && (
-                <button onClick={retryAction} className="mt-2 font-bold underline">
+                <button disabled={loading} onClick={retryAction} className="mt-2 font-bold underline">
                   다시 시도
                 </button>
               )}
@@ -1395,7 +1431,7 @@ function CareApp() {
           <ConversationLog turns={buildQuestionTurns()} />
           {error || !loading ? <div className="care-error" role="alert"><p>{error || '중단된 이야기를 이어서 정리할 수 있어요.'}</p>
             <p>말씀하신 내용은 그대로 남아 있어요.</p>
-            <button onClick={retryAction ?? (() => void runAiTurn(followupHistory))}>다시 시도</button>
+            <button disabled={loading} onClick={retryAction ?? (() => void runAiTurn(followupHistory))}>다시 시도</button>
           </div> : <p className="care-thinking">말씀하신 내용을 확인하고 있어요</p>}
         </div>
       )}
@@ -1541,7 +1577,7 @@ function CareApp() {
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
               <p>{error}</p>
               {retryAction && (
-                <button onClick={retryAction} className="mt-2 font-bold underline">
+                <button disabled={loading} onClick={retryAction} className="mt-2 font-bold underline">
                   다시 시도
                 </button>
               )}
@@ -1593,7 +1629,7 @@ function CareApp() {
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
               <p>{error}</p>
               {retryAction && (
-                <button onClick={retryAction} className="mt-2 font-bold underline">
+                <button disabled={loading} onClick={retryAction} className="mt-2 font-bold underline">
                   다시 시도
                 </button>
               )}
@@ -1611,7 +1647,7 @@ function CareApp() {
       {screen === 'reportReview' && (
         <div className="flex flex-col gap-4 pt-2">
           <p className="text-teal-600 font-semibold text-sm text-center">
-            {REPORT_TYPE_LABEL[reportType]} 돌봄보고 · {recipientCode} · 아직 보내지 않았어요
+            {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode} · 아직 보내지 않았어요
           </p>
           <h2 className="text-xl font-bold text-slate-900 text-center">말씀해주신 내용을 정리했어요.</h2>
           <p className="text-slate-600 text-base text-center">확인 후 센터에 보고해주세요.</p>
@@ -1672,7 +1708,7 @@ function CareApp() {
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
               <p>{error}</p>
               {retryAction && (
-                <button onClick={retryAction} className="mt-2 font-bold underline">
+                <button disabled={loading} onClick={retryAction} className="mt-2 font-bold underline">
                   다시 시도
                 </button>
               )}

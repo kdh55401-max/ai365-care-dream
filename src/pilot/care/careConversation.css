@@ -96,3 +96,15 @@
 .companion-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; background: white; transition: opacity .15s linear; }
 .companion-video video.is-visible { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .companion-video video { transition: none; } }
+
+/* Keep both entry actions visible without reducing text size. */
+.companion-header--expanded { padding: 12px 0 8px; }
+.companion-portrait--lg { width: clamp(204px, 52vw, 232px); height: clamp(204px, 52vw, 232px); margin: 8px auto; }
+.companion-header--expanded .companion-audio { position: static; align-self: flex-end; }
+.companion-header--compact { flex-wrap: wrap; }
+.companion-header--compact .companion-audio { position: static; margin-left: auto; }
+.companion-header--compact .companion-caption { padding-right: 0; }
+.care-text-link { text-decoration: underline; text-underline-offset: 4px; }
+.care-simulation { padding: 12px; margin: 8px 0; border: 1px solid #d3c8df; background: #f6f2fa; border-radius: 14px; font-size: 14px; line-height: 1.5; }
+.care-simulation a { display: inline-block; padding: 10px 0; text-decoration: underline; }
+@media (max-height: 750px) { .companion-portrait--lg { width: 180px; height: 180px; } .companion-greeting > p:last-child { line-height: 1.45; } }
