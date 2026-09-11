@@ -40,14 +40,14 @@ export function CompanionHeader({ expanded, state, recipientCode, completed, aud
       <div className="companion-greeting" hidden={!expanded}>
         <p className="companion-eyebrow">AI365 CARE DREAM · AI 돌봄 동료</p>
         <h1>{completed ? '오늘도 함께 돌봤어요' : '오늘 ' + (recipientCode || '배정된') + ' 어르신은 어떠셨어요?'}</h1>
-        <p>평소와 같아도 괜찮아요.<br />어르신의 상태나 돌보면서 어려웠던 점을<br />편하게 말씀해주세요.</p>
+        <p>평소와 같아도 괜찮아요.<br />돌봄 이야기를 편하게 들려주세요.</p>
       </div>
       <AiAvatar state={state} size={expanded ? 'lg' : 'sm'} />
       <div className="companion-caption">
         <p className="companion-identity">AI 돌봄 동료{!expanded && recipientCode ? ' · ' + recipientCode + ' 어르신' : ''}</p>
         <p className="companion-state" role="status" aria-live="polite" data-testid="companion-state">
           <span className={'companion-signal companion-signal--' + state} aria-hidden="true" />
-          {expanded && state === 'idle' ? '이야기할 준비가 됐어요' : AVATAR_STATE_LABEL[state]}
+          {expanded && state === 'idle' ? '이야기할 준비 됐어요' : AVATAR_STATE_LABEL[state]}
         </p>
       </div>
       <div className="companion-audio">{audioControl}</div>

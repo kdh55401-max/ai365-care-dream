@@ -117,8 +117,8 @@ const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
 
 function DemoBanner({ onReset }: { onReset: () => void }) {
   return (
-    <div className="w-full max-w-md mx-auto mb-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 flex items-center justify-between gap-2">
-      <span className="text-amber-700 text-xs font-bold">DEMO DATA · 실제 실증 결과가 아닙니다</span>
+    <div className="care-demo-banner w-full max-w-md mx-auto mb-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 flex items-center justify-between gap-2">
+      <span className="text-amber-700 text-xs font-bold">데모 · 연습 데이터 (실제 기록 아님)</span>
       <button onClick={onReset} className="text-amber-700 text-xs font-bold underline shrink-0">
         데모 초기화
       </button>

@@ -108,3 +108,27 @@
 .care-simulation { padding: 12px; margin: 8px 0; border: 1px solid #d3c8df; background: #f6f2fa; border-radius: 14px; font-size: 14px; line-height: 1.5; }
 .care-simulation a { display: inline-block; padding: 10px 0; text-decoration: underline; }
 @media (max-height: 750px) { .companion-portrait--lg { width: 180px; height: 180px; } .companion-greeting > p:last-child { line-height: 1.45; } }
+
+/* First viewport: compact context, readable controls, and natural overflow. */
+.care-demo-banner { padding: 0 10px; margin-bottom: 4px; gap: 4px; }
+.care-demo-banner button { min-height: 44px; }
+.companion-header--expanded .companion-eyebrow { display: none; }
+.companion-header--expanded { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 8px 0 4px; }
+.companion-header--expanded .companion-greeting, .companion-header--expanded .companion-portrait { grid-column: 1 / -1; }
+.companion-header--expanded .companion-caption { text-align: left; }
+.companion-header--expanded .companion-state { font-size: 14px; }
+.companion-header--expanded .companion-audio { align-self: center; }
+.companion-portrait--lg { width: clamp(144px, 25dvh, 232px); height: clamp(144px, 25dvh, 232px); }
+@media (max-height: 700px) {
+ .care-shell { padding-top: 4px; }
+ .care-account { padding-top: 2px; padding-bottom: 2px; }
+ .care-recipient { padding-top: 2px; padding-bottom: 6px; }
+ .companion-greeting h1 { margin-bottom: 6px; }
+ .companion-portrait--lg { margin-top: 4px; margin-bottom: 4px; }
+ .care-experience .care-composer-action { position: static; }
+ .care-safety-bar { position: static; }
+}
+@media (max-width: 330px) {
+ .companion-header--expanded { grid-template-columns: 1fr; }
+ .companion-header--expanded .companion-audio { justify-self: start; }
+}
