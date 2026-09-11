@@ -1,3 +1,4 @@
+import { sameFinalReport } from '../../shared/reportRetry.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ApiError, getQuery, readJsonBody, requireMethod, sendJson, withHandler } from '../_lib/http.js'
 import { requireCareSession } from '../_lib/auth.js'
@@ -163,6 +164,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         }
       }
 
+      if (reportSource === 'scenario') {
+        const { data: draft, error: draftError } = await supabase.from('reports').select(CARE_DETAIL_COLUMNS)
+          .eq('participant_code', session.participantCode).eq('recipient_code', recipientCode)
+          .eq('report_source', 'scenario').eq('scenario_id', scenarioId).eq('status', 'draft').eq('deleted', false)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle()
+        if (draftError) throw new ApiError(500, '연습 초안을 확인하지 못했습니다.')
+        if (draft) { sendJson(res, 200, { report: draft, resumed: true }); return }
+      }
+
       const { data: created, error } = await supabase
         .from('reports')
         .insert({
@@ -189,13 +199,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     const { data: existing, error: fetchError } = await supabase
       .from('reports')
-      .select('id, participant_code, status, started_at')
+      .select(CARE_DETAIL_COLUMNS)
       .eq('id', id)
       .eq('participant_code', session.participantCode)
       .eq('deleted', false)
       .maybeSingle()
     if (fetchError) throw new ApiError(500, '보고를 불러오지 못했습니다.')
     if (!existing) throw new ApiError(404, '보고를 찾을 수 없습니다.')
+    if (existing.status === 'submitted' && body.submit === true && sameFinalReport(existing.caregiver_final_report, body.caregiverFinalReport)) {
+      sendJson(res, 200, { report: existing })
+      return
+    }
     if (existing.status !== 'draft') {
       throw new ApiError(409, '이미 제출된 보고는 수정할 수 없습니다.')
     }
@@ -243,6 +257,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       .from('reports')
       .update(update)
       .eq('id', id)
+      .eq('status', 'draft')
       .select(CARE_DETAIL_COLUMNS)
       .single()
     if (updateError || !updated) throw new ApiError(500, '보고를 저장하지 못했습니다.')
