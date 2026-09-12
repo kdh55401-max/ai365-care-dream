@@ -660,6 +660,19 @@ function emptyStructuredReport(): StructuredReport {
   return { change: '', action: '', result: '', escalation: '', caregiverNote: '' }
 }
 
+/** 관리자 화면 전반에서 시각을 사람이 바로 읽을 수 있는 형태로 보여준다("2026-09-
+ * 12T02:14:22.716+00:00" 같은 원본 문자열을 그대로 노출하지 않는다) — 올해면 연도를
+ * 생략해 더 짧게 보여준다. */
+function formatKoreanDateTime(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '-'
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  const datePart = d.toLocaleDateString('ko-KR', { year: sameYear ? undefined : 'numeric', month: 'long', day: 'numeric' })
+  const timePart = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+  return `${datePart} ${timePart}`
+}
+
 /** "관리자 재확인·수정 시간"(사업계획서 핵심 실증 지표)의 원재료 — 열람 시각과
  * 처리(승인/반려) 시각의 차이를 분 단위로 보여준다. 둘 중 하나라도 없으면 계산하지
  * 않는다(추정해서 채우지 않음). 음수(예: 데이터 이상)는 표시하지 않는다. */
@@ -695,6 +708,10 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
 
   // 관리자 검토(승인/반려) — 위 1/2단계 연구용 평가와 별개의 운영 워크플로우.
   const [reviewDraft, setReviewDraft] = useState<StructuredReport>(emptyStructuredReport())
+  // 기본은 "빠른 판단" 모드 — 정리문을 읽기 전용 요약으로 보여주고 승인/반려 버튼을
+  // 바로 아래에 둔다. 실제로 고칠 내용이 있을 때만 펼쳐서 입력칸으로 바꾼다(재확인·
+  // 수정 시간을 줄이는 것이 목표이므로 기본값이 "다 펼쳐진 긴 폼"이면 안 된다).
+  const [editingReview, setEditingReview] = useState(false)
   const [reviewNote, setReviewNote] = useState('')
   // 기본값 false — 요양보호사에게 보이려면 관리자가 매번 명시적으로 체크해야 한다.
   const [reviewNoteVisible, setReviewNoteVisible] = useState(false)
@@ -724,6 +741,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
     // 않도록) — 새 보고를 열 때는 항상 false로 시작한다.
     setReviewNoteVisible(r.review_status !== 'pending' ? r.review_note_visible_to_caregiver === true : false)
     setShowRejectNote(false)
+    setEditingReview(false)
     setReviewError(null)
   }
 
@@ -806,6 +824,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
       setReport(updated)
       setReviewDraft(updated.admin_final_report ?? reviewDraft)
       setShowRejectNote(false)
+      setEditingReview(false)
       onChanged()
     } catch (e) {
       if (e instanceof ReviewConflictError) {
@@ -878,14 +897,14 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
         </button>
       </div>
       <p className="text-slate-400 text-xs">
-        제출: {report.submitted_at ?? '-'} · 소요 {report.completion_seconds ?? '-'}초 · 초기선택:{' '}
-        {report.initial_status_choice === 'changed' ? '평소와 다름' : report.initial_status_choice === 'similar' ? '평소와 비슷' : report.initial_status_choice === 'uncertain' ? '확인 필요' : '-'}
+        제출 {formatKoreanDateTime(report.submitted_at)} · 작성 {report.completion_seconds ?? '-'}초 ·{' '}
+        {report.initial_status_choice === 'changed' ? '평소와 다름' : report.initial_status_choice === 'similar' ? '평소와 비슷' : report.initial_status_choice === 'uncertain' ? '확인 필요' : '초기선택 없음'}
         {report.no_information_report && ' · 무정보 보고'}
       </p>
       <p className="text-slate-400 text-xs">
-        관리자 최초 열람: {report.admin_first_viewed_at ?? '아직 안 봄'}
+        {report.admin_first_viewed_at ? `열람 ${formatKoreanDateTime(report.admin_first_viewed_at)}` : '아직 열람 전'}
         {report.admin_first_viewed_at && report.reviewed_at && (
-          <> · 열람→처리 소요: {formatElapsedMinutes(report.admin_first_viewed_at, report.reviewed_at) ?? '-'}</>
+          <> · 처리까지 {formatElapsedMinutes(report.admin_first_viewed_at, report.reviewed_at) ?? '-'}</>
         )}
       </p>
 
@@ -934,7 +953,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
                   </span>
                 </p>
               )}
-              <p className="text-slate-400 text-[11px] mt-1">{report.reviewed_at}</p>
+              <p className="text-slate-400 text-[11px] mt-1">{formatKoreanDateTime(report.reviewed_at)}</p>
             </div>
           )}
 
@@ -950,18 +969,34 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
             </details>
           )}
 
-          <p className="text-slate-500 text-xs mb-2">필요하면 아래 내용을 수정한 뒤 승인 또는 반려하세요.</p>
-          {FIELD_LABELS.map(({ key, label }) => (
-            <div key={key} className="mb-2">
-              <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
-              <textarea
-                value={reviewDraft[key]}
-                onChange={(e) => setReviewDraft((prev) => ({ ...prev, [key]: e.target.value }))}
-                rows={2}
-                className="w-full border border-slate-200 rounded-lg p-2 text-sm"
-              />
-            </div>
-          ))}
+          {/* 기본은 요약(읽기 전용) — 대부분의 경우 원문과 대조해서 "이상 없음"만
+              확인하고 바로 승인하면 된다. 실제로 고칠 내용이 있을 때만 펼쳐서 입력칸을
+              보여준다(항상 4칸 다 펼쳐두면 승인/반려 버튼까지 스크롤이 길어져 오히려
+              재확인·수정 시간을 늘린다). */}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-slate-500 text-xs">정리문 · 이상 없으면 바로 승인하세요</p>
+            <button onClick={() => setEditingReview((v) => !v)} className="text-teal-600 text-xs font-bold underline shrink-0">
+              {editingReview ? '요약으로 보기' : '내용 수정'}
+            </button>
+          </div>
+          {editingReview
+            ? FIELD_LABELS.map(({ key, label }) => (
+                <div key={key} className="mb-2">
+                  <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
+                  <textarea
+                    value={reviewDraft[key]}
+                    onChange={(e) => setReviewDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                    rows={2}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm"
+                  />
+                </div>
+              ))
+            : FIELD_LABELS.map(({ key, label }) => (
+                <p key={key} className="text-sm text-slate-700 mb-1.5">
+                  <span className="text-slate-400">{label}: </span>
+                  {reviewDraft[key] || '-'}
+                </p>
+              ))}
 
           {showRejectNote && (
             <>
@@ -1009,7 +1044,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
               <p className="font-bold text-slate-600">검토 이력 (공유 관리자 접근 — 개인 식별 불가)</p>
               {report.review_history.map((h, i) => (
                 <p key={i}>
-                  {h.at} · {h.review_status === 'approved' ? '승인' : h.review_status === 'rejected' ? '반려' : '대기'}
+                  {formatKoreanDateTime(h.at)} · {h.review_status === 'approved' ? '승인' : h.review_status === 'rejected' ? '반려' : '대기'}
                   {h.review_note ? ` · ${h.review_note}` : ''}
                 </p>
               ))}
@@ -1039,7 +1074,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
           <button onClick={() => void saveStage1()} disabled={saving} className="min-h-[44px] rounded-full bg-teal-600 text-white font-bold hover:bg-teal-700 disabled:bg-slate-300">
             {stage1Done ? '원문 평가 다시 저장' : '원문 평가 저장'}
           </button>
-          {stage1Done && <p className="text-teal-600 text-xs text-center">저장됨 · {report.raw_evaluated_at}</p>}
+          {stage1Done && <p className="text-teal-600 text-xs text-center">저장됨 · {formatKoreanDateTime(report.raw_evaluated_at)}</p>}
         </div>
       </section>
 
@@ -1119,7 +1154,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
             <button onClick={() => void saveStage2()} disabled={saving} className="min-h-[44px] rounded-full bg-slate-900 text-white font-bold hover:bg-slate-800 disabled:bg-slate-300">
               {stage2Done ? 'AI 평가 다시 저장' : 'AI 평가 저장'}
             </button>
-            {stage2Done && <p className="text-teal-600 text-xs text-center">저장됨 · {report.ai_evaluated_at}</p>}
+            {stage2Done && <p className="text-teal-600 text-xs text-center">저장됨 · {formatKoreanDateTime(report.ai_evaluated_at)}</p>}
             {stage1Done && stage2Done && (
               <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 flex flex-col gap-1">
                 <p className="font-bold text-slate-700">이 건의 변화</p>
@@ -1245,7 +1280,7 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
               <span className="text-slate-400">{r.report_type === 'daily' ? '기본' : '추가'}</span>
             </div>
             <div className="flex justify-between items-center mt-1 text-xs text-slate-400">
-              <span>{r.submitted_at ?? '미제출'}</span>
+              <span>{r.submitted_at ? formatKoreanDateTime(r.submitted_at) : '미제출'}</span>
               <span>{r.completion_seconds ? `${r.completion_seconds}초` : ''}</span>
             </div>
             {r.status === 'submitted' && (
