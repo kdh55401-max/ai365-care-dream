@@ -1,5 +1,20 @@
 # MASTER_CONTEXT — AI365 CARE DREAM (이 워크트리, 음성 UX 분석 추가분)
 
+## 2026-09-12 (3차) — Vertex AI 전환 준비 (기존 API 키 경로와 병행, 기본은 그대로)
+
+Master가 Vertex AI로 전환을 요청해, `api/_lib/careReportAi.ts`의 Gemini 호출을
+`GOOGLE_VERTEX_PROJECT_ID`/`GOOGLE_VERTEX_LOCATION`/`GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON`
+세 환경변수가 모두 설정된 경우에만 Vertex 경로로 분기하게 만들었다 — 하나라도
+없으면 기존 `GEMINI_API_KEY` 경로 그대로 동작해 지금 당장은 아무것도 안 바뀐다.
+새 파일 `api/_lib/vertexAuth.ts`가 서비스 계정 JSON으로 OAuth2 토큰을 발급한다
+(새 SDK 없이 기존 `jose` 의존성 재사용). GCP 콘솔에서의 프로젝트·결제·서비스
+계정 설정은 사용자가 직접 해야 하며(이 환경에서는 불가), 이후 Vercel에 세
+환경변수를 넣어야 실제로 켜진다 — 아직 넣지 않았으므로 지금은 미적용 상태다.
+질문 프로토콜·요청/응답 스키마는 그대로다(Google이 두 경로의 API 표면을
+통일해 둠). 실제 Vertex 엔드포인트로의 라이브 호출은 이 환경에 GCP 자격증명이
+없어 미검증 — 사용자가 설정을 마친 뒤 실제 보고 하나로 확인해야 한다. 자세한
+내용은 CHANGE_LOG.md 2026-09-12 (3차) 항목.
+
 ## 2026-09-12 (2차) — 기록 화면 실시간 채팅 전환 (Gemini 호출 시점 불변)
 
 Master가 실시간 채팅형 STT 참고 영상을 보여주며 요청 — AI가 문장마다 끼어드는

@@ -1,3 +1,46 @@
+## 2026-09-12 (3차) — Gemini 호출 경로에 Vertex AI 옵션 추가 (기존 API 키 경로와 병행)
+
+Master가 "실제 사용량만큼 과금되는" Vertex AI로 전환을 요청했다(ChatGPT/Astra급
+실시간 대화를 만들려면 결국 Gemini Live API 같은 스트리밍 파이프라인이 필요하다는
+직전 조사에서 이어짐 — 이번 커밋은 그 스트리밍 전환 자체가 아니라, 먼저 지금 쓰는
+단발성 `generateContent` 호출의 인증·과금 경로를 Vertex AI로 옮기는 준비 단계다).
+
+- `api/_lib/vertexAuth.ts`(신규): 서비스 계정 JSON 키로 Vertex AI용 OAuth2 access
+  token을 발급한다. 새 Google SDK를 추가하지 않고, 이미 이 저장소가 자체 세션
+  JWT 서명에 쓰는 `jose`로 RFC 7523(JWT Bearer) 흐름을 직접 구현했다 — RSA 서명
+  → `oauth2.googleapis.com/token` 교환 → access_token 획득, 만료 60초 전까지
+  모듈 메모리에 캐시(같은 서버리스 인스턴스가 재사용될 때 매 요청마다 재발급하지
+  않음).
+- `api/_lib/env.ts`: `GOOGLE_VERTEX_PROJECT_ID`/`GOOGLE_VERTEX_LOCATION`/
+  `GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON` 추가. 셋 다 선택 값이며 `useVertexAi`는
+  세 값이 모두 있을 때만 true — 하나라도 없으면 기존 `GEMINI_API_KEY` 경로가
+  그대로 동작한다(마이그레이션 중 서비스 끊김 방지, 즉시 롤백 가능).
+- `api/_lib/careReportAi.ts`: `useVertexAi`에 따라 요청 URL(AI Studio의
+  `generativelanguage.googleapis.com` vs Vertex의 `{location}-aiplatform.
+  googleapis.com/.../publishers/google/models/...`)과 인증 방식(쿼리스트링 키 vs
+  `Authorization: Bearer`)만 분기한다 — 프롬프트·요청바디·응답스키마
+  (`systemInstruction`/`contents`/`generationConfig.responseSchema`)는 완전히
+  동일하게 유지했다(Google이 두 경로의 Gemini API 표면을 통일해 둔 덕분에
+  질문 프로토콜을 재작성할 필요가 없었다).
+- `.env.local.example`: Vertex 전환에 필요한 GCP 콘솔 절차(프로젝트·결제·API
+  활성화·서비스 계정·역할·키 발급)를 3줄 새 변수 설명에 그대로 남겼다.
+
+### 사용자가 직접 해야 하는 것 (GCP 콘솔·Vercel — 이 환경에서는 할 수 없음)
+1. GCP 콘솔에서 프로젝트 생성(또는 선택)·결제 계정 연결·"Vertex AI API" 사용 설정.
+2. IAM → 서비스 계정 생성, 역할 `Vertex AI User`(roles/aiplatform.user) 부여.
+3. 그 서비스 계정의 JSON 키 발급.
+4. Vercel 프로젝트 환경변수에 `GOOGLE_VERTEX_PROJECT_ID`, `GOOGLE_VERTEX_LOCATION`
+   (예: us-central1), `GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON`(키 파일 내용 전체)을
+   추가 — 셋 다 설정되는 순간 다음 배포부터 자동으로 Vertex 경로를 쓴다.
+
+### 검증
+`npx tsc -b` 0 오류, `npx vitest run` 126/126(신규 `vertexAuth.test.ts` 6건 —
+누락된 서비스 계정 JSON/형식 오류/필드 누락 시 각각 명확한 오류, 정상 키로 토큰
+발급, 캐시 재사용, 발급 실패 시 상태코드 포함 오류 확인). `npx oxlint`/`npx vite
+build` 기존과 동일. **실행하지 않음**: 실제 GCP 서비스 계정·프로젝트가 없어 Vertex
+AI 엔드포인트로의 실제 라이브 호출은 검증하지 못했다 — 위 4단계를 마친 뒤 실제
+보고 하나를 제출해 정상적으로 AI 응답이 오는지 반드시 확인해야 한다.
+
 ## 2026-09-12 (2차) — 기록 화면을 실시간 채팅 대화로 전환, 조치·센터확인 구분 표시
 
 Master가 유튜브의 실시간 채팅형 STT 데모를 보여주며 "말하는 도중 실시간 전사가

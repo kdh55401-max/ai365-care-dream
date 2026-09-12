@@ -1,6 +1,7 @@
 import { env } from './env.js'
 import { ApiError } from './http.js'
 import { isLikelyOffTopic } from '../../shared/offTopicEngine.js'
+import { getVertexAccessToken } from './vertexAuth.js'
 
 const MODEL = 'gemini-3.6-flash'
 const REQUEST_TIMEOUT_MS = 18000
@@ -235,28 +236,45 @@ export async function runCareReportTurn(
   const forceFinalize = clientForceFinalize || history.length >= MAX_FOLLOWUPS
   const userText = buildUserMessage(rawInput, history, forceFinalize)
 
+  // Vertex AI(GOOGLE_VERTEX_* 세 값이 모두 설정된 경우)와 기존 API 키 방식(AI
+  // Studio) 중 어느 쪽을 쓸지 결정한다 — 요청/응답 스키마는 두 경로가 동일하므로
+  // (Google이 Gemini API 표면을 통일해 뒀다) 여기서 URL·인증 헤더만 갈라진다.
+  // 하나라도 미설정이면 조용히 기존 경로로 돌아간다(마이그레이션 중 끊김 방지).
+  const useVertex = env.useVertexAi
+  let requestUrl: string
+  const requestHeaders: Record<string, string> = { 'content-type': 'application/json' }
+  if (useVertex) {
+    try {
+      requestHeaders.authorization = `Bearer ${await getVertexAccessToken()}`
+    } catch (e) {
+      throw new ApiError(502, `Vertex AI 인증에 실패했습니다: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    requestUrl =
+      `https://${env.vertexLocation}-aiplatform.googleapis.com/v1/projects/${env.vertexProjectId}` +
+      `/locations/${env.vertexLocation}/publishers/google/models/${MODEL}:generateContent`
+  } else {
+    requestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${env.geminiApiKey}`
+  }
+
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   let res: Response
   try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${env.geminiApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text: userText }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-            temperature: 0.2,
-          },
-        }),
-        signal: controller.signal,
-      },
-    )
+    res = await fetch(requestUrl, {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: userText }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+          temperature: 0.2,
+        },
+      }),
+      signal: controller.signal,
+    })
   } catch {
     if (controller.signal.aborted) {
       throw new ApiError(504, 'AI 응답 시간이 초과되었습니다. 다시 시도해 주세요.')
