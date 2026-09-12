@@ -51,6 +51,13 @@ const DRAFT_KEY_PREFIX = 'ai365_care_pilot_draft_'
 const CURRENT_RECIPIENT_KEY_PREFIX = 'ai365_care_current_recipient_'
 const REPORT_TYPE_LABEL: Record<ReportType, string> = { daily: '기본', additional: '추가' }
 
+/** 기록 화면 진입 시 AI가 건네는 초대 문구. TTS(자동 낭독)와 화면에 보이는 채팅
+ * 말풍선이 같은 문장을 쓰도록 한 곳에 모아 둔다(두 곳이 따로 관리되며 말이
+ * 달라지는 것을 방지). */
+function recordInviteText(recipientCode: string): string {
+  return `오늘 ${recipientCode} 어르신은 어떠셨어요? 평소와 같아도 괜찮아요. 어르신의 상태나 돌보면서 어려웠던 점을 편하게 말씀해주세요.`
+}
+
 /** 이 기기에서 이 요양보호사가 마지막으로 선택한(=현재 서비스 중인) 수급자 코드를
  * 기억해 두는 키. 실제 서비스에서는 방문 세션/NFC가 이 역할을 대신하지만, 그
  * 정보가 없는 지금은 "마지막으로 고른 대상자"를 현재 방문으로 간주해 재로그인 시
@@ -114,6 +121,18 @@ const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
   { key: 'escalation', label: '센터 확인사항' },
   { key: 'caregiverNote', label: '요양보호사 상황·지원 요청 (발화 원문 발췌)' },
 ]
+
+/** 최종 확인 화면에서 "조치(해결 방향)"와 "센터 확인사항(후속 연락 필요 여부)"을
+ * 색으로 구분해 눈에 바로 들어오게 한다 — 값 자체를 AI가 새로 분류하는 게 아니라
+ * 이미 있는 두 필드를 다르게 보여줄 뿐이다(프로토콜 변경 없음). */
+const FIELD_CARD_STYLE: Partial<Record<keyof StructuredReport, string>> = {
+  action: 'bg-teal-50 border-teal-200',
+  escalation: 'bg-amber-50 border-amber-200',
+}
+const FIELD_CAPTION: Partial<Record<keyof StructuredReport, string>> = {
+  action: '현장에서 취한 조치 · 참고용',
+  escalation: '센터가 추가로 확인·연락해야 할 내용',
+}
 
 function DemoBanner({ onReset }: { onReset: () => void }) {
   return (
@@ -534,7 +553,7 @@ function CareApp() {
     if (!audioEnabled || phase !== 'app') return
     let textToSpeak: string | null = null
     if (screen === 'record' && !activeScenarioId && voice.state === 'idle') {
-      textToSpeak = `오늘 ${recipientCode} 어르신은 어떠셨어요? 평소와 같아도 괜찮아요. 어르신의 상태나 돌보면서 어려웠던 점을 편하게 말씀해주세요.`
+      textToSpeak = recordInviteText(recipientCode)
     } else if (screen === 'question' && answerVoice.state === 'idle') {
       textToSpeak = questionSpeechText
     } else if (screen === 'noChangeQuestion' && answerVoice.state === 'idle') {
@@ -1124,6 +1143,18 @@ function CareApp() {
     return 'idle'
   }
 
+  // 기록 화면 전용 — AI의 초대 문구 + 실제로 듣고 있음이 확정됐을 때만(요청만
+  // 하고 아직 브라우저 권한 응답을 기다리는 "연결 중" 단계는 제외 — voice.isListening이
+  // 그 확정 신호다) 실시간 전사를 채팅 말풍선으로 보여준다. 다 말한 뒤(idle)에는
+  // 아래 편집 상자에서 검토·수정하므로 여기서는 다시 AI 문구만 남는다(같은 내용을
+  // 두 곳에 중복 표시하지 않는다).
+  const buildRecordTurns = (): ConversationTurn[] => {
+    const turns: ConversationTurn[] = [{ role: 'ai', text: recordInviteText(recipientCode) }]
+    const liveText = voice.isListening || voice.state === 'reconnecting' ? voice.text : ''
+    if (liveText.trim()) turns.push({ role: 'user', text: liveText })
+    return turns
+  }
+
   // 기본 돌봄보고 대화창에 실제로 오간 발화만 순서대로 담는다 — 예시나 준비된
   // 대화를 넣지 않는다. rawInput은 실제로 제출(screen이 record를 벗어남)된
   // 뒤에만 "말한 것"으로 표시한다(입력 중인 초안을 대화로 보여주지 않기 위함).
@@ -1275,13 +1306,20 @@ function CareApp() {
           <p className="text-teal-600 font-semibold text-sm text-center">
             {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode}
           </p>
-          <h2 className="text-xl font-bold text-slate-900 text-center leading-relaxed">
-            {activeScenarioId
-              ? '아래 예시로 대화를 연습해 주세요'
-              : voice.isListening
-                ? '천천히 말씀하셔도 괜찮아요. 다 말씀하시면 완료를 눌러주세요.'
-                : '오늘 어르신 이야기를 들려주세요'}
-          </h2>
+          {activeScenarioId ? (
+            <h2 className="text-xl font-bold text-slate-900 text-center leading-relaxed">아래 예시로 대화를 연습해 주세요</h2>
+          ) : (
+            <>
+              {/* 말하는 동안 실시간 전사가 채팅 말풍선으로 자란다 — 완료 후에는
+                  아래 편집 상자에서 검토·수정한다(같은 내용을 두 번 보여주지 않음). */}
+              <ConversationLog turns={buildRecordTurns()} />
+              {voice.isListening && (
+                <p className="text-teal-600 text-sm font-semibold text-center leading-relaxed">
+                  천천히 말씀하셔도 괜찮아요. 다 말씀하시면 완료를 눌러주세요.
+                </p>
+              )}
+            </>
+          )}
 
           {!activeScenarioId && (
             <div className="flex flex-col items-center gap-2">
@@ -1319,17 +1357,25 @@ function CareApp() {
             </div>
           )}
 
-          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
-            <textarea
-              value={voice.state === 'listening' || voice.state === 'reconnecting' ? voice.text : rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
-              readOnly={voice.state === 'listening' || voice.state === 'reconnecting'}
-              placeholder="음성 대신 여기에 직접 입력할 수도 있습니다. (예: 오늘 아침 식사량이 평소보다 적었어요)"
-              rows={4}
-              aria-label="오늘의 돌봄 이야기"
-              className="w-full text-lg text-slate-900 leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
-            />
-          </div>
+          {/* 실제로 듣고 있음이 확정된 동안에는 위 채팅 말풍선이 실시간 전사를
+              보여주므로 이 편집 상자는 숨긴다 — 같은 텍스트가 두 군데 동시에 보이면
+              오히려 헷갈린다. "이야기 시작"을 누른 직후 브라우저 마이크 권한 응답을
+              기다리는 짧은 연결 단계(voice.isListening이 아직 false)에는 이 상자를
+              그대로 남겨 둔다 — 권한이 늦게 오거나 거부돼도 곧바로 글로 입력할 수
+              있어야 한다. 말하기를 마치거나(idle) 처음부터 글로 입력하는 경우에도
+              당연히 나타난다. */}
+          {!(voice.isListening || voice.state === 'reconnecting') && (
+            <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
+              <textarea
+                value={rawInput}
+                onChange={(e) => setRawInput(e.target.value)}
+                placeholder="음성 대신 여기에 직접 입력할 수도 있습니다. (예: 오늘 아침 식사량이 평소보다 적었어요)"
+                rows={4}
+                aria-label="오늘의 돌봄 이야기"
+                className="w-full text-lg text-slate-900 leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
+              />
+            </div>
+          )}
 
           <PrivacyNotice />
           {error && (
@@ -1693,14 +1739,15 @@ function CareApp() {
           </details>
           <p className="care-section-label">센터에 보고할 기록 · 아래에서 수정할 수 있어요</p>
           {FIELD_LABELS.map(({ key, label }) => (
-            <div key={key} className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
+            <div key={key} className={`rounded-3xl border shadow-sm p-4 ${FIELD_CARD_STYLE[key] ?? 'bg-white border-slate-100'}`}>
               <label className="block font-bold text-slate-900 text-base mb-1">{label}</label>
+              {FIELD_CAPTION[key] && <p className="text-xs text-slate-500 mb-1.5">{FIELD_CAPTION[key]}</p>}
               <textarea
                 aria-label={label}
                 value={finalReport[key]}
                 onChange={(e) => setFinalReport((prev) => ({ ...prev, [key]: e.target.value }))}
                 rows={3}
-                className="w-full text-base text-slate-900 leading-relaxed focus:outline-none resize-none"
+                className="w-full text-base text-slate-900 leading-relaxed focus:outline-none resize-none bg-transparent"
               />
             </div>
           ))}
@@ -1806,8 +1853,9 @@ function CareApp() {
           </div>
           {historyDetail.caregiver_final_report &&
             FIELD_LABELS.map(({ key, label }) => (
-              <div key={key} className="rounded-3xl bg-white border border-slate-100 shadow-sm p-4">
+              <div key={key} className={`rounded-3xl border shadow-sm p-4 ${FIELD_CARD_STYLE[key] ?? 'bg-white border-slate-100'}`}>
                 <p className="font-bold text-slate-900 text-base mb-1">{label}</p>
+                {FIELD_CAPTION[key] && <p className="text-xs text-slate-500 mb-1">{FIELD_CAPTION[key]}</p>}
                 <p className="text-slate-700 whitespace-pre-wrap">{historyDetail.caregiver_final_report?.[key]}</p>
               </div>
             ))}
