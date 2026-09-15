@@ -31,6 +31,8 @@ PGlite에서 실제 실행해 검증(3건): 4단계 없이 실패·두 번 실�
 ### 검증
 tsc 0 오류, vitest 226/226(신규 12: 달력·반복 후보·에피소드 열쇠·재검토·값 비교·보드 9 + 마이그레이션 PGlite 3), oxlint 경고 4(기존과 동일), vite build 성공. Vercel 함수 12개 유지.
 e2e(데모, Chromium mobile-390/360, 제한 60초): 112건 중 108 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로 1~4단계 때와 같은 기존 결함(같은 오류). 신규 `observation-calendar.spec.ts` 4건×2화면 모두 통과: 보고일 기준 표시·상충(같은 날 3건)·변화·저장 없음·미관찰·미언급·보고 없음 구분·세부 키 유지·칸 → 원문·보고자·시각·보고 열기·30일·그래프 없음 / "식사 변화가 2일 보고됨"(같은 날 여러 건 하루)·관찰일 기준 제외 표시 → 기존 흐름으로 조치 → 후보 판단을 조치에 연결 → 조치에서 되짚기 → 현장 요청 게시 → 보드 카드·목록 / 판단 뒤 새 보고 알림(판단 유지)·근거 반려 시 재검토 필요 / 5단계 DB 적용 전 판단만 '준비 중'. 1~4단계 스펙 모두 통과. 달력 화면은 390px 스크린샷으로 직접 확인했다.
+### 배포
+배포: 커밋 56ebd0d → origin/master fast-forward(b419025..56ebd0d) → Vercel Production success(https://ai365-care-dream.vercel.app). 배포 후 운영 주소 확인: /admin·/admin/work/repeat·수급자 상세·/care 200, 새 번들에 관찰 달력·반복 보고 후보·후보 판단 포함, 비로그인·위조 쿠키의 관찰 조회·후보 판단·보드 모두 401, 운영 주소 데모 모드 e2e 27/27(observation-calendar 4 + baseline-docs 5 + field-requests 5 + admin-workflow 5 + recipient-hub 3 + demo-mode-persistence 5, mobile-390). 미확인: 운영 DB 마이그레이션(2→3→4→5단계)과 실제 관리자 로그인 후 달력·후보 판단 저장. 운영 데이터에는 항목별 상태가 거의 없어 달력·후보는 대부분 비어 보일 것으로 예상(현장 흐름 미저장). 되돌리기: master에서 56ebd0d revert 후 push(판단 테이블은 이전 앱이 읽지 않는다).
 
 ## 2026-09-15 (4차) — 돌봄 연속성 4단계: 기준문서 원본 · 관리자 확인 기준정보 · 조치 근거
 
