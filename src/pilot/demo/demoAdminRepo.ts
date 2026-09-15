@@ -30,6 +30,7 @@ import {
   demoUnlinkActionBaseline,
   demoUploadDocument,
 } from './demoBaselineRepo'
+import { demoGetRecipientObservations, demoReviewCandidate } from './demoCandidateRepo'
 import {
   demoAssignmentMap,
   DEMO_PIN,
@@ -163,6 +164,14 @@ export const demoAdminRepo: AdminRepo = {
     demoOrganization(orgId)
     demoUnlinkActionBaseline(input)
     return demoGetAction(input.actionId)
+  },
+  async getRecipientObservations(orgId, recipientCode, window) {
+    demoOrganization(orgId)
+    return demoGetRecipientObservations(recipientCode, window)
+  },
+  async reviewCandidate(orgId, input) {
+    demoOrganization(orgId)
+    return demoReviewCandidate(input)
   },
   async getStats(): Promise<StatsResponse> {
     const rows = demoAllReports()

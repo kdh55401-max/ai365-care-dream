@@ -35,7 +35,7 @@ export const OBSERVATION_STATUS_LABELS: Record<DomainStatus, string> = {
   changed: '변화 보고',
   not_observed: '미관찰',
   uncertain: '불확실',
-  not_mentioned: '정보 없음',
+  not_mentioned: '미언급',
 }
 
 export interface ObservationEntry {

@@ -108,6 +108,8 @@ export function demoWorkBoard(): WorkBoard {
     requests: frReady ? wf.fieldRequests : [],
     responses: frReady ? wf.fieldResponses : [],
     assigneesByRecipient: assigneesByRecipient(),
+    candidateReviews: ready && !['stage2', 'stage3', 'stage4'].includes(flag() ?? '') ? (wf.candidateReviews ?? []) : [],
+    candidateReviewsReady: ready && !['stage2', 'stage3', 'stage4'].includes(flag() ?? ''),
     now: new Date(),
   })
 }
@@ -196,6 +198,7 @@ export function demoGetAction(actionId: string): ActionDetailView {
       verifications: rc ? wf.verifications.filter((v) => v.action_id === actionId) : [],
       assignees: assigneesByRecipient()[action.recipient_code] ?? [],
       ...demoActionBaselineFields(actionId, action.recipient_code),
+      candidateReviews: ['stage2', 'stage3', 'stage4'].includes(flag() ?? '') ? [] : (wf.candidateReviews ?? []).filter((r) => r.linked_action_id === actionId),
     }
   })
 }

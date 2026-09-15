@@ -39,6 +39,7 @@ import { formatDue, formatKoreanDateTime } from './adminFormat'
 import { SpinnerIcon } from './adminBadges'
 import { ActionSummaryRow } from './ActionSummaryRow'
 import { ActionBaselineSection } from './BaselinePanels'
+import { ActionCandidateReviews } from './ObservationPanels'
 
 /** 관리자 판단·안전 검토·조치(2단계) 화면. 저장은 모두 요청 식별자(재시도 중복 방지)와
  * 버전/최신 기록 대조(동시 수정 충돌)를 거친다. 실패해도 입력값은 지우지 않는다. */
@@ -1287,6 +1288,8 @@ export function ActionDetailPanel({
       )}
 
       <ActionBaselineSection repo={repo} orgId={orgId} view={view} onUpdated={setFresh} onOpenRecipient={onOpenRecipient} />
+
+      <ActionCandidateReviews reviews={view.candidateReviews ?? []} onOpenReport={onOpenReport} />
 
       {view.linkedSafetyReviews.length > 0 && (
         <section className="rounded-2xl bg-white border border-slate-100 p-4">

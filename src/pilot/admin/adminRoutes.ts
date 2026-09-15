@@ -74,9 +74,9 @@ export function adminUrl(route: AdminRoute, currentSearch: string, extra?: Recor
   const params = new URLSearchParams()
   const current = new URLSearchParams(currentSearch)
   if (current.get('demo') === '1') params.set('demo', '1')
-  // 데모 전용: 'DB 적용 전' 상태 흉내(off: 2~4단계 미적용, stage2: 3·4단계 미적용, stage3: 4단계만 미적용)도 데모 안에서는 이어 붙인다.
+  // 데모 전용: 'DB 적용 전' 상태 흉내(off: 2~5단계 미적용, stage2: 3~5단계 미적용, stage3: 4·5단계 미적용, stage4: 5단계만 미적용)도 데모 안에서는 이어 붙인다.
   const sim = current.get('demo_workflow')
-  if (current.get('demo') === '1' && (sim === 'off' || sim === 'stage2' || sim === 'stage3')) params.set('demo_workflow', sim)
+  if (current.get('demo') === '1' && (sim === 'off' || sim === 'stage2' || sim === 'stage3' || sim === 'stage4')) params.set('demo_workflow', sim)
   for (const [k, v] of Object.entries(extra ?? {})) params.set(k, v)
   const qs = params.toString()
   return `${adminPath(route)}${qs ? `?${qs}` : ''}`

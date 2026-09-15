@@ -9,6 +9,7 @@ import { DECISION_LABELS, SAFETY_OUTCOME_LABELS } from '../../../shared/workflow
 import type { RecipientWorkflowView } from '../../../shared/workflowViews'
 import type { RecipientBaselineView } from '../../../shared/baseline'
 import { RecipientBaselineSection } from './BaselinePanels'
+import { RecipientObservationsSection } from './ObservationPanels'
 
 /** 관리자 수급자 허브 — 기관 → 수급자 목록 → 수급자 상세(보고 타임라인)와 기관 첫
  * 화면의 "검토할 보고" 목록. 계산은 shared/recipientHub.ts(서버·데모 공통)가 하고
@@ -528,6 +529,8 @@ export function RecipientDetailPanel({
           })()
         )}
       </section>
+
+      <RecipientObservationsSection repo={repo} orgId={orgId} recipientCode={recipient.code} onOpenReport={onOpenReport} onOpenAction={onOpenAction} />
 
       <RecipientBaselineSection
         repo={repo}

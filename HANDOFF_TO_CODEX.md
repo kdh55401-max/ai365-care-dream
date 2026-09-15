@@ -1,3 +1,37 @@
+## 2026-09-15 (5차) — 돌봄 연속성 5단계: 관찰 달력 · 원문 근거 · 반복 보고 후보 · 비교 가능한 값 차이
+
+목적·기대 동작: 수급자 상세에서 7일·30일 관찰 달력(보고일 기준)으로 항목별 상태와 같은 날 여러·상충 기록을 보고, 칸에서 그날 원문·보고자·시각으로
+돌아간다. 반복 보고 후보(초기 운영 규칙 `repeat_changed` v1)와 비교 가능한 정식 척도 값 차이를 근거와 함께 보여주고, 관리자 판단을 따로 남겨 기존
+조치에 연결한다. 설계·규칙·DB 적용 절차는 [docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md) §8.
+
+기준: origin/master b419025 → 브랜치 `claude/continuity-stage5-observation-calendar`(워크트리 `.claude/worktrees/continuity-stage1`).
+
+**중요 — 데이터 상태**: 현장 흐름(`CareApp`)은 항목별 상태(`*_domains_json`)를 한 번도 저장한 적이 없다. 운영 데이터로는 달력이 대부분 "항목 저장 없음",
+반복 후보는 거의 0이다. 관찰일도 저장되지 않아 모든 계산은 보고일 기준이다. 현장 저장을 켤지는 사용자 결정 과제다.
+**DB: `db/migrations/2026-09-18-change-candidate-reviews.sql`은 운영에 적용하지 못했다(접근 권한 없음).** 2→3→4→5 순서. 적용 전에는 후보 판단 저장만 "준비 중".
+
+수정 파일:
+- 공통 규칙: `shared/observationCalendar.ts`(신규 — 달력·칸 상태·화면 묶음), `shared/changeCandidates.ts`(신규 — 반복 후보 v1·에피소드 열쇠·값 비교 v1·판단 계획·재검토 상태),
+  `shared/observationViews.ts`(신규 — 수급자 관찰 화면 한 벌), `shared/workBoard.ts`(반복 후보 카드·목록), `shared/workflowViews.ts`(조치 상세에 연결된 판단), `shared/recipientHub.ts`(미언급 문구)
+- DB: `db/migrations/2026-09-18-change-candidate-reviews.sql`(신규 — 판단 테이블·불변 트리거·`candidate_review_append`·권한)
+- 서버: `api/_lib/candidateStore.ts`(신규), `api/admin/workflow.ts`(관찰 조회·후보 판단·보드·조치 상세)
+- 화면: `src/pilot/admin/ObservationPanels.tsx`(신규), `RecipientHub.tsx`, `WorkflowPanels.tsx`, `WorkBoardPanels.tsx`, `adminFormat.ts`, `adminRoutes.ts`
+- 데모: `src/pilot/demo/demoCandidateRepo.ts`(신규 — `?demo_workflow=stage4`), `demoStore.ts`, `demoAdminRepo.ts`, `demoWorkflowRepo.ts`, `src/pilot/shared/adminRepo.ts`
+- 테스트: `shared/observationCalendar.test.ts`(9), `api/_lib/candidateMigration.test.ts`(3, PGlite), `e2e/observation-calendar.spec.ts`(4)
+- 문서: `docs/CONTINUITY_STAGES.md`(§8), `CHANGE_LOG.md`, `MASTER_CONTEXT.md`
+
+직접 수행한 검증: tsc 0 오류, vitest 226/226(신규 12: 달력·반복 후보·에피소드 열쇠·재검토·값 비교·보드 9 + 마이그레이션 PGlite 3), oxlint 경고 4(기존과 동일), vite build 성공. Vercel 함수 12개 유지.
+e2e(데모, Chromium mobile-390/360, 제한 60초): 112건 중 108 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로 1~4단계 때와 같은 기존 결함(같은 오류). 신규 `observation-calendar.spec.ts` 4건×2화면 모두 통과: 보고일 기준 표시·상충(같은 날 3건)·변화·저장 없음·미관찰·미언급·보고 없음 구분·세부 키 유지·칸 → 원문·보고자·시각·보고 열기·30일·그래프 없음 / "식사 변화가 2일 보고됨"(같은 날 여러 건 하루)·관찰일 기준 제외 표시 → 기존 흐름으로 조치 → 후보 판단을 조치에 연결 → 조치에서 되짚기 → 현장 요청 게시 → 보드 카드·목록 / 판단 뒤 새 보고 알림(판단 유지)·근거 반려 시 재검토 필요 / 5단계 DB 적용 전 판단만 '준비 중'. 1~4단계 스펙 모두 통과. 달력 화면은 390px 스크린샷으로 직접 확인했다.
+
+확인할 화면(데모 — 항목별 상태가 있는 보고는 저장소에 직접 넣어야 보인다: `e2e/observation-calendar.spec.ts`의 seed 참고):
+`/admin/org/gadream365/recipients/A01?demo=1`의 "관찰 달력 · 반복 보고 후보"(7일/30일, 칸·날짜 클릭, 후보 판단 남기기) → 조치 상세 "연결된 변화 후보 판단".
+기관 첫 화면 "반복 보고 후보" 카드 → `/admin/work/repeat`. `?demo_workflow=stage4`는 5단계 DB 적용 전 흉내.
+
+검토 요청(Codex): (1) 에피소드 열쇠가 창 이동·반려에도 안정적인지(반려 신호는 열쇠에만 쓰고 날 수에서는 뺌), (2) 같은 날 복수 보고를 하루로 세는지,
+(3) 값 비교 제외 조건(버전·단위·측정일·상충·계획)이 충분한지, (4) 서버가 후보를 다시 계산해 열쇠를 확인하는 경로가 우회되지 않는지.
+
+한계: 운영 데이터에 항목별 상태가 거의 없음(현장 저장 미구현 — 사용자 결정 필요). 관찰일 기준 계산 불가(보고일만). 반복 규칙 v1은 검증된 임상 기준이 아님.
+
 ## 2026-09-15 (4차) — 돌봄 연속성 4단계: 기준문서 원본 · 관리자 확인 기준정보 · 조치 근거
 
 목적·기대 동작: 관리자가 수급자별 원본 문서(급여제공계획서·이용계획서·평가 자료 등)를 비공개로 올리고, 원본을 보며 기준정보를 입력·확인해

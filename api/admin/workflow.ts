@@ -23,6 +23,10 @@ import {
   sha256Hex,
   storageReady,
 } from '../_lib/baselineStore.js'
+import { callCandidateRpc, candidateReviewsReady, loadCandidateReviews, loadReviewsForAction } from '../_lib/candidateStore.js'
+import { compareScaleValues, computeRepeatCandidates, planCandidateReview, type CandidateReviewInput, type ReviewableCandidate } from '../../shared/changeCandidates.js'
+import { parseCalendarWindow } from '../../shared/observationCalendar.js'
+import { buildRecipientObservations, type RecipientObservationsView } from '../../shared/observationViews.js'
 import {
   buildActionBaseline,
   buildRecipientBaseline,
@@ -100,6 +104,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * 현장 응답 자체는 요양보호사 보고 제출(api/care/reports.ts)에서 들어온다.
  * 4단계 테이블·비공개 버킷(db/migrations/2026-09-17-source-documents.sql)이 없으면 기준정보 조회는 ready:false,
  * 올리기·입력은 503. 기준정보가 없어도 조치·현장 요청은 그대로 쓴다(필수 관문이 아님).
+ * 5단계 관찰 달력·반복 보고 후보는 보고에서 매번 계산하고(DB 불필요), 후보에 대한 관리자 판단만
+ * db/migrations/2026-09-18-change-candidate-reviews.sql에 쌓는다(없으면 판단 저장만 503).
  *
  * GET  ?org=&view=recipients                      수급자 목록 + 검토 대기(1단계)
  * GET  ?org=&view=recipient&code=A01&period=30    수급자 타임라인 + 보고별 판단·안전 검토·조치
@@ -109,8 +115,9 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * GET  ?org=&view=action&id=                      조치 상세(의무·이력·현장 요청·응답·결과 확인·현재 배정)
  * GET  ?org=&view=baseline&code=A01               수급자 기준문서·기준정보(버전·상충·참고값)
  * GET  ?org=&view=document_file&id=               원본 파일(관리자만, 캐시 금지)
+ * GET  ?org=&view=observations&code=A01&window=7|30  관찰 달력·반복 보고 후보·값 비교·판단 상태·열린 조치
  * POST ?org=&op=upload_document  (본문 = 파일 바이트, 헤더 x-document-meta = base64 JSON)
- * POST ?org=  {op:'decide'|'safety_review'|'create_action'|'mutate_action'|'baseline'|'link_baseline'|'unlink_baseline', ...} */
+ * POST ?org=  {op:'decide'|'safety_review'|'create_action'|'mutate_action'|'baseline'|'link_baseline'|'unlink_baseline'|'candidate_review', ...} */
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
     requireMethod(req, 'GET', 'POST')
@@ -142,6 +149,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         return sendJson(res, 200, await baselineView(supabase, organization, q.get('code') ?? ''))
       case 'document_file':
         return sendDocumentFile(supabase, organization, q.get('id') ?? '', res)
+      case 'observations':
+        return sendJson(res, 200, await observationsView(supabase, organization, q.get('code') ?? '', q.get('window')))
       default:
         throw new ApiError(400, '알 수 없는 조회입니다.')
     }
@@ -211,12 +220,14 @@ async function requestContext(supabase: SupabaseClient, organizationId: string, 
 }
 
 async function boardView(supabase: SupabaseClient, organization: Organization) {
-  const [reports, ready, frReady, assigneesByRecipient] = await Promise.all([
+  const [reports, ready, frReady, assigneesByRecipient, reviewsReady] = await Promise.all([
     liveReports(supabase),
     workflowReady(supabase),
     fieldRequestsReady(supabase),
     loadAssigneesByRecipient(supabase),
+    candidateReviewsReady(supabase),
   ])
+  const candidateReviews = reviewsReady ? await loadCandidateReviews(supabase, organization.id) : []
   const rows = ready ? await loadWorkflowRows(supabase, organization.id) : { decisions: [], safetyReviews: [], actions: [], obligations: [], reportEvents: [] }
   const field = ready && frReady ? await loadFieldRows(supabase, organization.id) : { requests: [], responses: [], verifications: [] }
   return {
@@ -229,6 +240,8 @@ async function boardView(supabase: SupabaseClient, organization: Organization) {
       requests: field.requests,
       responses: field.responses,
       assigneesByRecipient,
+      candidateReviews,
+      candidateReviewsReady: reviewsReady,
       now: new Date(),
     }),
   }
@@ -338,6 +351,7 @@ async function actionView(supabase: SupabaseClient, organization: Organization, 
     verifications: s.field.verifications,
     assignees: s.assignees,
     ...(await actionBaselineView(supabase, organization, s.action)),
+    candidateReviews: (await candidateReviewsReady(supabase)) ? await loadReviewsForAction(supabase, organization.id, s.action.id) : [],
   }
 }
 
@@ -448,6 +462,8 @@ async function handlePost(supabase: SupabaseClient, organization: Organization, 
       }
       case 'baseline':
         return sendJson(res, 200, await handleBaselineOp(supabase, organization, body))
+      case 'candidate_review':
+        return sendJson(res, 200, await handleCandidateReview(supabase, organization, body))
       case 'link_baseline':
       case 'unlink_baseline':
         return sendJson(res, 200, await handleBaselineLink(supabase, organization, body))
@@ -704,4 +720,58 @@ async function handleBaselineLink(supabase: SupabaseClient, organization: Organi
     baselineError(e)
   }
   return actionView(supabase, organization, action.id)
+}
+
+// ── 5단계: 관찰 달력 · 반복 보고 후보 · 값 비교 ─────────────────────────
+
+async function observationsView(supabase: SupabaseClient, organization: Organization, rawCode: string, rawWindow: string | null): Promise<RecipientObservationsView> {
+  const code = recipientCodeOf(rawCode)
+  await requireRecipient(supabase, code)
+  const [reports, ready, bReady, rReady] = await Promise.all([liveReports(supabase, code), workflowReady(supabase), baselineReady(supabase), candidateReviewsReady(supabase)])
+  const [actions, baselineRows, reviews] = await Promise.all([
+    ready ? loadWorkflowRows(supabase, organization.id, { reportIds: [], recipientCode: code }).then((r) => r.actions) : Promise.resolve([] as CareAction[]),
+    bReady ? loadRecipientBaselineRows(supabase, organization.id, code) : Promise.resolve(null),
+    rReady ? loadCandidateReviews(supabase, organization.id, code) : Promise.resolve([]),
+  ])
+  await logAudit('view_recipient_observations', code, { window: rawWindow })
+  return buildRecipientObservations({
+    recipientCode: code,
+    reports,
+    window: parseCalendarWindow(rawWindow),
+    today: todayKstDateString(),
+    now: new Date(),
+    reviews,
+    reviewsReady: rReady,
+    baselineEntries: baselineRows ? baselineRows.entries : null,
+    actions,
+  })
+}
+
+/** 후보 판단: 서버가 같은 규칙으로 후보를 다시 계산해 열쇠가 맞는 후보에만 판단을 남긴다(화면이 보낸 근거를 믿지 않음). */
+async function handleCandidateReview(supabase: SupabaseClient, organization: Organization, body: Record<string, unknown>): Promise<RecipientObservationsView> {
+  if (!(await candidateReviewsReady(supabase))) throw new ApiError(503, '후보 판단 저장소가 아직 준비되지 않았습니다(5단계 DB 마이그레이션 적용 필요).')
+  const input = body as unknown as CandidateReviewInput
+  const code = recipientCodeOf(String(body.recipientCode ?? ''))
+  await requireRecipient(supabase, code)
+  const existing = await loadCandidateReviews(supabase, organization.id, code)
+  if (!existing.some((r) => r.request_id === input.requestId)) {
+    const [reports, bReady] = await Promise.all([liveReports(supabase, code), baselineReady(supabase)])
+    const candidates: ReviewableCandidate[] = computeRepeatCandidates(reports, todayKstDateString()).candidates.filter((c) => c.recipientCode === code)
+    if (bReady) candidates.push(...compareScaleValues((await loadRecipientBaselineRows(supabase, organization.id, code)).entries).comparisons)
+    const candidate = candidates.find((c) => c.key === input.candidateKey)
+    if (!candidate) throw new ApiError(409, '이 후보는 지금 조건을 채우지 않거나 근거가 바뀌었습니다. 화면을 새로 불러와 주세요.')
+    let linked: CareAction | null = null
+    if (input.linkedActionId) {
+      if (!UUID_PATTERN.test(String(input.linkedActionId))) throw new ApiError(400, '연결할 조치 id가 올바르지 않습니다.')
+      linked = (await loadActionState(supabase, organization.id, String(input.linkedActionId))).action
+    }
+    try {
+      const review = planCandidateReview(candidate, input, linked, context(organization))
+      rpcOutcome(await callCandidateRpc(supabase, review), '그 사이 연결할 조치가 바뀌었습니다. 최신 내용을 확인해 주세요.')
+      await logAudit('review_change_candidate', code, { kind: review.candidate_kind, decision: review.decision })
+    } catch (e) {
+      baselineError(e)
+    }
+  }
+  return observationsView(supabase, organization, code, typeof body.window === 'string' ? body.window : null)
 }

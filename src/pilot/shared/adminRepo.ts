@@ -16,6 +16,8 @@ import type {
   SourceDocument,
   WithdrawDocumentInput,
 } from '../../../shared/baseline'
+import type { CandidateReviewInput } from '../../../shared/changeCandidates'
+import type { RecipientObservationsView } from '../../../shared/observationViews'
 
 export interface ParticipationCell {
   date: string
@@ -166,6 +168,10 @@ export interface AdminRepo {
   baselineOp(orgId: string, input: BaselineOpRequest): Promise<RecipientBaselineView>
   linkActionBaseline(orgId: string, input: LinkActionInput): Promise<ActionDetailView>
   unlinkActionBaseline(orgId: string, input: UnlinkActionBaselineRequest): Promise<ActionDetailView>
+  /** 5단계: 관찰 달력(7·30일)·반복 보고 후보·값 비교·판단 상태·열린 조치. */
+  getRecipientObservations(orgId: string, recipientCode: string, window: 7 | 30): Promise<RecipientObservationsView>
+  /** 5단계: 후보에 대한 관리자 판단(서버가 후보를 다시 계산해 열쇠를 확인한다). */
+  reviewCandidate(orgId: string, input: CandidateReviewInput & { recipientCode: string; window: 7 | 30 }): Promise<RecipientObservationsView>
   getStats(): Promise<StatsResponse>
   listReports(source?: 'live' | 'scenario' | 'all'): Promise<ReportListItem[]>
   getReport(id: string): Promise<ReportDetail>
@@ -293,6 +299,12 @@ export const realAdminRepo: AdminRepo = {
   },
   async unlinkActionBaseline(orgId, input) {
     return workflowPost<ActionDetailView>(orgId, { ...input, op: 'unlink_baseline' })
+  },
+  async getRecipientObservations(orgId, recipientCode, window) {
+    return api.get<RecipientObservationsView>(`${workflowUrl(orgId)}&view=observations&code=${encodeURIComponent(recipientCode)}&window=${window}`)
+  },
+  async reviewCandidate(orgId, input) {
+    return workflowPost<RecipientObservationsView>(orgId, { ...input, window: String(input.window), op: 'candidate_review' })
   },
   async getStats() {
     return api.get<StatsResponse>('/api/admin/stats')

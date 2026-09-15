@@ -27,6 +27,7 @@ import {
 } from './workflow.js'
 import { requestWaitState, routingProblem, type RequestWaitState, type RoutingProblem } from './fieldRequests.js'
 import type { ActionBaselineLinkView, BaselineOption } from './baseline.js'
+import type { CandidateReview } from './changeCandidates.js'
 
 export interface ObligationView {
   id: string
@@ -230,6 +231,8 @@ export interface ActionDetailView {
   baselineReady: boolean
   baselineLinks: ActionBaselineLinkView[]
   baselineOptions: BaselineOption[]
+  /** 5단계: 이 조치에 연결된 반복 보고·값 비교 후보 판단(판단 당시 근거 스냅샷 포함). */
+  candidateReviews: CandidateReview[]
 }
 
 export interface RecipientWorkflowView {

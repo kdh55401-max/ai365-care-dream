@@ -29,6 +29,7 @@ import {
   type RequestTargetMode,
 } from './workflow.js'
 import { requestWaitState, routingProblem, type RequestWaitState, type RoutingProblem } from './fieldRequests.js'
+import { computeRepeatCandidates, reviewStateOf, type CandidateDecision, type CandidateReview, type RepeatCandidate } from './changeCandidates.js'
 
 type BoardReport = Partial<CareReportRecord> & Pick<CareReportRecord, 'id' | 'recipient_code' | 'participant_code' | 'status'>
 
@@ -134,6 +135,8 @@ export interface WorkBoard {
     verification: { ready: boolean; actions: number }
     /** 재배정 필요한 게시 요청(요청 수)과 담당 미지정 조치(조치 수). */
     reassign: { ready: boolean; requests: number; unassignedActions: number }
+    /** 5단계: 반복 보고 후보(초기 운영 규칙 v1, 보고일 기준 — 관찰일 없음). 후보 수·수급자 수·변화 신호 수를 구분한다. */
+    repeat: { candidates: number; recipients: number; unreviewed: number; signals: number; changedRecipients: number; reviewsReady: boolean }
   }
   lists: {
     safety: SafetySignalItem[]
@@ -148,6 +151,7 @@ export interface WorkBoard {
     verification: VerificationWorkItem[]
     reassignRequests: RequestWorkItem[]
     unassignedActions: ActionWorkItem[]
+    repeat: Array<{ candidate: RepeatCandidate; latestDecision: CandidateDecision | null; needsRecheck: boolean; newEvidence: number }>
   }
   /** 3단계 저장소 준비 여부. */
   fieldRequestsReady: boolean
@@ -168,6 +172,9 @@ export interface WorkBoardInput {
   requests?: FieldRequest[]
   responses?: FieldResponse[]
   assigneesByRecipient?: Record<string, string[]>
+  /** 5단계(없으면 판단 없음으로 본다). */
+  candidateReviews?: CandidateReview[]
+  candidateReviewsReady?: boolean
 }
 
 function brief(o: ActionObligation): ObligationBrief {
@@ -312,6 +319,14 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
         .map((a) => ({ actionId: a.id, recipientCode: a.recipient_code, kind: a.kind, status: a.status, purpose: a.purpose, ownerLabel: null, sourceReportId: a.source_report_id, overdue: [], dueToday: [] }))
     : []
 
+  // ── 5단계: 반복 보고 후보(보고에서 매번 같은 규칙으로 계산, 판단은 따로) ──
+  const repeat = computeRepeatCandidates(live, today.date)
+  const reviews = input.candidateReviews ?? []
+  const repeatItems = repeat.candidates.map((candidate) => {
+    const st = reviewStateOf(candidate.key, candidate, reviews, live)
+    return { candidate, latestDecision: st.latest?.decision ?? null, needsRecheck: st.recheckReasons.length > 0, newEvidence: st.newEvidenceSinceReview }
+  })
+
   // ── 통합 목록(운영 규칙 순서, 같은 대상은 가장 앞 범주에 한 번만) ──
   const combined: CombinedWorkItem[] = []
   const seen = new Set<string>()
@@ -433,6 +448,14 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
       },
       verification: { ready: frReady, actions: verificationItems.length },
       reassign: { ready: input.workflowReady, requests: reassignRequests.length, unassignedActions: unassignedActions.length },
+      repeat: {
+        candidates: repeatItems.length,
+        recipients: new Set(repeatItems.map((x) => x.candidate.recipientCode)).size,
+        unreviewed: repeatItems.filter((x) => !x.latestDecision).length,
+        signals: repeat.signalsInWindow,
+        changedRecipients: repeat.changedRecipients,
+        reviewsReady: Boolean(input.candidateReviewsReady),
+      },
     },
     lists: {
       safety,
@@ -445,6 +468,7 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
       verification: verificationItems,
       reassignRequests,
       unassignedActions,
+      repeat: repeatItems,
     },
     fieldRequestsReady: frReady,
     combined,

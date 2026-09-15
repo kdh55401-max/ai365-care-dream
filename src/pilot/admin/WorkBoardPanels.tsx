@@ -11,6 +11,7 @@ import {
 } from '../../../shared/workBoard'
 import { ACTION_KIND_LABELS, OBLIGATION_TYPE_LABELS, RESPONSE_STATUS_LABELS, SAFETY_OUTCOME_LABELS, type DueKind, type ResponseStatus } from '../../../shared/workflow'
 import { REQUEST_WAIT_LABELS, ROUTING_PROBLEM_LABELS } from '../../../shared/fieldRequests'
+import { CANDIDATE_DECISION_LABELS } from '../../../shared/changeCandidates'
 import { ACTION_FILTER_LABELS, ACTION_FILTERS, type ActionFilter } from '../../../shared/workflowViews'
 import { formatDue, formatKoreanDateTime, type WorkCard } from './adminFormat'
 import { SpinnerIcon } from './adminBadges'
@@ -147,6 +148,14 @@ export function WorkCards({ board, onOpenCard }: { board: WorkBoard; onOpenCard:
           ) : (
             <NotReady />
           )}
+        </Card>
+        <Card title="반복 보고 후보" onClick={() => onOpenCard('repeat')}>
+          <p className="text-xl font-bold text-slate-900">
+            {cards.repeat.candidates}건 <span className="text-xs font-normal text-slate-500">· 수급자 {cards.repeat.recipients}명</span>
+          </p>
+          <p className="text-[11px] text-slate-400">
+            보고일 기준 최근 7일 · 판단 전 {cards.repeat.unreviewed}건 · 변화가 보고된 수급자 {cards.repeat.changedRecipients}명(신호 {cards.repeat.signals}건)
+          </p>
         </Card>
       </div>
       <p className="text-[10px] text-slate-400 mt-1.5">
@@ -308,6 +317,7 @@ const CARD_TITLES: Record<WorkCard, string> = {
   requests: '현장 응답 대기 요청',
   verification: '응답 도착 · 결과 확인 대기',
   reassign: '재배정·담당 필요',
+  repeat: '반복 보고 후보(보고일 기준)',
 }
 
 /** 카드를 누르면 여는 전체 목록 — 카드 숫자와 같은 계산 결과의 목록 전부. */
@@ -389,6 +399,32 @@ export function WorkCardListPanel({
         ) : (
           <p className="text-slate-500 bg-slate-50 rounded-xl p-3 text-sm">준비 중 — 현장 요청 저장소(3단계 DB 마이그레이션)가 적용되기 전입니다.</p>
         ))}
+      {card === 'repeat' && (
+        <>
+          <p className="text-[11px] text-slate-500">
+            초기 운영 규칙 v1: 최근 7일(한국 날짜) 중 서로 다른 날 2일 이상, 같은 수급자·같은 세부 영역에 변화가 저장된 보고. 같은 날 여러 보고는 하루. 관찰일이 저장되지 않아
+            보고일 기준입니다. 증상 지속·악화 판단이 아닙니다. 항목별 상태가 저장된 보고만 셉니다.
+          </p>
+          {board.lists.repeat.length === 0 ? (
+            <p className="text-slate-500 text-sm bg-slate-50 rounded-xl p-3">0건</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {board.lists.repeat.map(({ candidate: c, latestDecision, needsRecheck, newEvidence }) => (
+                <button key={c.key} onClick={() => onOpenRecipient(c.recipientCode)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+                  <p className="text-sm">
+                    <span className="font-bold text-slate-900">수급자 {c.recipientCode}</span> <span className="text-slate-700">{c.headline}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    보고일 {c.days.join(', ')} · {latestDecision ? `관리자 판단: ${CANDIDATE_DECISION_LABELS[latestDecision]}` : '판단 전'}
+                    {newEvidence > 0 && ` · 판단 뒤 새 보고 ${newEvidence}건`}
+                    {needsRecheck && ' · 재검토 필요'}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
       {card === 'reassign' &&
         (ready ? (
           <>

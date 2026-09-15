@@ -1,6 +1,7 @@
 import { normalizeReportRecord, type CareReportRecord } from '../../../shared/careTypes.js'
 import type { ActionEvent, ActionObligation, ActionVerification, AdminDecision, CareAction, FieldRequest, FieldResponse, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
 import type { ActionBaselineLink, BaselineEntry, ReferenceChoice, SourceDocument } from '../../../shared/baseline.js'
+import type { CandidateReview } from '../../../shared/changeCandidates.js'
 
 /** 데모 모드 전용 저장소. Supabase/Gemini 없이도 /care?demo=1, /admin?demo=1 화면
  * 전체 흐름을 즉시 시연할 수 있도록 브라우저 localStorage에만 저장한다.
@@ -81,6 +82,8 @@ export interface DemoWorkflow {
   verifications: ActionVerification[]
   /** 4단계(없으면 빈 것으로 본다). 원본 파일 바이트는 DEMO_FILES_KEY에 따로 둔다. */
   baseline?: DemoBaseline
+  /** 5단계 후보 판단(없으면 빈 것으로 본다). */
+  candidateReviews?: CandidateReview[]
 }
 
 export interface DemoBaseline {
