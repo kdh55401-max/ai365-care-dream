@@ -23,6 +23,8 @@
 직접 수행한 검증: tsc 0 오류, vitest 169/169, oxlint 경고 4(기존과 동일), vite build 성공(번들 517KB — Vite 500KB 권고 초과 경고, 오류 아님).
 e2e(데모, Chromium mobile-390/360, 제한 60초): 84건 중 80 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로, 1단계 때 기준 커밋 40e7c34(변경 전 코드)에서도 같은 오류로 실패한 기존 결함이다. 신규 `admin-workflow.spec.ts` 5건(변화 보고→승인과 별개 판단→현장 확인 요청 미게시 초안→기한 변경 이력→새로고침 유지 / 추가 조치 불필요로 종료 / 승인 후에도 안전 신호 유지·명시적 검토로만 해소·기한 지난 직접 조치 완료 / 다른 탭 판단 충돌 시 입력 유지 / DB 적용 전 '준비 중')과 수정한 `recipient-hub.spec.ts` 3건 모두 통과.
 
+배포: 커밋 7a209b9 → origin/master fast-forward(e3cb424..7a209b9) → Vercel Production success(https://ai365-care-dream.vercel.app). 배포 후 운영 주소 확인: /admin·/admin/work/safety·/admin/actions·/admin/actions/x·수급자 상세·/care 200, 새 번들에 업무 카드·/api/admin/workflow 포함, 비로그인·위조 쿠키의 /api/admin/workflow 조회·저장 401, 이전 /api/admin/recipients 404(흡수됨), 운영 주소 데모 모드 e2e 13/13(admin-workflow 5 + recipient-hub 3 + demo-mode-persistence 5). 미확인: 운영 DB 마이그레이션 적용과 실제 관리자 로그인 후 판단·조치·안전 검토 저장(관리자 비밀번호·DB 권한 없음). 되돌리기: master에서 7a209b9 revert 후 push(마이그레이션을 적용했더라도 새 테이블은 이전 앱이 읽지 않으므로 남겨 둔다).
+
 확인할 화면(데모): 첫 화면 카드 4개 → 카드 누르면 `/admin/work/:card` 전체 목록. 보고 상세의 "관리자 판단 · 안전 검토 · 조치".
 `/admin/actions`·`/admin/actions/:id`. `/admin?demo=1&demo_workflow=off`는 DB 적용 전 상태 흉내.
 
