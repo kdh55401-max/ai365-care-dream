@@ -31,6 +31,8 @@ e2e(데모 모드, Chromium mobile-390/360): 신규 `recipient-hub.spec.ts` 6/6(
 30초 제한을 화면 크기별로 번갈아 넘긴 것이며, 변경 브랜치에서 60초 제한으로 단독 재실행 시 4/4 통과했다.
 운영 DB 쓰기 검증은 하지 않았다(관리자 자격증명·시험 영역 없음).
 
+배포: 커밋 2f8e6ef → origin/master fast-forward(40e7c34..2f8e6ef) → Vercel Production success(GitHub deployments API, https://ai365-care-dream.vercel.app). 배포 후 운영 주소 확인: /admin·/admin/org/gadream365/recipients/A01·/admin/reports/x·/care 200, 새 번들에 허브 문구·/api/admin/recipients 포함, 비로그인 /api/admin/recipients(다른 org·위조 쿠키 포함)·/api/admin/reports 401, /api/admin/session이 organization 필드 포함 응답, 운영 주소 데모 모드 e2e 8/8(recipient-hub 3 + demo-mode-persistence 5, 데모 관리자는 실제 데이터 API 미호출). 미확인: 실제 관리자 로그인 후 운영 DB 목록·타임라인·승인(관리자 비밀번호 없음, 운영 쓰기 안 함). 되돌리기: master에서 2f8e6ef revert 후 push(DB 변경 없어 앱만 되돌리면 됨).
+
 ## 2026-09-12 (3차) — Gemini 호출 경로에 Vertex AI 옵션 추가 (기존 API 키 경로와 병행)
 
 Master가 "실제 사용량만큼 과금되는" Vertex AI로 전환을 요청했다(ChatGPT/Astra급

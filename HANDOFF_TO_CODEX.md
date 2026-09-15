@@ -22,6 +22,8 @@ continuity-stage1`). 메인 폴더의 미커밋 "4차" 변경(상태변화 기�
 2026-09-15). 로컬 데모 화면(375px)에서 첫 화면 검토 대기·수급자 상세 직접 확인. 2단계 전 확인 사항(DomainStatus·
 안전 신호·시각·인증·집계 위치)은 docs/CONTINUITY_STAGES.md §3.
 
+배포: 커밋 2f8e6ef → origin/master fast-forward(40e7c34..2f8e6ef) → Vercel Production success(GitHub deployments API, https://ai365-care-dream.vercel.app). 배포 후 운영 주소 확인: /admin·/admin/org/gadream365/recipients/A01·/admin/reports/x·/care 200, 새 번들에 허브 문구·/api/admin/recipients 포함, 비로그인 /api/admin/recipients(다른 org·위조 쿠키 포함)·/api/admin/reports 401, /api/admin/session이 organization 필드 포함 응답, 운영 주소 데모 모드 e2e 8/8(recipient-hub 3 + demo-mode-persistence 5, 데모 관리자는 실제 데이터 API 미호출). 미확인: 실제 관리자 로그인 후 운영 DB 목록·타임라인·승인(관리자 비밀번호 없음, 운영 쓰기 안 함). 되돌리기: master에서 2f8e6ef revert 후 push(DB 변경 없어 앱만 되돌리면 됨).
+
 기존 e2e 결함(이번 변경 전부터 실패, 수정 안 함): `companion-redesign.spec.ts:12`(관리자 상세에 같은 원문 div가 2개라
 strict 위반 / 360px 아바타 폭 200), `multi-recipient-flow.spec.ts:13`('이야기할 준비가 됐어요' 문구 없음).
 
