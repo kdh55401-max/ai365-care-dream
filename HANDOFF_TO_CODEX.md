@@ -26,6 +26,8 @@
 직접 수행한 검증: tsc 0 오류, vitest 195/195(신규 26: 3단계 규칙·보드·근거 문장 18 + 마이그레이션 PGlite 8), oxlint 경고 4(기존과 동일), vite build 성공(번들 580KB, Vite 500KB 권고 경고).
 e2e(데모, Chromium mobile-390/360, 제한 60초): 94건 중 90 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로 1·2단계 때와 같은 기존 결함(같은 오류 — 새 요청 안내는 요청이 없으면 아무것도 그리지 않음). 신규 `field-requests.spec.ts` 5건×2화면 모두 통과: 게시 → 현장 홈에 문구만(내부 메모 비노출) → 첫 표시 기록 → 말한 문장으로 답 → 답한 요청 재노출 없음 → 결과 확인 대기 카드 → 결과 확인·종결 / 확인 불가는 남은 문제·다음 책임 필수·추가 확인 새 주기·재게시 / 검토 화면에 있는 사이 철회 → 늦은 응답 기록만·재게시 가능 / 배정 변경 → 재배정 필요·지정 대상 비노출·대상 변경 후 새 담당에게만 노출 / 3단계 DB 적용 전 '준비 중'. `admin-workflow.spec.ts` 5건×2화면 통과. 새 화면(현장 홈 안내·답 블록·조치 상세·첫 화면 카드)은 390px 스크린샷으로 직접 확인했다.
 
+배포: 커밋 3145e8c → origin/master fast-forward(5a9f083..3145e8c) → Vercel Production success(https://ai365-care-dream.vercel.app). 배포 후 운영 주소 확인: /admin·/admin/work/requests·/admin/work/verification·/admin/work/reassign·/admin/actions/x·/care 200, 새 번들에 센터 확인 요청·현장에 게시·결과 확인 대기 카드 포함, 비로그인·위조 쿠키의 현장 요청 조회·첫 표시 기록·제출(답 포함)·관리자 보드·게시 요청 모두 401, 운영 주소 데모 모드 e2e 18/18(field-requests 5 + admin-workflow 5 + recipient-hub 3 + demo-mode-persistence 5, mobile-390). 미확인: 운영 DB 마이그레이션(2단계 → 3단계 순서) 적용과 실제 관리자·요양보호사 로그인 후 게시→응답→결과 확인(관리자 비밀번호·DB 권한 없음). 되돌리기: master에서 3145e8c revert 후 push(마이그레이션을 적용했더라도 새 테이블은 이전 앱이 읽지 않고, 교체된 함수는 2단계 입력을 그대로 처리한다).
+
 확인할 화면(데모): 조치 상세의 "현장에 게시" → `/care?demo=1` 홈의 "센터 확인 요청" → 추가 상태변화 보고의 보고 확인 화면 "센터 확인 요청에 대한 답"
 → 첫 화면 "응답 도착 · 결과 확인 대기" 카드 → 조치 상세 "결과 확인". `/admin?demo=1&demo_workflow=stage2`는 3단계 DB 적용 전 상태 흉내.
 
