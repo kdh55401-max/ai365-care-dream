@@ -29,7 +29,8 @@ test.describe('recipient-hub: 기관 → 수급자 → 보고 타임라인', () 
 
     const admin = await context.newPage()
     await loginAdmin(admin)
-    await expect(admin.getByRole('heading', { name: '검토할 보고와 이유' })).toBeVisible()
+    // 2단계부터 첫 화면은 업무 카드 → 카드를 누르면 같은 조건의 전체 목록(검토 대기 이유 포함)
+    await admin.getByRole('button', { name: /^새 보고 미확인/ }).click()
     await expect(admin.getByText('수급자 A01')).toBeVisible()
     await expect(admin.getByText('요양보호사 C01')).toBeVisible()
     await expect(admin.getByText('제출 후 승인·반려 기록 없음')).toBeVisible()
@@ -64,7 +65,7 @@ test.describe('recipient-hub: 기관 → 수급자 → 보고 타임라인', () 
 
     // 기관 첫 화면에서도 검토 대기에서 빠진다
     await admin.getByRole('button', { name: '대시보드' }).click()
-    await expect(admin.getByText('지금 검토를 기다리는 제출 보고가 없습니다.')).toBeVisible()
+    await expect(admin.getByRole('button', { name: /^새 보고 미확인/ })).toContainText('0건')
   })
 
   test('수급자 목록에서 담당·최근 제출·검토 대기를 보고 상세로 이동, 브라우저 뒤로가기로 돌아온다', async ({ context, page: carePage }) => {

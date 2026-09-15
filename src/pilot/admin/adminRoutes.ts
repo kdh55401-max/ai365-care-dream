@@ -1,3 +1,5 @@
+import { WORK_CARDS, type WorkCard } from './adminFormat'
+
 /** /admin 화면 주소 규칙. 새로고침·직접 주소 입력·뒤로가기가 같은 화면으로 돌아오도록
  * 화면 상태를 주소(pathname)에 담는다. 라우팅 라이브러리는 쓰지 않는다(main.tsx와 동일).
  *
@@ -6,6 +8,9 @@
  * /admin/org/:orgId/recipients/:code      수급자 상세(보고 타임라인)
  * /admin/reports                          전체 보고 목록(기존)
  * /admin/reports/:id                      보고 상세 · 승인/반려(기존)
+ * /admin/work/:card                       업무 카드 전체 목록(safety|reports|overdue|today)
+ * /admin/actions?filter=&recipient=       조치 목록
+ * /admin/actions/:id                      조치 상세
  * /admin/participants                     참여자 관리(기존)
  * /admin/presentation                     피칭 화면(기존)
  *
@@ -17,6 +22,9 @@ export type AdminRoute =
   | { kind: 'recipient'; orgId: string; code: string }
   | { kind: 'reports' }
   | { kind: 'report'; id: string }
+  | { kind: 'work'; card: WorkCard }
+  | { kind: 'actions' }
+  | { kind: 'action'; id: string }
   | { kind: 'participants' }
   | { kind: 'presentation' }
 
@@ -27,6 +35,8 @@ export function parseAdminPath(pathname: string): AdminRoute {
   if (section === 'presentation') return { kind: 'presentation' }
   if (section === 'participants') return { kind: 'participants' }
   if (section === 'reports') return a ? { kind: 'report', id: a } : { kind: 'reports' }
+  if (section === 'actions') return a ? { kind: 'action', id: a } : { kind: 'actions' }
+  if (section === 'work' && a && (WORK_CARDS as string[]).includes(a)) return { kind: 'work', card: a as WorkCard }
   if (section === 'org' && a && b === 'recipients') {
     return c ? { kind: 'recipient', orgId: a, code: c } : { kind: 'recipients', orgId: a }
   }
@@ -45,6 +55,12 @@ export function adminPath(route: AdminRoute): string {
       return '/admin/reports'
     case 'report':
       return `/admin/reports/${encodeURIComponent(route.id)}`
+    case 'work':
+      return `/admin/work/${route.card}`
+    case 'actions':
+      return '/admin/actions'
+    case 'action':
+      return `/admin/actions/${encodeURIComponent(route.id)}`
     case 'participants':
       return '/admin/participants'
     case 'presentation':
@@ -56,7 +72,10 @@ export function adminPath(route: AdminRoute): string {
  * 로그인 화면으로 넘어간다(DEP-01과 같은 문제). 나머지 쿼리는 extra로만 넘긴다. */
 export function adminUrl(route: AdminRoute, currentSearch: string, extra?: Record<string, string>): string {
   const params = new URLSearchParams()
-  if (new URLSearchParams(currentSearch).get('demo') === '1') params.set('demo', '1')
+  const current = new URLSearchParams(currentSearch)
+  if (current.get('demo') === '1') params.set('demo', '1')
+  // 데모 전용: 'DB 적용 전' 상태 흉내(demo_workflow=off)도 데모 안에서는 이어 붙인다.
+  if (current.get('demo') === '1' && current.get('demo_workflow') === 'off') params.set('demo_workflow', 'off')
   for (const [k, v] of Object.entries(extra ?? {})) params.set(k, v)
   const qs = params.toString()
   return `${adminPath(route)}${qs ? `?${qs}` : ''}`

@@ -1,4 +1,5 @@
 import { normalizeReportRecord, type CareReportRecord } from '../../../shared/careTypes.js'
+import type { ActionEvent, ActionObligation, AdminDecision, CareAction, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
 
 /** 데모 모드 전용 저장소. Supabase/Gemini 없이도 /care?demo=1, /admin?demo=1 화면
  * 전체 흐름을 즉시 시연할 수 있도록 브라우저 localStorage에만 저장한다.
@@ -65,11 +66,26 @@ interface DemoParticipant {
   pin: string
 }
 
+/** 관리자 업무(2단계) 기록 — 실서버의 2단계 테이블과 같은 모양. */
+export interface DemoWorkflow {
+  decisions: AdminDecision[]
+  safetyReviews: SafetyReview[]
+  actions: CareAction[]
+  obligations: ActionObligation[]
+  actionEvents: ActionEvent[]
+  reportEvents: ReportEvent[]
+}
+
 interface DemoDb {
   reports: CareReportRecord[]
   participants: DemoParticipant[]
   careSession: string | null // 로그인한 참여자 코드
   adminSession: boolean
+  workflow: DemoWorkflow
+}
+
+function emptyWorkflow(): DemoWorkflow {
+  return { decisions: [], safetyReviews: [], actions: [], obligations: [], actionEvents: [], reportEvents: [] }
 }
 
 function emptyDb(): DemoDb {
@@ -78,6 +94,7 @@ function emptyDb(): DemoDb {
     participants: DEMO_PARTICIPANT_CODES.map((code) => ({ code, active: true, pin: DEMO_PIN })),
     careSession: null,
     adminSession: false,
+    workflow: emptyWorkflow(),
   }
 }
 
@@ -93,7 +110,7 @@ function readDb(): DemoDb {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return emptyDb()
     const parsed = JSON.parse(raw) as Partial<DemoDb>
-    return { ...emptyDb(), ...parsed }
+    return { ...emptyDb(), ...parsed, workflow: { ...emptyWorkflow(), ...(parsed.workflow ?? {}) } }
   } catch {
     return emptyDb()
   }
@@ -230,9 +247,34 @@ export function demoUpdateReport(id: string, patch: Partial<CareReportRecord>, e
   const idx = db.reports.findIndex((r) => r.id === id)
   if (idx === -1) return undefined
   if (expectedUpdatedAt !== undefined && db.reports[idx].updated_at !== expectedUpdatedAt) return undefined
-  db.reports[idx] = { ...db.reports[idx], ...patch, updated_at: nextTimestamp() }
+  const prev = db.reports[idx]
+  db.reports[idx] = { ...prev, ...patch, updated_at: nextTimestamp() }
+  captureReportEvents(db, prev, db.reports[idx])
   writeDb(db)
   return normalizeReportRecord(db.reports[idx])
+}
+
+/** 실DB 트리거(reports_capture_events)와 같은 규칙: 제출 순간 한 번, 승인·반려할 때마다 한 번. */
+function captureReportEvents(db: DemoDb, prev: CareReportRecord, next: CareReportRecord) {
+  const events = db.workflow.reportEvents
+  const recordedAt = new Date().toISOString()
+  if (next.status === 'submitted' && prev.status !== 'submitted' && !events.some((e) => e.report_id === next.id && e.event_type === 'submitted')) {
+    events.push({ id: newDemoId(), report_id: next.id, event_type: 'submitted', occurred_at: next.submitted_at ?? recordedAt, actor_scope: 'caregiver_session', actor_ref: next.participant_code, request_id: null, recorded_at: recordedAt })
+  }
+  if ((next.review_status === 'approved' || next.review_status === 'rejected') && next.reviewed_at && (next.reviewed_at !== prev.reviewed_at || next.review_status !== prev.review_status)) {
+    events.push({ id: newDemoId(), report_id: next.id, event_type: next.review_status === 'approved' ? 'review_approved' : 'review_rejected', occurred_at: next.reviewed_at, actor_scope: 'org_admin_shared', actor_ref: null, request_id: next.last_review_request_id ?? null, recorded_at: recordedAt })
+  }
+}
+
+export function demoReadWorkflow(): DemoWorkflow {
+  return readDb().workflow
+}
+
+/** 업무 기록을 한 번에 바꾼다(데모 저장소는 탭 간 원자성은 없다 — 계약만 흉내 낸다). */
+export function demoWriteWorkflow(mutate: (wf: DemoWorkflow) => void) {
+  const db = readDb()
+  mutate(db.workflow)
+  writeDb(db)
 }
 
 export function demoDeleteReport(id: string, reason: string) {

@@ -13,11 +13,16 @@ import { BeforeAfterBarChart, CumulativeLineChart, type BeforeAfterMetric } from
 import { FIELD_LABELS, formatKoreanDateTime } from './adminFormat'
 import { FallbackBadge, SpinnerIcon } from './adminBadges'
 import { adminUrl, parseAdminPath, type AdminRoute } from './adminRoutes'
-import { RecipientDetailPanel, RecipientsPanel, ReviewQueueList } from './RecipientHub'
+import { RecipientDetailPanel, RecipientsPanel } from './RecipientHub'
+import { ActionsPanel, CombinedWorkList, WorkCardListPanel, WorkCards } from './WorkBoardPanels'
+import { ActionDetailPanel, ReportWorkflowSection } from './WorkflowPanels'
+import type { WorkCard } from './adminFormat'
 import { DEPLOYMENT_ORGANIZATION, type Organization } from '../../../shared/organization'
-import { parseTimelinePeriod, type ReviewQueueItem } from '../../../shared/recipientHub'
+import { parseTimelinePeriod } from '../../../shared/recipientHub'
+import type { WorkBoard } from '../../../shared/workBoard'
+import { parseActionFilter } from '../../../shared/workflowViews'
 
-type Tab = 'dashboard' | 'recipients' | 'reports' | 'participants'
+type Tab = 'dashboard' | 'recipients' | 'actions' | 'reports' | 'participants'
 const PARTICIPANT_CODES = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09']
 const INSTITUTION_NAME = '가드림365재가복지센터'
 const TARGET_PARTICIPANTS = 9
@@ -202,61 +207,51 @@ function ParticipantTable({ stats, reports }: { stats: StatsResponse; reports: R
   )
 }
 
-/** "센터가 확인할 돌봄" 우선순위 요약 — 연구용 KPI보다 먼저, 화면 맨 위에 둔다.
- * AI 오류(폴백/처리실패)와 어르신 위험도(응급신호)는 서로 다른 축이라 절대 같은
- * 배지로 섞지 않는다: 응급신호는 "우선 확인이 필요한 보고"에, AI 처리 이상은
- * 각 카드 안의 별도 문구로만 보여준다. */
-function PriorityCareStrip({ reports, today, onOpen, queue, queueError, onOpenRecipient }: {
-  reports: ReportListItem[]
-  today: string
+/** "센터가 확인할 돌봄" — 연구용 KPI보다 먼저, 화면 맨 위에 둔다(2단계부터 서버 집계).
+ * 네 카드(안전 신호·새 보고·기한 지난 조치·오늘 재확인)는 대상과 단위가 달라 합산하지
+ * 않고, 누르면 같은 조건의 전체 목록이 열린다. 그 아래 "지금 할 일"은 운영 규칙 순서의
+ * 통합 목록이다. AI 처리 이상(폴백)은 여기 섞지 않는다 — 수급자 안전 신호와 다른 축이다. */
+function PriorityCareStrip({ board, boardError, onOpenCard, onOpen, onOpenAction, onOpenRecipient }: {
+  board: WorkBoard | null
+  boardError: string | null
+  onOpenCard: (card: WorkCard) => void
   onOpen: (id: string) => void
-  queue: ReviewQueueItem[] | null
-  queueError: string | null
+  onOpenAction: (id: string) => void
   onOpenRecipient: (code: string) => void
 }) {
-  const submitted = reports.filter((r) => r.status === 'submitted' && r.report_source !== 'scenario')
-  const urgent = submitted.filter((r) => r.emergency_flagged && (r.review_status ?? 'pending') === 'pending')
-  const unreviewed = submitted.filter((r) => (r.review_status ?? 'pending') === 'pending')
-  const todayReports = submitted.filter((r) => r.report_date === today)
-  const todayParticipants = new Set(todayReports.map((r) => r.participant_code).filter((c): c is string => Boolean(c)))
-
   return (
-    <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
-      <h2 className="font-bold text-slate-900 mb-3">센터가 확인할 돌봄</h2>
-      {/* 숫자만으로는 "누구의 무엇을 봐야 하는지" 알 수 없다 — 실제 검토 대기 보고와
-          그 이유(저장된 값 기준)를 먼저 나열하고, 보고·수급자 기록으로 이동시킨다.
-          기존 요약 숫자는 그 아래에 그대로 둔다. */}
-      <h3 className="font-bold text-slate-900 text-sm mb-2">검토할 보고와 이유</h3>
-      <ReviewQueueList items={queue} error={queueError} onOpenReport={onOpen} onOpenRecipient={onOpenRecipient} />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-        <div className={`rounded-2xl p-3 ${urgent.length > 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50'}`}>
-          <p className={`text-2xl font-bold ${urgent.length > 0 ? 'text-red-700' : 'text-slate-900'}`}>{urgent.length}건</p>
-          <p className={`text-xs mt-0.5 ${urgent.length > 0 ? 'text-red-600' : 'text-slate-400'}`}>우선 확인 필요(응급신호·미확인)</p>
+    <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5 flex flex-col gap-4">
+      <h2 className="font-bold text-slate-900">센터가 확인할 돌봄</h2>
+      {boardError && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3">
+          불러오기 실패 — {boardError}
+          {board && ` (아래는 ${formatKoreanDateTime(board.asOf)} 기준의 이전 결과)`}
+        </p>
+      )}
+      {!board && !boardError && (
+        <div className="flex justify-center py-6">
+          <SpinnerIcon className="w-5 h-5 text-teal-600" />
         </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <p className="text-2xl font-bold text-slate-900">{unreviewed.length}건</p>
-          <p className="text-slate-400 text-xs mt-0.5">아직 확인하지 않은 보고</p>
-        </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <p className="text-2xl font-bold text-slate-900">{todayReports.length}건</p>
-          <p className="text-slate-400 text-xs mt-0.5">오늘 완료된 보고</p>
-        </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <p className="text-2xl font-bold text-slate-900">{todayParticipants.size}명</p>
-          <p className="text-slate-400 text-xs mt-0.5">오늘 참여한 요양보호사</p>
-        </div>
-      </div>
+      )}
+      {board && (
+        <>
+          <WorkCards board={board} onOpenCard={onOpenCard} />
+          <CombinedWorkList board={board} onOpenReport={onOpen} onOpenAction={onOpenAction} onOpenRecipient={onOpenRecipient} />
+        </>
+      )}
     </div>
   )
 }
 
-function Dashboard({ demo, data, reports, onOpen, queue, queueError, onOpenRecipient }: {
+function Dashboard({ demo, data, reports, board, boardError, onOpenCard, onOpen, onOpenAction, onOpenRecipient }: {
   demo: boolean
   data: StatsResponse | null
   reports: ReportListItem[]
+  board: WorkBoard | null
+  boardError: string | null
+  onOpenCard: (card: WorkCard) => void
   onOpen: (id: string) => void
-  queue: ReviewQueueItem[] | null
-  queueError: string | null
+  onOpenAction: (id: string) => void
   onOpenRecipient: (code: string) => void
 }) {
   if (!data) {
@@ -294,7 +289,7 @@ function Dashboard({ demo, data, reports, onOpen, queue, queueError, onOpenRecip
       )}
 
       {/* 기관 첫 화면은 "지금 할 일과 이유"가 먼저다 — 실증 대시보드 요약은 그 아래. */}
-      <PriorityCareStrip reports={reports} today={data.today} onOpen={onOpen} queue={queue} queueError={queueError} onOpenRecipient={onOpenRecipient} />
+      <PriorityCareStrip board={board} boardError={boardError} onOpenCard={onOpenCard} onOpen={onOpen} onOpenAction={onOpenAction} onOpenRecipient={onOpenRecipient} />
 
       <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
         <div className="flex flex-wrap justify-between items-start gap-3">
@@ -643,12 +638,13 @@ function formatElapsedMinutes(fromIso: string | null, toIso: string | null): str
   return `${Math.floor(minutes / 60)}시간 ${minutes % 60}분`
 }
 
-function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient }: {
+function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workflow }: {
   repo: AdminRepo
   id: string
   onBack: () => void
   onChanged: () => void
   onOpenRecipient: (code: string) => void
+  workflow?: React.ReactNode
 }) {
   const [report, setReport] = useState<ReportDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -1038,6 +1034,9 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient }: {
           )}
         </section>
       )}
+
+      {/* 관리자 판단·안전 검토·조치(돌봄 연속성 2단계) — 위의 승인/반려와 별개 기록. */}
+      {workflow}
 
       <section className="rounded-2xl bg-white border border-slate-100 p-4">
         <h3 className="font-bold text-slate-900 mb-2">1단계 · 최초 원문 평가 (AI 결과 비공개)</h3>
@@ -1436,18 +1435,23 @@ function AdminApp() {
       ? 'recipients'
       : route.kind === 'reports' || route.kind === 'report'
         ? 'reports'
-        : route.kind === 'participants'
-          ? 'participants'
-          : 'dashboard'
+        : route.kind === 'actions' || route.kind === 'action'
+          ? 'actions'
+          : route.kind === 'participants'
+            ? 'participants'
+            : 'dashboard'
 
   const [phase, setPhase] = useState<'loading' | 'login' | 'app'>('loading')
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [stats, setStats] = useState<StatsResponse | null>(null)
   const [liveReports, setLiveReports] = useState<ReportListItem[]>([])
-  const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[] | null>(null)
-  const [reviewQueueError, setReviewQueueError] = useState<string | null>(null)
+  const [board, setBoard] = useState<WorkBoard | null>(null)
+  const [boardError, setBoardError] = useState<string | null>(null)
   const [presentationStatus, setPresentationStatus] = useState<'in_progress' | 'final'>('in_progress')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 업무 카드는 서버가 전체 범위로 계산하므로 비용이 있다 — 그 카드가 보이는 화면에서만 갱신한다.
+  const boardVisibleRef = useRef(false)
+  boardVisibleRef.current = route.kind === 'dashboard' || route.kind === 'work'
   // 서버가 세션 기관을 알려주지 않는 경우(구버전 응답)에도 화면이 멈추지 않게 이 배포의
   // 기관으로 요청한다 — 권한 판단은 어차피 서버가 세션 기관과 대조해서 한다.
   const orgId = organization?.id ?? DEPLOYMENT_ORGANIZATION.id
@@ -1472,6 +1476,18 @@ function AdminApp() {
   }
   const openReport = (id: string) => go({ kind: 'report', id })
   const openRecipient = (code: string) => go({ kind: 'recipient', orgId, code })
+  const openAction = (id: string) => go({ kind: 'action', id })
+
+  const loadBoard = () => {
+    // 업무 카드는 따로 불러온다 — 실패해도 기존 지표 화면은 그대로 뜨고, 실패는 0건이 아니라 "불러오기 실패"로 보인다.
+    void repo
+      .getWorkBoard(orgId)
+      .then((res) => {
+        setBoard(res.board)
+        setBoardError(null)
+      })
+      .catch((e) => setBoardError(e instanceof Error ? e.message : '업무 목록을 불러오지 못했습니다.'))
+  }
 
   const loadStats = () => {
     void Promise.all([repo.getStats(), repo.listReports('live')])
@@ -1480,15 +1496,14 @@ function AdminApp() {
         setLiveReports(r.filter((x) => x.status === 'submitted'))
       })
       .catch(() => undefined)
-    // 검토 대기 목록은 따로 불러온다 — 실패해도 기존 지표 화면은 그대로 뜨게.
-    void repo
-      .getRecipientHub(orgId)
-      .then((hub) => {
-        setReviewQueue(hub.reviewQueue)
-        setReviewQueueError(null)
-      })
-      .catch((e) => setReviewQueueError(e instanceof Error ? `검토 대기 목록을 불러오지 못했습니다: ${e.message}` : '검토 대기 목록을 불러오지 못했습니다.'))
+    if (boardVisibleRef.current) loadBoard()
   }
+
+  // 다른 화면(보고 상세에서 판단·조치 저장 등)에서 돌아오면 바로 최신 카드를 불러온다.
+  useEffect(() => {
+    if (phase === 'app' && (route.kind === 'dashboard' || route.kind === 'work')) loadBoard()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, route.kind, orgId])
 
   const loadSession = async () => {
     const session = await repo.getSession()
@@ -1605,6 +1620,7 @@ function AdminApp() {
             [
               ['dashboard', '대시보드', { kind: 'dashboard' }],
               ['recipients', '수급자', { kind: 'recipients', orgId }],
+              ['actions', '조치', { kind: 'actions' }],
               ['reports', '보고 목록', { kind: 'reports' }],
               ['participants', '참여자 관리', { kind: 'participants' }],
             ] as const
@@ -1631,9 +1647,48 @@ function AdminApp() {
             demo={demo}
             data={stats}
             reports={liveReports}
+            board={board}
+            boardError={boardError}
+            onOpenCard={(card) => go({ kind: 'work', card })}
             onOpen={openReport}
-            queue={reviewQueue}
-            queueError={reviewQueueError}
+            onOpenAction={openAction}
+            onOpenRecipient={openRecipient}
+          />
+        )}
+        {route.kind === 'work' && (
+          <WorkCardListPanel
+            card={route.card}
+            board={board}
+            error={boardError}
+            onBack={() => goBack({ kind: 'dashboard' })}
+            onOpenReport={openReport}
+            onOpenAction={openAction}
+            onOpenRecipient={openRecipient}
+          />
+        )}
+        {route.kind === 'actions' && (
+          <ActionsPanel
+            repo={repo}
+            orgId={orgId}
+            filter={parseActionFilter(new URLSearchParams(location.search).get('filter'))}
+            recipientCode={new URLSearchParams(location.search).get('recipient') ?? undefined}
+            onChangeFilter={(f) => {
+              const recipient = new URLSearchParams(location.search).get('recipient')
+              const url = adminUrl(route, window.location.search, recipient ? { filter: f, recipient } : { filter: f })
+              window.history.replaceState(window.history.state, '', url)
+              setLocation({ pathname: window.location.pathname, search: window.location.search })
+            }}
+            onOpenAction={openAction}
+          />
+        )}
+        {route.kind === 'action' && (
+          <ActionDetailPanel
+            key={route.id}
+            repo={repo}
+            orgId={orgId}
+            actionId={route.id}
+            onBack={() => goBack({ kind: 'actions' })}
+            onOpenReport={openReport}
             onOpenRecipient={openRecipient}
           />
         )}
@@ -1651,6 +1706,7 @@ function AdminApp() {
               setLocation({ pathname: window.location.pathname, search: window.location.search })
             }}
             onOpenReport={openReport}
+            onOpenAction={openAction}
             onBackToList={() => go({ kind: 'recipients', orgId: route.orgId })}
           />
         )}
@@ -1662,6 +1718,7 @@ function AdminApp() {
             onBack={() => goBack({ kind: 'reports' })}
             onChanged={loadStats}
             onOpenRecipient={openRecipient}
+            workflow={<ReportWorkflowSection key={route.id} repo={repo} orgId={orgId} reportId={route.id} onOpenAction={openAction} />}
           />
         )}
         {route.kind === 'reports' && <ReportsPanel repo={repo} onOpen={openReport} />}

@@ -1,4 +1,5 @@
 import type { StructuredReport } from '../shared/types'
+import type { DueKind } from '../../../shared/workflow'
 
 /** 관리자 화면(AdminApp·수급자 허브)이 함께 쓰는 표시 규칙. */
 
@@ -22,3 +23,13 @@ export function formatKoreanDateTime(iso: string | null | undefined): string {
   const timePart = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
   return `${datePart} ${timePart}`
 }
+
+/** 기한 표시 — '다음 실제 방문'·'미정'에 날짜를 만들어 보이지 않는다. */
+export function formatDue(kind: DueKind, at: string | null): string {
+  if (kind === 'datetime') return formatKoreanDateTime(at)
+  if (kind === 'next_actual_visit') return '다음 실제 방문(날짜 없음)'
+  return '미정'
+}
+
+export type WorkCard = 'safety' | 'reports' | 'overdue' | 'today'
+export const WORK_CARDS: WorkCard[] = ['safety', 'reports', 'overdue', 'today']

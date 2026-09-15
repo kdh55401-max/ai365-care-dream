@@ -12,6 +12,17 @@ import { toCsv } from '../../../shared/csv'
 import { checkOrganizationAccess, DEPLOYMENT_ORGANIZATION, type Organization } from '../../../shared/organization'
 import { buildRecipientTimeline, buildReviewQueue, summarizeRecipients } from '../../../shared/recipientHub'
 import {
+  demoCreateAction,
+  demoGetAction,
+  demoListActions,
+  demoMutateAction,
+  demoRecipientWorkflow,
+  demoRecordDecision,
+  demoRecordSafetyReview,
+  demoReportWorkflow,
+  demoWorkBoard,
+} from './demoWorkflowRepo'
+import {
   DEMO_ASSIGNMENTS,
   DEMO_PIN,
   DEMO_RECIPIENT_CODES,
@@ -85,7 +96,39 @@ export const demoAdminRepo: AdminRepo = {
     if (!recipient) throw Object.assign(new Error('이 기관에서 해당 수급자를 찾을 수 없습니다.'), { status: 404 })
     const own = demoAllReports().filter((r) => r.recipient_code === code)
     const [summary] = summarizeRecipients([recipient], demoAssignmentRows(), own)
-    return { organization, recipient: summary, timeline: buildRecipientTimeline(own, period, todayKst()) }
+    const timeline = buildRecipientTimeline(own, period, todayKst())
+    return { organization, recipient: summary, timeline, workflow: demoRecipientWorkflow(code, timeline.entries.map((e) => e.reportId)) }
+  },
+  async getWorkBoard(orgId) {
+    return { organization: demoOrganization(orgId), board: demoWorkBoard() }
+  },
+  async getReportWorkflow(orgId, reportId) {
+    demoOrganization(orgId)
+    return demoReportWorkflow(reportId)
+  },
+  async listActions(orgId, filter, recipientCode) {
+    demoOrganization(orgId)
+    return demoListActions(filter, recipientCode)
+  },
+  async getAction(orgId, actionId) {
+    demoOrganization(orgId)
+    return demoGetAction(actionId)
+  },
+  async recordDecision(orgId, input) {
+    demoOrganization(orgId)
+    return demoRecordDecision(input)
+  },
+  async recordSafetyReview(orgId, input) {
+    demoOrganization(orgId)
+    return demoRecordSafetyReview(input)
+  },
+  async createAction(orgId, input) {
+    demoOrganization(orgId)
+    return demoCreateAction(input)
+  },
+  async mutateAction(orgId, input) {
+    demoOrganization(orgId)
+    return demoMutateAction(input)
   },
   async getStats(): Promise<StatsResponse> {
     const rows = demoAllReports()

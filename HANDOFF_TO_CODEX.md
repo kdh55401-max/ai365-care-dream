@@ -1,3 +1,36 @@
+## 2026-09-15 (2차) — 돌봄 연속성 2단계: 관리자 판단 · 조치 · 의무 기한 · 안전 신호 검토 · 보고 이벤트
+
+목적·기대 동작: 관리자가 보고를 근거로 판단(추가 조치 불필요/추가 관찰 필요/조치 필요/판단 보류)을 남기고, 필요한 조치를
+업무 담당·기한과 함께 추적한다. 안전 신호는 보고 승인과 별개로 명시적으로 검토한다. 첫 화면 카드 4개와 전체 목록은 서버가
+권한 범위 전체로 계산한다. 현장 요청 내용은 미게시 초안(3단계에서 게시·응답). 설계·규칙·DB 적용 절차는
+[docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md) §5. 실행 기준: v2 계획 + 사용자가 준 AI365_Dashboard_Integration_Stages2to6_v3.md.
+
+기준: origin/master e3cb424 → 브랜치 `claude/continuity-stage2-admin-actions`(워크트리 `.claude/worktrees/continuity-stage1`).
+
+**DB: 마이그레이션 `db/migrations/2026-09-15-admin-workflow.sql` 은 이 환경에서 운영 Supabase에 적용하지 못했다(접근 권한 없음).**
+적용 전 운영 화면은 판단·조치·안전 검토를 "준비 중"으로 끄고 서버도 저장을 503으로 거부한다. 보고 이벤트(최초 제출·검토)
+기록도 적용 시점부터 시작된다 — 적용이 늦을수록 그 사이 제출·검토 시각은 이벤트로 남지 않는다(과거를 채우지 않음).
+
+수정 파일:
+- 신규 공통 규칙: `shared/workflow.ts`(판단·안전 검토·조치 생성/변경 계획, 기한·KST 경계), `shared/workBoard.ts`(카드·목록·통합 순서), `shared/workflowViews.ts`(조치 요약·필터·보기)
+- 신규 DB: `db/migrations/2026-09-15-admin-workflow.sql`(테이블 6·불변 트리거·보고 이벤트 트리거·원자적 쓰기 함수 4·권한)
+- 서버: `api/admin/workflow.ts`(신규, 1단계 `api/admin/recipients.ts`를 흡수·삭제 — Vercel 함수 12개 유지), `api/_lib/workflowStore.ts`(전체 행 페이지 읽기·준비 여부·RPC)
+- 화면: `src/pilot/admin/WorkBoardPanels.tsx`(카드·통합 목록·카드 목록·조치 목록), `WorkflowPanels.tsx`(보고의 판단·안전 검토·조치 만들기, 조치 상세), `ActionSummaryRow.tsx`, `AdminApp.tsx`(첫 화면 카드 교체·"조치" 탭·경로), `RecipientHub.tsx`(미완료 조치·보고별 판단 칩, 검토 대기 목록 8건 제한 제거), `adminRoutes.ts`, `adminFormat.ts`
+- 데모: `src/pilot/demo/demoWorkflowRepo.ts`(신규), `demoStore.ts`(업무 기록·보고 이벤트 흉내), `demoAdminRepo.ts`, `src/pilot/shared/adminRepo.ts`
+- 테스트: `shared/workflow.test.ts`(15), `api/_lib/workflowMigration.test.ts`(7, PGlite 실제 Postgres), `e2e/admin-workflow.spec.ts`(5), `e2e/recipient-hub.spec.ts`(첫 화면 변경 반영)
+- 개발 의존성: `@electric-sql/pglite`(마이그레이션 SQL을 로컬 Postgres로 검증하는 테스트 전용)
+
+직접 수행한 검증: tsc 0 오류, vitest 169/169, oxlint 경고 4(기존과 동일), vite build 성공(번들 517KB — Vite 500KB 권고 초과 경고, 오류 아님).
+e2e(데모, Chromium mobile-390/360, 제한 60초): 84건 중 80 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로, 1단계 때 기준 커밋 40e7c34(변경 전 코드)에서도 같은 오류로 실패한 기존 결함이다. 신규 `admin-workflow.spec.ts` 5건(변화 보고→승인과 별개 판단→현장 확인 요청 미게시 초안→기한 변경 이력→새로고침 유지 / 추가 조치 불필요로 종료 / 승인 후에도 안전 신호 유지·명시적 검토로만 해소·기한 지난 직접 조치 완료 / 다른 탭 판단 충돌 시 입력 유지 / DB 적용 전 '준비 중')과 수정한 `recipient-hub.spec.ts` 3건 모두 통과.
+
+확인할 화면(데모): 첫 화면 카드 4개 → 카드 누르면 `/admin/work/:card` 전체 목록. 보고 상세의 "관리자 판단 · 안전 검토 · 조치".
+`/admin/actions`·`/admin/actions/:id`. `/admin?demo=1&demo_workflow=off`는 DB 적용 전 상태 흉내.
+
+Codex 점검 요청:
+1. 운영 DB에 마이그레이션 적용 후: 새 제출·승인/반려에 `report_events`가 한 번씩 생기는지, 보고 제출·승인이 트리거 때문에 느려지거나 실패하지 않는지.
+2. 실제 Supabase(PostgREST)에서 `supabase.rpc('workflow_*', {p})` 호출·권한(anon 실행 불가)·스키마 캐시 갱신이 되는지(PGlite로는 PostgREST 계층을 검증하지 못함).
+3. 첫 화면 3초 갱신 시 서버가 전체 보고·업무 기록을 읽는다 — 파일럿 규모 부하 확인(카드가 보이는 화면에서만 갱신).
+4. 기존 관리자 승인/반려·연구용 평가(`manager_status`)가 그대로인지.
 ## 2026-09-15 — 돌봄 연속성 1단계: 관리자 수급자 허브 (기관 → 수급자 목록 → 수급자 상세)
 
 목적·기대 동작: 관리자가 "어떤 수급자의 무엇을 왜 확인해야 하는지" 기관 첫 화면에서 보고, 수급자별 보고 이력에서

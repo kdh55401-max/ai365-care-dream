@@ -3,6 +3,9 @@ import type { CareReportRecord, StructuredReport } from './types'
 import type { StatsResult } from '../../../shared/statsCalc'
 import type { Organization } from '../../../shared/organization'
 import type { RecipientSummary, RecipientTimeline, ReviewQueueItem, TimelinePeriod } from '../../../shared/recipientHub'
+import type { WorkBoard } from '../../../shared/workBoard'
+import type { ActionMutationInput, CreateActionInput, DecisionInput, SafetyReviewInput } from '../../../shared/workflow'
+import type { ActionDetailView, ActionFilter, ActionSummary, RecipientWorkflowView, ReportWorkflowView } from '../../../shared/workflowViews'
 
 export interface ParticipationCell {
   date: string
@@ -82,6 +85,34 @@ export interface RecipientTimelineResponse {
   organization: Organization
   recipient: RecipientSummary
   timeline: RecipientTimeline
+  /** 보고별 판단·안전 검토·조치(2단계). workflowReady=false면 DB 준비 전. */
+  workflow: RecipientWorkflowView
+}
+
+export interface WorkBoardResponse {
+  organization: Organization
+  board: WorkBoard
+}
+
+export interface ActionListResponse {
+  workflowReady: boolean
+  filter: ActionFilter
+  asOf: string
+  actions: ActionSummary[]
+}
+
+export type DecisionRequest = DecisionInput
+export type SafetyReviewRequest = SafetyReviewInput
+export type CreateActionRequest = CreateActionInput
+export type MutateActionRequest = ActionMutationInput
+
+/** 업무 저장 실패(409 충돌·503 준비 전 등). 입력값은 호출부가 지우지 않고 유지한다. */
+export class WorkflowRequestError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
 }
 
 export interface AdminRepo {
@@ -92,6 +123,15 @@ export interface AdminRepo {
   getRecipientHub(orgId: string): Promise<RecipientHubResponse>
   /** 수급자 한 명의 보고 타임라인. 기관 범위 밖이면 403, 없는 수급자면 404. */
   getRecipientTimeline(orgId: string, code: string, period: TimelinePeriod): Promise<RecipientTimelineResponse>
+  /** 기관 첫 화면 업무 카드 + 전체 목록(서버가 전체 범위로 계산). */
+  getWorkBoard(orgId: string): Promise<WorkBoardResponse>
+  getReportWorkflow(orgId: string, reportId: string): Promise<ReportWorkflowView>
+  listActions(orgId: string, filter: ActionFilter, recipientCode?: string): Promise<ActionListResponse>
+  getAction(orgId: string, actionId: string): Promise<ActionDetailView>
+  recordDecision(orgId: string, input: DecisionRequest): Promise<ReportWorkflowView>
+  recordSafetyReview(orgId: string, input: SafetyReviewRequest): Promise<ReportWorkflowView>
+  createAction(orgId: string, input: CreateActionRequest): Promise<ActionDetailView>
+  mutateAction(orgId: string, input: MutateActionRequest): Promise<ActionDetailView>
   getStats(): Promise<StatsResponse>
   listReports(source?: 'live' | 'scenario' | 'all'): Promise<ReportListItem[]>
   getReport(id: string): Promise<ReportDetail>
@@ -117,6 +157,19 @@ function triggerDownload(filename: string, content: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
+function workflowUrl(orgId: string): string {
+  return `/api/admin/workflow?org=${encodeURIComponent(orgId)}`
+}
+
+async function workflowPost<T>(orgId: string, body: Record<string, unknown>): Promise<T> {
+  try {
+    return await api.post<T>(workflowUrl(orgId), body)
+  } catch (e) {
+    if (e instanceof ApiClientError) throw new WorkflowRequestError(e.status, e.message)
+    throw e
+  }
+}
+
 export const realAdminRepo: AdminRepo = {
   async login(password) {
     await api.post('/api/admin/login', { password })
@@ -128,12 +181,37 @@ export const realAdminRepo: AdminRepo = {
     return api.get('/api/admin/session')
   },
   async getRecipientHub(orgId) {
-    return api.get<RecipientHubResponse>(`/api/admin/recipients?org=${encodeURIComponent(orgId)}`)
+    return api.get<RecipientHubResponse>(`${workflowUrl(orgId)}&view=recipients`)
   },
   async getRecipientTimeline(orgId, code, period) {
-    return api.get<RecipientTimelineResponse>(
-      `/api/admin/recipients?org=${encodeURIComponent(orgId)}&code=${encodeURIComponent(code)}&period=${period}`,
-    )
+    return api.get<RecipientTimelineResponse>(`${workflowUrl(orgId)}&view=recipient&code=${encodeURIComponent(code)}&period=${period}`)
+  },
+  async getWorkBoard(orgId) {
+    return api.get<WorkBoardResponse>(`${workflowUrl(orgId)}&view=board`)
+  },
+  async getReportWorkflow(orgId, reportId) {
+    return api.get<ReportWorkflowView>(`${workflowUrl(orgId)}&view=report&reportId=${encodeURIComponent(reportId)}`)
+  },
+  async listActions(orgId, filter, recipientCode) {
+    const recipient = recipientCode ? `&recipient=${encodeURIComponent(recipientCode)}` : ''
+    return api.get<ActionListResponse>(`${workflowUrl(orgId)}&view=actions&filter=${filter}${recipient}`)
+  },
+  async getAction(orgId, actionId) {
+    return api.get<ActionDetailView>(`${workflowUrl(orgId)}&view=action&id=${encodeURIComponent(actionId)}`)
+  },
+  async recordDecision(orgId, input) {
+    return workflowPost<ReportWorkflowView>(orgId, { op: 'decide', ...input })
+  },
+  async recordSafetyReview(orgId, input) {
+    return workflowPost<ReportWorkflowView>(orgId, { op: 'safety_review', ...input })
+  },
+  async createAction(orgId, input) {
+    return workflowPost<ActionDetailView>(orgId, { op: 'create_action', ...input })
+  },
+  async mutateAction(orgId, input) {
+    // 조치 변경 종류(input.op)는 body의 mutation 필드로 옮기고, 요청 종류는 mutate_action으로 둔다.
+    const { op, ...rest } = input
+    return workflowPost<ActionDetailView>(orgId, { ...rest, op: 'mutate_action', mutation: op })
   },
   async getStats() {
     return api.get<StatsResponse>('/api/admin/stats')

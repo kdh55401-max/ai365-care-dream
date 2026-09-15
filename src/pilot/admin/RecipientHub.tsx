@@ -4,6 +4,9 @@ import type { StructuredReport } from '../shared/types'
 import type { ReviewQueueItem, ReviewReason, TimelineEntry, TimelinePeriod } from '../../../shared/recipientHub'
 import { FIELD_LABELS, formatKoreanDateTime } from './adminFormat'
 import { FallbackBadge, SpinnerIcon } from './adminBadges'
+import { ActionSummaryRow } from './ActionSummaryRow'
+import { DECISION_LABELS, SAFETY_OUTCOME_LABELS } from '../../../shared/workflow'
+import type { RecipientWorkflowView } from '../../../shared/workflowViews'
 
 /** 관리자 수급자 허브 — 기관 → 수급자 목록 → 수급자 상세(보고 타임라인)와 기관 첫
  * 화면의 "검토할 보고" 목록. 계산은 shared/recipientHub.ts(서버·데모 공통)가 하고
@@ -57,7 +60,6 @@ export function ReviewQueueList({
   onOpenReport: (id: string) => void
   onOpenRecipient: (code: string) => void
 }) {
-  const [showAll, setShowAll] = useState(false)
   if (error) return <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3">{error}</p>
   if (!items) {
     return (
@@ -69,13 +71,12 @@ export function ReviewQueueList({
   if (items.length === 0) {
     return <p className="text-slate-500 text-sm bg-slate-50 rounded-xl p-3">지금 검토를 기다리는 제출 보고가 없습니다.</p>
   }
-  const visible = showAll ? items : items.slice(0, 8)
   return (
     <div className="flex flex-col gap-2">
       <p className="text-slate-400 text-xs">
         검토할 보고 {items.length}건 · 정렬: 응급 표현 감지 표시가 있는 보고 먼저, 그다음 제출이 오래된 순(위험도 점수 아님)
       </p>
-      {visible.map((item) => (
+      {items.map((item) => (
         <div
           key={item.reportId}
           className={`rounded-xl border p-3 ${item.emergencyFlagged ? 'border-red-200 bg-red-50/60' : 'border-slate-200 bg-white'}`}
@@ -112,11 +113,7 @@ export function ReviewQueueList({
           </div>
         </div>
       ))}
-      {items.length > visible.length && (
-        <button onClick={() => setShowAll(true)} className="text-teal-700 text-xs font-bold underline self-start">
-          나머지 {items.length - visible.length}건 더 보기
-        </button>
-      )}
+
     </div>
   )
 }
@@ -211,7 +208,8 @@ function sameStructured(a: StructuredReport | null, b: StructuredReport | null):
   return FIELD_LABELS.every(({ key }) => (a[key] ?? '').trim() === (b[key] ?? '').trim())
 }
 
-function TimelineCard({ entry, onOpenReport }: { entry: TimelineEntry; onOpenReport: (id: string) => void }) {
+/** workflow: undefined = 업무 저장소 준비 전(표시 안 함), null = 준비됐지만 이 보고에 기록 없음. */
+function TimelineCard({ entry, onOpenReport, workflow }: { entry: TimelineEntry; onOpenReport: (id: string) => void; workflow?: RecipientWorkflowView['byReport'][string] | null }) {
   const pending = entry.review.status === 'pending'
   const { structured, review } = entry
   return (
@@ -223,6 +221,20 @@ function TimelineCard({ entry, onOpenReport }: { entry: TimelineEntry; onOpenRep
         <ReviewBadge status={review.status} />
         {entry.emergencyFlagged && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">🔴 응급 표현 감지(규칙 기반)</span>}
       </div>
+
+      {workflow !== undefined && (
+        <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
+          <span className="px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+            관리자 판단: {workflow?.decision ? DECISION_LABELS[workflow.decision.decision] : '없음'}
+          </span>
+          {entry.emergencyFlagged && (
+            <span className={`px-2 py-0.5 rounded-full border ${workflow?.safety ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-red-200 bg-red-50 text-red-700 font-bold'}`}>
+              안전 검토: {workflow?.safety ? SAFETY_OUTCOME_LABELS[workflow.safety.outcome] : '기록 없음'}
+            </span>
+          )}
+          <span className="px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">이 보고의 조치 {workflow?.actionIds.length ?? 0}건</span>
+        </div>
+      )}
 
       {pending && entry.reviewReasons.length > 0 && (
         <div className="mt-2">
@@ -349,6 +361,7 @@ export function RecipientDetailPanel({
   period,
   onChangePeriod,
   onOpenReport,
+  onOpenAction,
   onBackToList,
 }: {
   repo: AdminRepo
@@ -357,6 +370,7 @@ export function RecipientDetailPanel({
   period: TimelinePeriod
   onChangePeriod: (p: TimelinePeriod) => void
   onOpenReport: (id: string) => void
+  onOpenAction: (id: string) => void
   onBackToList: () => void
 }) {
   const [reloadKey, setReloadKey] = useState(0)
@@ -455,6 +469,22 @@ export function RecipientDetailPanel({
         </div>
       </section>
 
+      <section className="rounded-2xl bg-white border border-slate-100 shadow-sm p-4 flex flex-col gap-2">
+        <h3 className="font-bold text-slate-900 text-sm">현재 미완료 조치</h3>
+        {!data.workflow.workflowReady ? (
+          <p className="text-xs text-slate-500">준비 중 — 조치 저장소가 DB에 적용되기 전입니다.</p>
+        ) : (
+          (() => {
+            const open = data.workflow.actions.filter((a) => a.status === 'open' || a.status === 'draft')
+            return open.length === 0 ? (
+              <p className="text-xs text-slate-500">진행 중·초안 조치 0건</p>
+            ) : (
+              open.map((a) => <ActionSummaryRow key={a.id} a={a} onOpen={onOpenAction} />)
+            )
+          })()
+        )}
+      </section>
+
       <div className="flex flex-col gap-1.5">
         <div className="flex gap-2" role="group" aria-label="조회 기간">
           {PERIOD_OPTIONS.map((p) => (
@@ -499,7 +529,7 @@ export function RecipientDetailPanel({
         <div className="flex flex-col gap-3">
           <p className="text-slate-500 text-xs">보고 {timeline.entries.length}건 · 최신 제출이 위</p>
           {timeline.entries.map((entry) => (
-            <TimelineCard key={entry.reportId} entry={entry} onOpenReport={onOpenReport} />
+            <TimelineCard key={entry.reportId} entry={entry} onOpenReport={onOpenReport} workflow={data.workflow.workflowReady ? (data.workflow.byReport[entry.reportId] ?? null) : undefined} />
           ))}
         </div>
       )}
