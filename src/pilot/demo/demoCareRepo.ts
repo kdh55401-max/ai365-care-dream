@@ -13,6 +13,8 @@ import {
   newDemoId,
 } from './demoStore'
 import { runDemoAiTurn } from './demoAiEngine'
+import { demoListCenterRequests, demoMarkCenterRequestsShown, demoRecordCenterResponses } from './demoWorkflowRepo'
+import { reportEvidenceTexts, sanitizeEvidence } from '../../../shared/fieldRequests'
 
 function todayKst(): string {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000)
@@ -274,9 +276,27 @@ export const demoCareRepo: CareRepo = {
     if (!updated) throw new Error('보고를 저장하지 못했습니다.')
     return updated
   },
+  async submitReport(input) {
+    const code = demoCareSession()
+    if (!code) throw Object.assign(new Error('로그인이 필요합니다.'), { status: 401 })
+    // 실서버와 같은 순서: 보고를 먼저 제출(같은 내용 재전송이면 그대로)하고, 제출된 보고에 답변을 연결한다.
+    const report = await demoCareRepo.patchReport({ id: input.id, caregiverFinalReport: input.caregiverFinalReport, submit: true })
+    const responses = report.status === 'submitted' ? sanitizeEvidence(input.centerResponses.slice(0, 10), reportEvidenceTexts(report)) : []
+    return { report, centerResponses: demoRecordCenterResponses(code, report.id, responses) }
+  },
   async aiTurn(rawInput, history, forceFinalize) {
     const delay = e2eAiDelayMs()
     if (delay > 0) await new Promise((r) => setTimeout(r, delay))
     return runDemoAiTurn(rawInput, history, forceFinalize)
+  },
+  async listCenterRequests(recipientCode) {
+    const code = demoCareSession()
+    if (!code) throw Object.assign(new Error('로그인이 필요합니다.'), { status: 401 })
+    return demoListCenterRequests(code, recipientCode)
+  },
+  async markCenterRequestsShown(requestIds) {
+    const code = demoCareSession()
+    if (!code) throw Object.assign(new Error('로그인이 필요합니다.'), { status: 401 })
+    demoMarkCenterRequestsShown(code, requestIds)
   },
 }

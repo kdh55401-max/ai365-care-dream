@@ -23,7 +23,7 @@ import {
   demoWorkBoard,
 } from './demoWorkflowRepo'
 import {
-  DEMO_ASSIGNMENTS,
+  demoAssignmentMap,
   DEMO_PIN,
   DEMO_RECIPIENT_CODES,
   demoAdminLogin,
@@ -64,7 +64,7 @@ function demoRecipientRows() {
 }
 
 function demoAssignmentRows() {
-  return Object.entries(DEMO_ASSIGNMENTS).flatMap(([caregiver, codes]) =>
+  return Object.entries(demoAssignmentMap()).flatMap(([caregiver, codes]) =>
     codes.map((code) => ({ caregiver_code: caregiver, recipient_code: code, active: true })),
   )
 }

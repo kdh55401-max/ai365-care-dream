@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { ActionListResponse, AdminRepo } from '../shared/adminRepo'
-import { WORK_CATEGORY_LABELS, type ActionWorkItem, type SafetySignalItem, type WorkBoard, type WorkCategory } from '../../../shared/workBoard'
-import { ACTION_KIND_LABELS, OBLIGATION_TYPE_LABELS, SAFETY_OUTCOME_LABELS } from '../../../shared/workflow'
+import {
+  WORK_CATEGORY_LABELS,
+  type ActionWorkItem,
+  type RequestWorkItem,
+  type SafetySignalItem,
+  type VerificationWorkItem,
+  type WorkBoard,
+  type WorkCategory,
+} from '../../../shared/workBoard'
+import { ACTION_KIND_LABELS, OBLIGATION_TYPE_LABELS, RESPONSE_STATUS_LABELS, SAFETY_OUTCOME_LABELS, type DueKind, type ResponseStatus } from '../../../shared/workflow'
+import { REQUEST_WAIT_LABELS, ROUTING_PROBLEM_LABELS } from '../../../shared/fieldRequests'
 import { ACTION_FILTER_LABELS, ACTION_FILTERS, type ActionFilter } from '../../../shared/workflowViews'
 import { formatDue, formatKoreanDateTime, type WorkCard } from './adminFormat'
 import { SpinnerIcon } from './adminBadges'
@@ -16,6 +25,8 @@ const CATEGORY_STYLE: Record<WorkCategory, string> = {
   safety: 'bg-red-100 text-red-700',
   overdue: 'bg-amber-100 text-amber-800',
   verification_today: 'bg-teal-100 text-teal-800',
+  verification_pending: 'bg-indigo-100 text-indigo-800',
+  reassign: 'bg-orange-100 text-orange-800',
   report_attention: 'bg-slate-900 text-white',
   report_general: 'bg-slate-100 text-slate-600',
 }
@@ -98,6 +109,46 @@ export function WorkCards({ board, onOpenCard }: { board: WorkBoard; onOpenCard:
           )}
         </Card>
       </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+        <Card title="현장 응답 대기 요청" onClick={() => onOpenCard('requests')} tone={cards.requests.ready ? 'plain' : 'muted'}>
+          {cards.requests.ready ? (
+            <>
+              <p className="text-xl font-bold text-slate-900">
+                {cards.requests.requests}건 <span className="text-xs font-normal text-slate-500">요청</span>
+              </p>
+              <p className="text-[11px] text-slate-400">
+                기한 지남 {cards.requests.overdue} · 보고 있었지만 답 없음 {cards.requests.reportsWithoutAnswer} · 방문 대기 {cards.requests.awaitingVisit}
+              </p>
+            </>
+          ) : (
+            <NotReady />
+          )}
+        </Card>
+        <Card title="응답 도착 · 결과 확인 대기" onClick={() => onOpenCard('verification')} tone={cards.verification.ready ? 'plain' : 'muted'}>
+          {cards.verification.ready ? (
+            <>
+              <p className="text-xl font-bold text-slate-900">
+                {cards.verification.actions}건 <span className="text-xs font-normal text-slate-500">조치</span>
+              </p>
+              <p className="text-[11px] text-slate-400">현장 답은 왔고 관리자 결과 확인 전(완료 아님)</p>
+            </>
+          ) : (
+            <NotReady />
+          )}
+        </Card>
+        <Card title="재배정·담당 필요" onClick={() => onOpenCard('reassign')} tone={cards.reassign.ready ? 'plain' : 'muted'}>
+          {cards.reassign.ready ? (
+            <>
+              <p className="text-xl font-bold text-slate-900">
+                {cards.reassign.requests}건 <span className="text-xs font-normal text-slate-500">요청</span>
+              </p>
+              <p className="text-[11px] text-slate-400">담당 미지정 조치 {cards.reassign.unassignedActions}건 별도</p>
+            </>
+          ) : (
+            <NotReady />
+          )}
+        </Card>
+      </div>
       <p className="text-[10px] text-slate-400 mt-1.5">
         카드는 대상과 단위가 달라 합산하지 않습니다 · 서버 전체 집계 · 기준 시각 {formatKoreanDateTime(board.asOf)} · 오늘 제출 보고 {board.todayActivity.submittedReports}건(요양보호사 {board.todayActivity.participants}명)
       </p>
@@ -121,7 +172,7 @@ export function CombinedWorkList({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-slate-400 text-xs">
-        지금 할 일 {board.combined.length}건 · 순서: 안전 신호 미검토 → 기한 지난 조치 → 오늘 재확인 → 변화·확인 필요 보고 → 새 보고, 같은 범주는 오래 기다린 순(운영 규칙 — 임상 중증도 아님)
+        지금 할 일 {board.combined.length}건 · 순서: 안전 신호 미검토 → 기한 지난 조치 → 오늘 재확인 → 응답 도착·결과 확인 → 재배정 필요 → 변화·확인 필요 보고 → 새 보고, 같은 범주는 오래 기다린 순(운영 규칙 — 임상 중증도 아님)
       </p>
       {board.combined.map((item) => (
         <div key={item.key} className={`rounded-xl border p-3 ${item.category === 'safety' ? 'border-red-200 bg-red-50/60' : 'border-slate-200 bg-white'}`}>
@@ -205,11 +256,58 @@ function ActionRows({ items, onOpenAction, mode }: { items: ActionWorkItem[]; on
   )
 }
 
+function RequestRows({ items, onOpenAction }: { items: RequestWorkItem[]; onOpenAction: (id: string) => void }) {
+  if (items.length === 0) return <p className="text-slate-500 text-sm bg-slate-50 rounded-xl p-3">0건</p>
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map((r) => (
+        <button key={r.requestId} onClick={() => onOpenAction(r.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+          <p className="text-sm">
+            <span className="font-bold text-slate-900">수급자 {r.recipientCode}</span>{' '}
+            <span className="text-slate-500">{r.targetMode === 'specific_caregiver' ? `대상 ${r.targetCaregiverCode}` : '현재 배정 요양보호사'}</span>{' '}
+            <span className="text-slate-400 text-xs">게시 {formatKoreanDateTime(r.publishedAt)}</span>
+          </p>
+          <p className="text-sm text-slate-700 mt-0.5">“{r.message}”</p>
+          <p className="text-[11px] text-slate-600 mt-0.5">
+            응답기한 {formatDue(r.responseDueKind as DueKind, r.responseDueAt)} · {r.waitState ? REQUEST_WAIT_LABELS[r.waitState] : '-'}
+            {r.reportsSincePublish > 0 && ` · 게시 뒤 보고 ${r.reportsSincePublish}건`}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">{r.firstShownAt ? `현장 화면 첫 표시 ${formatKoreanDateTime(r.firstShownAt)}` : '현장 화면 표시 기록 없음'}</p>
+          {r.routing && <p className="text-[11px] text-orange-700 font-semibold mt-0.5">{ROUTING_PROBLEM_LABELS[r.routing]}</p>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function VerificationRows({ items, onOpenAction }: { items: VerificationWorkItem[]; onOpenAction: (id: string) => void }) {
+  if (items.length === 0) return <p className="text-slate-500 text-sm bg-slate-50 rounded-xl p-3">0건</p>
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map((v) => (
+        <button key={v.requestId} onClick={() => onOpenAction(v.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+          <p className="text-sm">
+            <span className="font-bold text-slate-900">수급자 {v.recipientCode}</span> <span className="text-slate-400 text-xs">응답 도착 {formatKoreanDateTime(v.answeredAt)}</span>
+          </p>
+          <p className="text-sm text-slate-700 mt-0.5">{v.purpose}</p>
+          <p className="text-[11px] text-slate-600 mt-0.5">
+            응답 {v.responseCount}건 · 최근 답: {v.latestResponseStatus ? RESPONSE_STATUS_LABELS[v.latestResponseStatus as ResponseStatus] : '-'} ·{' '}
+            {v.ownerLabel ? `담당 ${v.ownerLabel}(입력값)` : '담당 미지정'}
+          </p>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 const CARD_TITLES: Record<WorkCard, string> = {
   safety: '안전 신호 미검토',
   reports: '새 보고 미확인',
   overdue: '기한 지난 조치',
   today: '오늘 재확인',
+  requests: '현장 응답 대기 요청',
+  verification: '응답 도착 · 결과 확인 대기',
+  reassign: '재배정·담당 필요',
 }
 
 /** 카드를 누르면 여는 전체 목록 — 카드 숫자와 같은 계산 결과의 목록 전부. */
@@ -273,6 +371,42 @@ export function WorkCardListPanel({
         ) : (
           <p className="text-slate-500 bg-slate-50 rounded-xl p-3 text-sm">준비 중 — 조치·기한 저장소가 DB에 적용되기 전입니다.</p>
         ))}
+      {(card === 'requests' || card === 'verification') &&
+        (board.fieldRequestsReady ? (
+          card === 'requests' ? (
+            <>
+              <p className="text-[11px] text-slate-500">
+                게시돼 현장 답을 기다리는 요청(진행 중 조치). 다음 방문이 있었는지 알 수 없으면 미응답 실패로 확정하지 않습니다 — 게시 뒤 이 수급자 보고가 있었는지를 따로 보여줍니다.
+              </p>
+              <RequestRows items={board.lists.requests} onOpenAction={onOpenAction} />
+            </>
+          ) : (
+            <>
+              <p className="text-[11px] text-slate-500">현장 응답이 도착해 현장 응답 대기는 풀렸고, 관리자 결과 확인(요약·근거)이 남은 조치.</p>
+              <VerificationRows items={board.lists.verification} onOpenAction={onOpenAction} />
+            </>
+          )
+        ) : (
+          <p className="text-slate-500 bg-slate-50 rounded-xl p-3 text-sm">준비 중 — 현장 요청 저장소(3단계 DB 마이그레이션)가 적용되기 전입니다.</p>
+        ))}
+      {card === 'reassign' &&
+        (ready ? (
+          <>
+            {board.fieldRequestsReady ? (
+              <>
+                <p className="text-[11px] text-slate-500">게시 요청이 지금 배정 기준으로 누구에게도 보이지 않는 경우(배정 해제·지정 대상 변경).</p>
+                <RequestRows items={board.lists.reassignRequests} onOpenAction={onOpenAction} />
+              </>
+            ) : (
+              <p className="text-slate-500 bg-slate-50 rounded-xl p-3 text-sm">게시 요청 재배정: 준비 중(3단계 DB 적용 전).</p>
+            )}
+            <h3 className="font-bold text-slate-900 text-sm mt-2">담당 미지정 조치 ({board.lists.unassignedActions.length}건)</h3>
+            <p className="text-[11px] text-slate-500">초안·진행 중 조치 중 업무 담당자 입력값이 없는 것.</p>
+            <ActionRows items={board.lists.unassignedActions} onOpenAction={onOpenAction} mode="today" />
+          </>
+        ) : (
+          <p className="text-slate-500 bg-slate-50 rounded-xl p-3 text-sm">준비 중 — 조치 저장소가 DB에 적용되기 전입니다.</p>
+        ))}
     </div>
   )
 }
@@ -309,7 +443,7 @@ export function ActionsPanel({
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-lg font-bold text-slate-900">조치{recipientCode ? ` · 수급자 ${recipientCode}` : ''}</h2>
-        <p className="text-[11px] text-slate-400">관리자 조치와 기한. 현장 요청 내용은 이번 단계에서 게시되지 않은 초안입니다.</p>
+        <p className="text-[11px] text-slate-400">관리자 조치와 기한. 현장 요청은 관리자가 조치 화면에서 게시해야 현장에 보입니다.</p>
       </div>
       <div className="flex gap-1.5 flex-wrap" role="group" aria-label="조치 필터">
         {ACTION_FILTERS.map((f) => (

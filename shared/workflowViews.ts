@@ -18,7 +18,14 @@ import {
   type ReportEvent,
   type SafetyOutcome,
   type SafetyReview,
+  type ActionVerification,
+  type FieldRequest,
+  type FieldRequestStatus,
+  type FieldResponse,
+  type RequestTargetMode,
+  type VerificationOutcome,
 } from './workflow.js'
+import { requestWaitState, routingProblem, type RequestWaitState, type RoutingProblem } from './fieldRequests.js'
 
 export interface ObligationView {
   id: string
@@ -44,7 +51,7 @@ export interface ActionSummary {
   status: ActionStatus
   purpose: string
   ownerLabel: string | null
-  fieldMessageStatus: 'unpublished' | 'not_applicable'
+  fieldMessageStatus: CareAction['field_message_status']
   version: number
   currentCycle: number
   createdAt: string
@@ -52,6 +59,34 @@ export interface ActionSummary {
   obligations: ObligationView[]
   overdue: boolean
   dueToday: boolean
+  /** 3단계: 현재 후속 주기의 현장 요청(없으면 null). */
+  request: RequestSummary | null
+  /** 3단계: 현재 주기에 응답이 도착했고 관리자 결과 확인을 기다림. */
+  awaitingVerification: boolean
+  closureOutcome: VerificationOutcome | null
+}
+
+export interface RequestSummary {
+  id: string
+  status: FieldRequestStatus
+  targetMode: RequestTargetMode
+  targetCaregiverCode: string | null
+  publishedAt: string
+  firstShownAt: string | null
+  waitState: RequestWaitState | null
+  reportsSincePublish: number
+  routing: RoutingProblem | null
+  responseCount: number
+}
+
+/** summarizeAction에 3단계 정보를 붙이기 위한 선택 입력(없으면 요청 정보 없이 요약). */
+export interface RequestContext {
+  requests: FieldRequest[]
+  responses: FieldResponse[]
+  /** 이 기관의 실제 보고(방문 근거 계산용 — 게시 뒤 제출된 보고 수만 센다). */
+  reports: Array<{ id: string; recipient_code: string; participant_code: string; status: string; submitted_at?: string | null; report_source?: string; deleted?: boolean }>
+  /** 수급자별 현재 활성 배정 요양보호사. */
+  assigneesByRecipient: Record<string, string[]>
 }
 
 function obligationView(o: ActionObligation, nowIso: string, day: { start: string; end: string }): ObligationView {
@@ -70,14 +105,34 @@ function obligationView(o: ActionObligation, nowIso: string, day: { start: strin
   }
 }
 
-export function summarizeAction(a: CareAction, obligations: ActionObligation[], now: Date): ActionSummary {
+export function summarizeRequest(r: FieldRequest, obligations: ActionObligation[], rc: RequestContext, nowIso: string): RequestSummary {
+  const wait = requestWaitState(r, obligations.find((o) => o.id === r.obligation_id) ?? null, rc.reports, nowIso)
+  return {
+    id: r.id,
+    status: r.status,
+    targetMode: r.target_mode,
+    targetCaregiverCode: r.target_caregiver_code,
+    publishedAt: r.published_at,
+    firstShownAt: r.first_shown_at,
+    waitState: wait?.state ?? null,
+    reportsSincePublish: wait?.reportsSincePublish ?? 0,
+    routing: routingProblem(r, rc.assigneesByRecipient[r.recipient_code] ?? []),
+    responseCount: rc.responses.filter((x) => x.field_request_id === r.id).length,
+  }
+}
+
+export function summarizeAction(a: CareAction, obligations: ActionObligation[], now: Date, rc?: RequestContext): ActionSummary {
   const nowIso = now.toISOString()
   const day = kstDayRange(now)
-  const obs = obligations
-    .filter((o) => o.action_id === a.id)
+  const own = obligations.filter((o) => o.action_id === a.id)
+  const obs = own
     .sort((x, y) => x.cycle_no - y.cycle_no || x.obligation_type.localeCompare(y.obligation_type))
     .map((o) => obligationView(o, nowIso, day))
   const live = a.status === 'open'
+  const currentRequest = rc
+    ? rc.requests.filter((r) => r.action_id === a.id && r.cycle_no === a.current_cycle).sort((x, y) => Date.parse(y.published_at) - Date.parse(x.published_at))[0] ?? null
+    : null
+  const request = currentRequest && rc ? summarizeRequest(currentRequest, own, rc, nowIso) : null
   return {
     id: a.id,
     recipientCode: a.recipient_code,
@@ -95,6 +150,9 @@ export function summarizeAction(a: CareAction, obligations: ActionObligation[], 
     obligations: obs,
     overdue: live && obs.some((o) => o.overdue),
     dueToday: live && obs.some((o) => o.dueToday),
+    request,
+    awaitingVerification: live && request?.status === 'answered',
+    closureOutcome: a.closure_outcome ?? null,
   }
 }
 
@@ -155,11 +213,18 @@ export interface ReportWorkflowView {
 
 export interface ActionDetailView {
   workflowReady: true
+  /** 3단계 저장소(현장 요청·응답·결과 확인) 준비 여부. false면 게시·결과 확인을 "준비 중"으로 둔다. */
+  fieldRequestsReady: boolean
   action: CareAction
   summary: ActionSummary
   events: ActionEvent[]
   /** 이 조치를 관련 조치로 연결한 안전 검토. */
   linkedSafetyReviews: Array<Pick<SafetyReview, 'id' | 'report_id' | 'outcome' | 'reviewed_at'>>
+  /** 3단계: 모든 주기의 현장 요청(최근 게시가 위)과 각 요청의 응답. */
+  requests: Array<{ request: FieldRequest; summary: RequestSummary; responses: FieldResponse[] }>
+  verifications: ActionVerification[]
+  /** 게시·대상 변경에 쓰는 현재 활성 배정 요양보호사. */
+  assignees: string[]
 }
 
 export interface RecipientWorkflowView {
@@ -172,6 +237,7 @@ export function buildRecipientWorkflow(
   reportIds: string[],
   rows: { decisions: AdminDecision[]; safetyReviews: SafetyReview[]; actions: CareAction[]; obligations: ActionObligation[] },
   now: Date,
+  rc?: RequestContext,
 ): Omit<RecipientWorkflowView, 'workflowReady'> {
   const byReport: RecipientWorkflowView['byReport'] = {}
   for (const id of reportIds) {
@@ -183,5 +249,5 @@ export function buildRecipientWorkflow(
       actionIds: rows.actions.filter((a) => a.source_report_id === id).map((a) => a.id),
     }
   }
-  return { byReport, actions: rows.actions.map((a) => summarizeAction(a, rows.obligations, now)) }
+  return { byReport, actions: rows.actions.map((a) => summarizeAction(a, rows.obligations, now, rc)) }
 }

@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import { todayKstDateString } from '../_lib/date.js'
 import { callWorkflowRpc, fetchAll, loadActionState, loadWorkflowRows, workflowReady, type RpcResult } from '../_lib/workflowStore.js'
+import { fieldRequestsReady, loadAssigneesByRecipient, loadFieldRows } from '../_lib/fieldRequestsStore.js'
 import type { CareReportRecord } from '../../shared/careTypes.js'
 import type { Organization } from '../../shared/organization.js'
 import {
@@ -19,6 +20,7 @@ import {
 } from '../../shared/recipientHub.js'
 import { buildWorkBoard } from '../../shared/workBoard.js'
 import {
+  FIELD_REQUEST_OPS,
   latestBy,
   planActionMutation,
   planCreateAction,
@@ -39,26 +41,31 @@ import {
   filterActions,
   parseActionFilter,
   summarizeAction,
+  summarizeRequest,
   type ActionDetailView,
   type ReportWorkflowView,
+  type RequestContext,
 } from '../../shared/workflowViews.js'
 
 const RECIPIENT_CODE_PATTERN = /^[A-Z0-9]{1,10}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** 관리자 업무 API — 1단계 수급자 허브(조회)와 2단계 판단·조치·안전 검토(조회·저장)를 한 곳에서.
+/** 관리자 업무 API — 1단계 수급자 허브(조회), 2단계 판단·조치·안전 검토, 3단계 현장 요청 게시·결과 확인을 한 곳에서.
  * (Vercel 무료 요금제의 배포당 함수 12개 한도 때문에 파일을 늘리지 않고 이 한 함수로 묶었다.)
  *
  * 모든 요청은 관리자 세션 + 세션 기관 확인(requireAdminOrganization). 요청의 org가 다르면 403.
  * 2단계 테이블(db/migrations/2026-09-15-admin-workflow.sql)이 없으면 조회는 workflowReady:false로
  * 알려 화면이 "준비 중"을 보이게 하고, 저장은 503으로 거부한다(가짜 0건을 만들지 않는다).
+ * 3단계 테이블(db/migrations/2026-09-16-field-requests.sql)이 없으면 fieldRequestsReady:false,
+ * 게시·철회·대상 변경·결과 확인(mutate_action의 publish|withdraw|retarget|verify)은 503.
+ * 현장 응답 자체는 요양보호사 보고 제출(api/care/reports.ts)에서 들어온다.
  *
  * GET  ?org=&view=recipients                      수급자 목록 + 검토 대기(1단계)
  * GET  ?org=&view=recipient&code=A01&period=30    수급자 타임라인 + 보고별 판단·안전 검토·조치
- * GET  ?org=&view=board                           업무 카드 4개 + 전체 목록 + 통합 목록
+ * GET  ?org=&view=board                           업무 카드 7개 + 전체 목록 + 통합 목록
  * GET  ?org=&view=report&reportId=                보고 한 건의 이벤트·판단·안전 검토·조치
  * GET  ?org=&view=actions&filter=&recipient=      조치 목록
- * GET  ?org=&view=action&id=                      조치 상세(의무·이력)
+ * GET  ?org=&view=action&id=                      조치 상세(의무·이력·현장 요청·응답·결과 확인·현재 배정)
  * POST ?org=  {op:'decide'|'safety_review'|'create_action'|'mutate_action', ...} */
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
@@ -134,17 +141,45 @@ async function recipientView(supabase: SupabaseClient, organization: Organizatio
   const [summary] = summarizeRecipients([recipient as RecipientRow], assignments, all)
   const timeline = buildRecipientTimeline(since ? all.filter((r) => r.report_date >= since) : all, period, today)
   const reportIds = timeline.entries.map((e) => e.reportId)
-  const workflow = ready
-    ? { workflowReady: true, ...buildRecipientWorkflow(reportIds, await loadWorkflowRows(supabase, organization.id, { reportIds, recipientCode: code }), new Date()) }
-    : { workflowReady: false, byReport: {}, actions: [] }
+  let workflow: { workflowReady: boolean } & ReturnType<typeof buildRecipientWorkflow> = { workflowReady: false, byReport: {}, actions: [] }
+  if (ready) {
+    const rows = await loadWorkflowRows(supabase, organization.id, { reportIds, recipientCode: code })
+    const rc = await requestContext(supabase, organization.id, rows.actions, all)
+    workflow = { workflowReady: true, ...buildRecipientWorkflow(reportIds, rows, new Date(), rc) }
+  }
   await logAudit('view_recipient_timeline', code, { period })
   return { organization, recipient: summary, timeline, workflow }
 }
 
+/** 3단계 요약 정보(현재 요청·대기 상태·재배정 필요)를 붙이기 위한 입력. 3단계 저장소가 없으면 undefined. */
+async function requestContext(supabase: SupabaseClient, organizationId: string, actions: CareAction[], reports: CareReportRecord[]): Promise<RequestContext | undefined> {
+  if (!(await fieldRequestsReady(supabase))) return undefined
+  const [field, assigneesByRecipient] = await Promise.all([loadFieldRows(supabase, organizationId, actions.map((a) => a.id)), loadAssigneesByRecipient(supabase)])
+  return { requests: field.requests, responses: field.responses, reports, assigneesByRecipient }
+}
+
 async function boardView(supabase: SupabaseClient, organization: Organization) {
-  const [reports, ready] = await Promise.all([liveReports(supabase), workflowReady(supabase)])
+  const [reports, ready, frReady, assigneesByRecipient] = await Promise.all([
+    liveReports(supabase),
+    workflowReady(supabase),
+    fieldRequestsReady(supabase),
+    loadAssigneesByRecipient(supabase),
+  ])
   const rows = ready ? await loadWorkflowRows(supabase, organization.id) : { decisions: [], safetyReviews: [], actions: [], obligations: [], reportEvents: [] }
-  return { organization, board: buildWorkBoard({ reports, ...rows, workflowReady: ready, now: new Date() }) }
+  const field = ready && frReady ? await loadFieldRows(supabase, organization.id) : { requests: [], responses: [], verifications: [] }
+  return {
+    organization,
+    board: buildWorkBoard({
+      reports,
+      ...rows,
+      workflowReady: ready,
+      fieldRequestsReady: frReady,
+      requests: field.requests,
+      responses: field.responses,
+      assigneesByRecipient,
+      now: new Date(),
+    }),
+  }
 }
 
 async function loadReportForWorkflow(supabase: SupabaseClient, reportId: string): Promise<CareReportRecord> {
@@ -175,9 +210,13 @@ async function reportView(supabase: SupabaseClient, organization: Organization, 
     recipientOpenActions: [],
   }
   if (!(await workflowReady(supabase))) return base
-  const rows = await loadWorkflowRows(supabase, organization.id, { reportIds: [report.id], recipientCode: report.recipient_code })
+  const [rows, recipientReports] = await Promise.all([
+    loadWorkflowRows(supabase, organization.id, { reportIds: [report.id], recipientCode: report.recipient_code }),
+    liveReports(supabase, report.recipient_code),
+  ])
   const now = new Date()
-  const summaries = rows.actions.map((a) => summarizeAction(a, rows.obligations, now))
+  const rc = await requestContext(supabase, organization.id, rows.actions, recipientReports)
+  const summaries = rows.actions.map((a) => summarizeAction(a, rows.obligations, now, rc))
   return {
     ...base,
     workflowReady: true,
@@ -194,28 +233,58 @@ async function actionsView(supabase: SupabaseClient, organization: Organization,
   const recipientCode = rawRecipient?.trim().toUpperCase() || undefined
   if (recipientCode && !RECIPIENT_CODE_PATTERN.test(recipientCode)) throw new ApiError(400, '수급자 코드가 올바르지 않습니다.')
   if (!(await workflowReady(supabase))) return { organization, workflowReady: false, filter, asOf: new Date().toISOString(), actions: [] }
-  const rows = await loadWorkflowRows(supabase, organization.id, { reportIds: [], recipientCode })
+  const [rows, reports] = await Promise.all([loadWorkflowRows(supabase, organization.id, { reportIds: [], recipientCode }), liveReports(supabase, recipientCode)])
   const now = new Date()
+  const rc = await requestContext(supabase, organization.id, rows.actions, reports)
   return {
     organization,
     workflowReady: true,
     filter,
     asOf: now.toISOString(),
-    actions: filterActions(rows.actions.map((a) => summarizeAction(a, rows.obligations, now)), filter),
+    actions: filterActions(rows.actions.map((a) => summarizeAction(a, rows.obligations, now, rc)), filter),
   }
+}
+
+/** 조치 한 건의 상태 + 3단계 요청·응답 + 현재 배정(게시·대상 변경 검증용). */
+async function loadFullActionState(supabase: SupabaseClient, organizationId: string, id: string) {
+  const state = await loadActionState(supabase, organizationId, id)
+  const frReady = await fieldRequestsReady(supabase)
+  const [field, assigneesByRecipient] = frReady
+    ? await Promise.all([loadFieldRows(supabase, organizationId, [id]), loadAssigneesByRecipient(supabase, state.action.recipient_code)])
+    : [{ requests: [], responses: [], verifications: [] }, {} as Record<string, string[]>]
+  return { ...state, frReady, field, assignees: assigneesByRecipient[state.action.recipient_code] ?? [] }
 }
 
 async function actionView(supabase: SupabaseClient, organization: Organization, id: string): Promise<ActionDetailView> {
   if (!UUID_PATTERN.test(id)) throw new ApiError(400, '조치 id가 올바르지 않습니다.')
   if (!(await workflowReady(supabase))) throw new ApiError(503, '업무 기록 저장소가 아직 준비되지 않았습니다(DB 마이그레이션 적용 필요).')
-  const state = await loadActionState(supabase, organization.id, id)
-  const { data: linked } = await supabase.from('safety_reviews').select('id, report_id, outcome, reviewed_at').eq('related_action_id', id)
+  const s = await loadFullActionState(supabase, organization.id, id)
+  const [{ data: linked }, reports] = await Promise.all([
+    supabase.from('safety_reviews').select('id, report_id, outcome, reviewed_at').eq('related_action_id', id),
+    s.frReady ? liveReports(supabase, s.action.recipient_code) : Promise.resolve([] as CareReportRecord[]),
+  ])
+  const now = new Date()
+  const rc: RequestContext | undefined = s.frReady
+    ? { requests: s.field.requests, responses: s.field.responses, reports, assigneesByRecipient: { [s.action.recipient_code]: s.assignees } }
+    : undefined
   return {
     workflowReady: true,
-    action: state.action,
-    summary: summarizeAction(state.action, state.obligations, new Date()),
-    events: state.events,
+    fieldRequestsReady: s.frReady,
+    action: s.action,
+    summary: summarizeAction(s.action, s.obligations, now, rc),
+    events: s.events,
     linkedSafetyReviews: (linked ?? []) as ActionDetailView['linkedSafetyReviews'],
+    requests: rc
+      ? [...s.field.requests]
+          .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at))
+          .map((request) => ({
+            request,
+            summary: summarizeRequest(request, s.obligations, rc, now.toISOString()),
+            responses: s.field.responses.filter((r) => r.field_request_id === request.id),
+          }))
+      : [],
+    verifications: s.field.verifications,
+    assignees: s.assignees,
   }
 }
 
@@ -287,9 +356,16 @@ async function handlePost(supabase: SupabaseClient, organization: Organization, 
         const input = { ...body, op: body.mutation } as unknown as ActionMutationInput
         const actionId = String(input.actionId ?? '')
         if (!UUID_PATTERN.test(actionId)) throw new ApiError(400, '조치 id가 올바르지 않습니다.')
-        const state = await loadActionState(supabase, organization.id, actionId)
-        if (state.events.some((e) => e.request_id === input.requestId)) return sendJson(res, 200, await actionView(supabase, organization, actionId))
-        const plan = planActionMutation(state, input, context(organization))
+        const s = await loadFullActionState(supabase, organization.id, actionId)
+        if (s.events.some((e) => e.request_id === input.requestId)) return sendJson(res, 200, await actionView(supabase, organization, actionId))
+        if (FIELD_REQUEST_OPS.includes(input.op) && !s.frReady) {
+          throw new ApiError(503, '현장 요청 저장소가 아직 준비되지 않았습니다(3단계 DB 마이그레이션 적용 필요).')
+        }
+        const plan = planActionMutation(
+          { action: s.action, obligations: s.obligations, requests: s.field.requests, responses: s.field.responses, assignees: s.assignees },
+          input,
+          context(organization),
+        )
         const result = await callWorkflowRpc(supabase, 'workflow_apply_action_change', {
           action_id: actionId,
           expected_version: input.expectedVersion,
@@ -297,6 +373,8 @@ async function handlePost(supabase: SupabaseClient, organization: Organization, 
           action: plan.action,
           obligation_updates: plan.obligationUpdates,
           obligation_inserts: plan.obligationInserts,
+          // 3단계 입력 — 2단계 DB 함수는 이 키를 모르므로, 3단계 저장소가 없으면 보내지 않는다(위에서 3단계 변경은 막음).
+          ...(s.frReady ? { request_inserts: plan.requestInserts, request_updates: plan.requestUpdates, verification_inserts: plan.verificationInserts } : {}),
           event: plan.event,
         })
         rpcOutcome(result, '다른 곳에서 이 조치가 먼저 수정됐습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.')

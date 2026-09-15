@@ -4,7 +4,8 @@
  *
  * 카드는 대상과 단위가 달라 합산하지 않는다: 안전 신호(신호 수·수급자 수), 새 보고(보고 수),
  * 기한 지난 조치(조치 수·의무 수), 오늘 재확인(조치 수·의무 수).
- * 정렬은 운영 규칙이다(안전 신호 → 기한 초과 → 오늘 재확인 → 변화·확인 필요 보고 → 일반 보고,
+ * 3단계 카드: 응답 대기 요청(요청 수), 결과 확인 대기(조치 수), 재배정·담당 필요(요청 수·조치 수).
+ * 정렬은 운영 규칙이다(안전 신호 → 기한 초과 → 오늘 재확인 → 응답 도착·결과 확인 → 재배정 필요 → 변화·확인 필요 보고 → 일반 보고,
  * 같은 범주는 오래 기다린 순) — 임상 중증도 순위가 아니다. */
 import { buildReviewQueue, type ReviewQueueItem } from './recipientHub.js'
 import type { CareReportRecord } from './careTypes.js'
@@ -23,7 +24,11 @@ import {
   type ReportEvent,
   type SafetyOutcome,
   type SafetyReview,
+  type FieldRequest,
+  type FieldResponse,
+  type RequestTargetMode,
 } from './workflow.js'
+import { requestWaitState, routingProblem, type RequestWaitState, type RoutingProblem } from './fieldRequests.js'
 
 type BoardReport = Partial<CareReportRecord> & Pick<CareReportRecord, 'id' | 'recipient_code' | 'participant_code' | 'status'>
 
@@ -61,14 +66,44 @@ export interface ActionWorkItem {
   dueToday: ObligationBrief[]
 }
 
-export type WorkCategory = 'safety' | 'overdue' | 'verification_today' | 'report_attention' | 'report_general'
+export type WorkCategory = 'safety' | 'overdue' | 'verification_today' | 'verification_pending' | 'reassign' | 'report_attention' | 'report_general'
 
 export const WORK_CATEGORY_LABELS: Record<WorkCategory, string> = {
   safety: '안전 신호 미검토',
   overdue: '기한 지난 조치',
   verification_today: '오늘 재확인',
+  verification_pending: '응답 도착 · 결과 확인 대기',
+  reassign: '재배정·담당 필요',
   report_attention: '변화·확인 필요 보고',
   report_general: '새 보고 미확인',
+}
+
+export interface RequestWorkItem {
+  requestId: string
+  actionId: string
+  recipientCode: string
+  purpose: string
+  message: string
+  targetMode: RequestTargetMode
+  targetCaregiverCode: string | null
+  publishedAt: string
+  firstShownAt: string | null
+  waitState: RequestWaitState | null
+  reportsSincePublish: number
+  routing: RoutingProblem | null
+  responseDueKind: string
+  responseDueAt: string | null
+}
+
+export interface VerificationWorkItem {
+  actionId: string
+  recipientCode: string
+  purpose: string
+  requestId: string
+  answeredAt: string | null
+  responseCount: number
+  latestResponseStatus: string | null
+  ownerLabel: string | null
 }
 
 export interface CombinedWorkItem {
@@ -93,6 +128,12 @@ export interface WorkBoard {
     reports: { reports: number; recipients: number }
     overdue: { ready: boolean; actions: number; obligations: number }
     today: { ready: boolean; actions: number; obligations: number }
+    /** 3단계: 게시돼 응답을 기다리는 요청(요청 수). */
+    requests: { ready: boolean; requests: number; overdue: number; reportsWithoutAnswer: number; awaitingVisit: number }
+    /** 3단계: 응답이 도착해 관리자 결과 확인을 기다리는 조치(조치 수). */
+    verification: { ready: boolean; actions: number }
+    /** 재배정 필요한 게시 요청(요청 수)과 담당 미지정 조치(조치 수). */
+    reassign: { ready: boolean; requests: number; unassignedActions: number }
   }
   lists: {
     safety: SafetySignalItem[]
@@ -103,7 +144,13 @@ export interface WorkBoard {
     reports: ReviewQueueItem[]
     overdue: ActionWorkItem[]
     today: ActionWorkItem[]
+    requests: RequestWorkItem[]
+    verification: VerificationWorkItem[]
+    reassignRequests: RequestWorkItem[]
+    unassignedActions: ActionWorkItem[]
   }
+  /** 3단계 저장소 준비 여부. */
+  fieldRequestsReady: boolean
   combined: CombinedWorkItem[]
   todayActivity: { submittedReports: number; participants: number }
 }
@@ -116,6 +163,11 @@ export interface WorkBoardInput {
   reportEvents: Pick<ReportEvent, 'report_id' | 'event_type'>[]
   workflowReady: boolean
   now: Date
+  /** 3단계(없으면 빈 것으로 본다). */
+  fieldRequestsReady?: boolean
+  requests?: FieldRequest[]
+  responses?: FieldResponse[]
+  assigneesByRecipient?: Record<string, string[]>
 }
 
 function brief(o: ActionObligation): ObligationBrief {
@@ -207,6 +259,59 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
   overdue.sort((a, b) => byTimeAsc(earliest(a.overdue), earliest(b.overdue)))
   dueToday.sort((a, b) => byTimeAsc(earliest(a.dueToday), earliest(b.dueToday)))
 
+  // ── 3단계: 게시 요청·응답 도착·재배정 ──
+  const frReady = Boolean(input.fieldRequestsReady && input.workflowReady)
+  const requests = frReady ? (input.requests ?? []) : []
+  const responses = frReady ? (input.responses ?? []) : []
+  const assignees = input.assigneesByRecipient ?? {}
+  const actionsById = new Map(input.actions.map((a) => [a.id, a]))
+  const allObligations = new Map(input.obligations.map((o) => [o.id, o]))
+  const requestItem = (r: FieldRequest): RequestWorkItem => {
+    const ob = allObligations.get(r.obligation_id) ?? null
+    const wait = requestWaitState(r, ob, live, asOf)
+    return {
+      requestId: r.id,
+      actionId: r.action_id,
+      recipientCode: r.recipient_code,
+      purpose: actionsById.get(r.action_id)?.purpose ?? '',
+      message: r.message,
+      targetMode: r.target_mode,
+      targetCaregiverCode: r.target_caregiver_code,
+      publishedAt: r.published_at,
+      firstShownAt: r.first_shown_at,
+      waitState: wait?.state ?? null,
+      reportsSincePublish: wait?.reportsSincePublish ?? 0,
+      routing: routingProblem(r, assignees[r.recipient_code] ?? []),
+      responseDueKind: ob?.current_due_kind ?? 'unset',
+      responseDueAt: ob?.current_due_at ?? null,
+    }
+  }
+  const openAction = (id: string) => actionsById.get(id)?.status === 'open'
+  const publishedItems = requests.filter((r) => r.status === 'published' && openAction(r.action_id)).map(requestItem).sort((a, b) => byTimeAsc(a.publishedAt, b.publishedAt))
+  const reassignRequests = publishedItems.filter((r) => r.routing)
+  const verificationItems: VerificationWorkItem[] = requests
+    .filter((r) => r.status === 'answered' && openAction(r.action_id) && actionsById.get(r.action_id)?.current_cycle === r.cycle_no)
+    .map((r) => {
+      const own = responses.filter((x) => x.field_request_id === r.id).sort((a, b) => byTimeAsc(b.submitted_at, a.submitted_at))
+      const a = actionsById.get(r.action_id)!
+      return {
+        actionId: a.id,
+        recipientCode: a.recipient_code,
+        purpose: a.purpose,
+        requestId: r.id,
+        answeredAt: r.answered_at,
+        responseCount: own.length,
+        latestResponseStatus: own[0]?.response_status ?? null,
+        ownerLabel: a.owner_label,
+      }
+    })
+    .sort((a, b) => byTimeAsc(a.answeredAt, b.answeredAt))
+  const unassignedActions: ActionWorkItem[] = input.workflowReady
+    ? input.actions
+        .filter((a) => (a.status === 'open' || a.status === 'draft') && !a.owner_label)
+        .map((a) => ({ actionId: a.id, recipientCode: a.recipient_code, kind: a.kind, status: a.status, purpose: a.purpose, ownerLabel: null, sourceReportId: a.source_report_id, overdue: [], dueToday: [] }))
+    : []
+
   // ── 통합 목록(운영 규칙 순서, 같은 대상은 가장 앞 범주에 한 번만) ──
   const combined: CombinedWorkItem[] = []
   const seen = new Set<string>()
@@ -256,6 +361,30 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
       waitingSince: earliest(a.dueToday),
     })
   }
+  for (const v of verificationItems) {
+    push({
+      key: `action:${v.actionId}`,
+      category: 'verification_pending',
+      recipientCode: v.recipientCode,
+      reportId: actionsById.get(v.actionId)?.source_report_id ?? null,
+      actionId: v.actionId,
+      headline: v.purpose,
+      notes: ['현장 응답 도착 — 관리자 결과 확인 필요(응답만으로 완료 아님)', v.ownerLabel ? `담당 ${v.ownerLabel}` : '담당 미지정'],
+      waitingSince: v.answeredAt,
+    })
+  }
+  for (const r of reassignRequests) {
+    push({
+      key: `action:${r.actionId}`,
+      category: 'reassign',
+      recipientCode: r.recipientCode,
+      reportId: actionsById.get(r.actionId)?.source_report_id ?? null,
+      actionId: r.actionId,
+      headline: r.purpose || r.message,
+      notes: [r.routing === 'no_assignee' ? '배정된 요양보호사 없음' : `지정 대상 ${r.targetCaregiverCode} 배정 해제됨`, '게시 요청이 현장에 보이지 않음'],
+      waitingSince: r.publishedAt,
+    })
+  }
   const attention = reportQueue.filter((q) => q.reasons.some((x) => x.tone === 'alert'))
   const general = reportQueue.filter((q) => !q.reasons.some((x) => x.tone === 'alert'))
   const pushReport = (q: ReviewQueueItem, category: WorkCategory) =>
@@ -295,8 +424,29 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
       reports: { reports: reportQueue.length, recipients: new Set(reportQueue.map((q) => q.recipientCode)).size },
       overdue: { ready: input.workflowReady, actions: overdue.length, obligations: overdue.reduce((n, a) => n + a.overdue.length, 0) },
       today: { ready: input.workflowReady, actions: dueToday.length, obligations: dueToday.reduce((n, a) => n + a.dueToday.length, 0) },
+      requests: {
+        ready: frReady,
+        requests: publishedItems.length,
+        overdue: publishedItems.filter((r) => r.waitState === 'overdue').length,
+        reportsWithoutAnswer: publishedItems.filter((r) => r.waitState === 'reports_without_answer').length,
+        awaitingVisit: publishedItems.filter((r) => r.waitState === 'awaiting_visit').length,
+      },
+      verification: { ready: frReady, actions: verificationItems.length },
+      reassign: { ready: input.workflowReady, requests: reassignRequests.length, unassignedActions: unassignedActions.length },
     },
-    lists: { safety, safetyDrafts, safetyLegacy, reports: reportQueue, overdue, today: dueToday },
+    lists: {
+      safety,
+      safetyDrafts,
+      safetyLegacy,
+      reports: reportQueue,
+      overdue,
+      today: dueToday,
+      requests: publishedItems,
+      verification: verificationItems,
+      reassignRequests,
+      unassignedActions,
+    },
+    fieldRequestsReady: frReady,
     combined,
     todayActivity: { submittedReports: submittedToday.length, participants: new Set(submittedToday.map((r) => r.participant_code)).size },
   }

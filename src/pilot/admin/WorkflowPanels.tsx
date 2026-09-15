@@ -8,21 +8,33 @@ import {
   DECISION_KINDS,
   DECISION_LABELS,
   DUE_KIND_LABELS,
+  FIELD_REQUEST_STATUS_LABELS,
   isoToKstLocal,
   kstLocalToIso,
   latestBy,
   OBLIGATION_STATUS_LABELS,
   OBLIGATION_TYPE_LABELS,
+  OUTCOMES_REQUIRING_FOLLOWUP_NOTE,
+  REQUEST_TARGET_LABELS,
+  RESPONSE_STATUS_LABELS,
   SAFETY_OUTCOME_LABELS,
   SAFETY_OUTCOMES,
+  VERIFICATION_OUTCOME_LABELS,
+  VERIFICATION_OUTCOMES,
+  type ActionEvent,
   type ActionEventType,
   type ActionKind,
   type DecisionKind,
   type DueInput,
   type DueKind,
+  type FieldRequest,
+  type FieldResponse,
+  type RequestTargetMode,
   type SafetyOutcome,
+  type VerificationOutcome,
 } from '../../../shared/workflow'
 import type { ActionDetailView, ObligationView, ReportWorkflowView } from '../../../shared/workflowViews'
+import { REQUEST_WAIT_LABELS, ROUTING_PROBLEM_LABELS } from '../../../shared/fieldRequests'
 import { formatDue, formatKoreanDateTime } from './adminFormat'
 import { SpinnerIcon } from './adminBadges'
 import { ActionSummaryRow } from './ActionSummaryRow'
@@ -182,7 +194,7 @@ export function CreateActionForm({
         <label className="block">
           <span className={labelClass}>현장에 전달할 요청 내용(초안)</span>
           <textarea value={fieldMessage} onChange={(e) => setFieldMessage(e.target.value)} rows={2} placeholder="예: 다음 방문 때 식사량을 다시 확인해 주세요." className={inputClass} />
-          <span className="text-[11px] text-amber-800">미게시 초안 — 이번 단계에는 게시 기능이 없어 요양보호사 화면에 전달되지 않습니다.</span>
+          <span className="text-[11px] text-amber-800">미게시 초안 — 조치를 만든 뒤 조치 화면에서 "현장에 게시"해야 요양보호사 화면에 보입니다. 내부 메모는 게시되지 않습니다.</span>
         </label>
       )}
       <label className="block">
@@ -524,9 +536,106 @@ const EVENT_LABELS: Record<ActionEventType, string> = {
   completed: '완료',
   cancelled: '취소',
   reopened: '재개(새 후속 주기)',
+  published: '현장에 게시',
+  withdrawn: '현장 요청 철회',
+  retargeted: '요청 대상 변경',
+  response_received: '현장 응답 도착',
+  verified: '관리자 결과 확인',
 }
 
-type Mode = null | 'edit' | 'complete' | 'cancel' | 'reopen' | { due: ObligationView }
+type Mode =
+  | null
+  | 'edit'
+  | 'complete'
+  | 'cancel'
+  | 'reopen'
+  | 'publish'
+  | 'verify'
+  | { due: ObligationView }
+  | { withdraw: FieldRequest }
+  | { retarget: FieldRequest }
+
+interface TargetState {
+  mode: RequestTargetMode
+  code: string
+}
+
+function targetText(mode: RequestTargetMode, code: string | null): string {
+  return mode === 'specific_caregiver' ? `지정 요양보호사 ${code ?? '-'}` : '현재 배정 요양보호사'
+}
+
+/** 게시 대상 선택 — 지금 활성 배정된 요양보호사 중에서만 고른다. */
+function TargetPicker({ value, onChange, assignees }: { value: TargetState; onChange: (v: TargetState) => void; assignees: string[] }) {
+  return (
+    <div className="flex flex-col gap-1" role="radiogroup" aria-label="요청 대상">
+      <span className={labelClass}>요청 대상</span>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="radio" checked={value.mode === 'recipient_assignees'} onChange={() => onChange({ mode: 'recipient_assignees', code: '' })} />
+        {REQUEST_TARGET_LABELS.recipient_assignees}
+        <span className="text-[11px] text-slate-500">(지금: {assignees.length ? assignees.join(', ') : '없음'} — 배정이 바뀌면 새 담당자에게 보임)</span>
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="radio" checked={value.mode === 'specific_caregiver'} onChange={() => onChange({ mode: 'specific_caregiver', code: value.code || assignees[0] || '' })} disabled={assignees.length === 0} />
+        {REQUEST_TARGET_LABELS.specific_caregiver}
+        {value.mode === 'specific_caregiver' && (
+          <select value={value.code} onChange={(e) => onChange({ ...value, code: e.target.value })} className="border border-slate-200 rounded-lg p-1 text-sm" aria-label="지정할 요양보호사">
+            {assignees.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+      </label>
+      {assignees.length === 0 && <p className="text-[11px] text-orange-700 font-semibold">이 수급자에게 지금 배정된 요양보호사가 없어 게시할 수 없습니다 — 참여자 관리에서 배정을 먼저 확인해 주세요.</p>}
+    </div>
+  )
+}
+
+function ResponseLine({ r, onOpenReport }: { r: FieldResponse; onOpenReport: (id: string) => void }) {
+  return (
+    <li className="rounded-lg bg-slate-50 p-2">
+      <p>
+        <span className="font-bold text-slate-800">{RESPONSE_STATUS_LABELS[r.response_status]}</span> · 요양보호사 {r.responder_code} · {formatKoreanDateTime(r.submitted_at)}
+      </p>
+      {r.response_text && <p className="text-slate-700">답: {r.response_text}</p>}
+      {r.evidence_excerpt && <p className="text-slate-700">보고 원문에서: “{r.evidence_excerpt}”</p>}
+      <p className="text-[11px] text-slate-500">
+        {r.fulfilled_obligation
+          ? '이 응답으로 현장 응답 대기 해소(완료 아님 — 관리자 결과 확인 필요)'
+          : r.request_state_at_response === 'answered'
+            ? '추가 응답(보조 기록)'
+            : `늦은 응답 — 요청이 ${FIELD_REQUEST_STATUS_LABELS[r.request_state_at_response]} 뒤 도착, 기록만 남김`}
+        {' · '}
+        <button onClick={() => onOpenReport(r.report_id)} className="underline">
+          연결된 보고 열기
+        </button>
+      </p>
+    </li>
+  )
+}
+
+function describeEvent(e: ActionEvent, responses: FieldResponse[]): string {
+  const d = e.detail ?? {}
+  if (e.event_type === 'due_changed') return describeDueChange(d)
+  if (e.event_type === 'published') return ` · 대상 ${targetText(d.target_mode as RequestTargetMode, (d.target_caregiver_code as string | null) ?? null)}`
+  if (e.event_type === 'retargeted') {
+    const from = d.from as { mode: RequestTargetMode; caregiver: string | null } | undefined
+    const to = d.to as { mode: RequestTargetMode; caregiver: string | null } | undefined
+    return from && to ? ` · ${targetText(from.mode, from.caregiver)} → ${targetText(to.mode, to.caregiver)}` : ''
+  }
+  if (e.event_type === 'response_received') {
+    const r = responses.find((x) => x.id === d.response_id)
+    const who = r ? ` · 요양보호사 ${r.responder_code}` : ''
+    const status = d.response_status ? ` · ${RESPONSE_STATUS_LABELS[d.response_status as FieldResponse['response_status']]}` : ''
+    return `${who}${status}${d.late ? ' · 늦은 응답(기록만)' : d.fulfilled_obligation ? ' · 현장 응답 대기 해소' : ' · 추가 응답'}`
+  }
+  if (e.event_type === 'verified') {
+    const outcome = d.outcome ? VERIFICATION_OUTCOME_LABELS[d.outcome as VerificationOutcome] : ''
+    return ` · ${outcome}${d.closes_action ? ' · 종결' : d.new_cycle ? ` · 추가 확인(주기 ${d.new_cycle})` : ''}`
+  }
+  return ''
+}
 
 export function ActionDetailPanel({
   repo,
@@ -579,6 +688,15 @@ export function ActionDetailPanel({
   const [due, setDue] = useState<DueState>({ kind: 'unset', local: '' })
   const [dueExec, setDueExec] = useState<DueState>({ kind: 'unset', local: '' })
   const [edit, setEdit] = useState({ purpose: '', actionContent: '', fieldMessageDraft: '', internalNote: '', ownerLabel: '' })
+  const [target, setTarget] = useState<TargetState>({ mode: 'recipient_assignees', code: '' })
+  const [dueResp, setDueResp] = useState<DueState>({ kind: 'next_actual_visit', local: '' })
+  const [verify, setVerify] = useState<{ outcome: VerificationOutcome | ''; summary: string; nextResp: string; close: boolean; followMsg: string }>({
+    outcome: '',
+    summary: '',
+    nextResp: '',
+    close: true,
+    followMsg: '',
+  })
 
   const back = (
     <button onClick={onBack} className="text-slate-400 text-sm self-start">
@@ -607,6 +725,12 @@ export function ActionDetailPanel({
   }
   const { action, summary, events } = view
   const editable = action.status === 'draft' || action.status === 'open'
+  const frReady = view.fieldRequestsReady
+  const allResponses = view.requests.flatMap((r) => r.responses)
+  const currentRequest = view.requests.find((r) => r.request.cycle_no === action.current_cycle && (r.request.status === 'published' || r.request.status === 'answered')) ?? null
+  const responseOb = summary.obligations.find((o) => o.cycleNo === action.current_cycle && o.type === 'field_response') ?? null
+  const canPublish = frReady && action.status === 'open' && action.kind === 'field_request' && responseOb?.status === 'pending_publish' && !currentRequest
+  const canVerify = frReady && action.status === 'open' && action.kind === 'field_request'
 
   const open = (m: Mode) => {
     setMode(m)
@@ -616,12 +740,33 @@ export function ActionDetailPanel({
     if (m === 'edit') {
       setEdit({ purpose: action.purpose, actionContent: action.action_content ?? '', fieldMessageDraft: action.field_message_draft ?? '', internalNote: action.internal_note ?? '', ownerLabel: action.owner_label ?? '' })
     }
-    if (m && typeof m === 'object') setDue({ kind: m.due.currentDueKind, local: isoToKstLocal(m.due.currentDueAt) })
+    if (m && typeof m === 'object' && 'due' in m) setDue({ kind: m.due.currentDueKind, local: isoToKstLocal(m.due.currentDueAt) })
     if (m === 'reopen') {
       setDue({ kind: 'unset', local: '' })
       setDueExec({ kind: 'unset', local: '' })
+      setDueResp({ kind: 'next_actual_visit', local: '' })
+    }
+    if (m === 'publish') setTarget({ mode: 'recipient_assignees', code: '' })
+    if (m && typeof m === 'object' && 'retarget' in m) {
+      // 지정 대상이 배정에서 빠졌으면 선택칸은 지금 배정된 첫 사람으로 시작한다(없는 값을 고른 채로 두지 않음).
+      const code = m.retarget.target_caregiver_code
+      setTarget({ mode: m.retarget.target_mode, code: code && view.assignees.includes(code) ? code : (view.assignees[0] ?? '') })
+    }
+    if (m === 'verify') {
+      // 근거 칸은 이번 주기 현장 응답으로 미리 채운다(관리자가 고쳐 쓸 수 있음) — 자동 판정은 하지 않는다.
+      const cycleResponses = view.requests.filter((r) => r.request.cycle_no === action.current_cycle).flatMap((r) => r.responses)
+      setEvidence(
+        cycleResponses
+          .map((r) => `현장 응답(${r.responder_code}, ${formatKoreanDateTime(r.submitted_at)}): ${RESPONSE_STATUS_LABELS[r.response_status]}${r.response_text ? ` — ${r.response_text}` : ''}${r.evidence_excerpt ? ` — 보고 원문 “${r.evidence_excerpt}”` : ''}`)
+          .join('\n'),
+      )
+      setRemaining('')
+      setVerify({ outcome: '', summary: '', nextResp: '', close: true, followMsg: action.field_message_draft ?? '' })
+      setDue({ kind: 'unset', local: '' })
+      setDueResp({ kind: 'next_actual_visit', local: '' })
     }
   }
+  const targetInput = (t: TargetState) => ({ targetMode: t.mode, targetCaregiverCode: t.mode === 'specific_caregiver' ? t.code : null })
 
   const mutate = async (body: Parameters<AdminRepo['mutateAction']>[1]) => {
     setSaving(true)
@@ -648,6 +793,7 @@ export function ActionDetailPanel({
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{ACTION_STATUS_LABELS[action.status]}</span>
           {summary.overdue && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">기한 지남</span>}
           {summary.dueToday && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">오늘 재확인</span>}
+          {summary.awaitingVerification && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">응답 도착 · 결과 확인 대기</span>}
         </div>
         <p className="text-sm text-slate-600 mt-1">
           {ACTION_KIND_LABELS[action.kind]} ·{' '}
@@ -675,7 +821,13 @@ export function ActionDetailPanel({
               <dt className="inline text-slate-400">현장 요청 내용: </dt>
               <dd className="inline text-slate-700">
                 {action.field_message_draft ?? '(비어 있음)'}{' '}
-                <span className="text-[11px] font-bold text-amber-800">[미게시 초안 — 요양보호사에게 전달되지 않음]</span>
+                {currentRequest?.request.status === 'published' ? (
+                  <span className="text-[11px] font-bold text-sky-800">[게시됨 — 게시한 문구가 현장에 보임]</span>
+                ) : currentRequest?.request.status === 'answered' ? (
+                  <span className="text-[11px] font-bold text-indigo-800">[응답 도착 — 현장 화면에서는 내려감]</span>
+                ) : (
+                  <span className="text-[11px] font-bold text-amber-800">[미게시 초안 — 요양보호사에게 전달되지 않음]</span>
+                )}
               </dd>
             </div>
           )}
@@ -691,6 +843,14 @@ export function ActionDetailPanel({
             <dt className="inline text-slate-400">기록 주체: </dt>
             <dd className="inline text-slate-700">{ADMIN_ACTOR_SCOPE_LABEL}</dd>
           </div>
+          {action.status === 'completed' && action.closure_outcome && (
+            <div>
+              <dt className="inline text-slate-400">확인한 결과: </dt>
+              <dd className="inline text-slate-700">
+                {VERIFICATION_OUTCOME_LABELS[action.closure_outcome]} <span className="text-[11px] text-slate-400">(사실 기록 — 건강 개선 지표로 집계하지 않음)</span>
+              </dd>
+            </div>
+          )}
           {action.status === 'completed' && (
             <div>
               <dt className="inline text-slate-400">완료 근거: </dt>
@@ -771,6 +931,19 @@ export function ActionDetailPanel({
               수행 결과 기록 · 완료
             </button>
           )}
+          {canPublish && (
+            <button onClick={() => open('publish')} className="min-h-[38px] px-3 rounded-full bg-sky-700 text-white text-sm font-bold">
+              현장에 게시
+            </button>
+          )}
+          {canVerify && (
+            <button
+              onClick={() => open('verify')}
+              className={`min-h-[38px] px-3 rounded-full text-sm font-bold ${summary.awaitingVerification ? 'bg-teal-600 text-white' : 'border border-teal-600 text-teal-700'}`}
+            >
+              결과 확인
+            </button>
+          )}
           {editable && (
             <button onClick={() => open('cancel')} className="min-h-[38px] px-3 rounded-full border border-red-300 text-red-700 text-sm font-bold">
               취소
@@ -783,7 +956,141 @@ export function ActionDetailPanel({
           )}
         </div>
         {action.status === 'open' && action.kind === 'field_request' && (
-          <p className="text-[11px] text-slate-500">현장 확인 요청은 현장 답변을 받아 확인하기 전에는 완료할 수 없습니다(게시·응답은 다음 단계). 필요 없어졌으면 취소하세요.</p>
+          <p className="text-[11px] text-slate-500">
+            {frReady
+              ? '현장 확인 요청은 "결과 확인"에서 요약·근거를 남겨 종결하거나 추가 확인(새 후속 주기)으로 이어갑니다. 현장 응답 도착만으로 완료되지 않습니다.'
+              : '현장 게시·응답·결과 확인: 준비 중(3단계 DB 마이그레이션 적용 전). 필요 없어졌으면 취소하세요.'}
+          </p>
+        )}
+        {action.status === 'draft' && action.kind === 'field_request' && <p className="text-[11px] text-slate-500">진행 중으로 전환한 뒤 현장에 게시할 수 있습니다.</p>}
+
+        {mode === 'publish' && (
+          <div className="flex flex-col gap-2 rounded-xl bg-sky-50 p-3">
+            <p className="text-sm">
+              게시할 문구: <span className="font-bold text-slate-900">“{action.field_message_draft}”</span>
+            </p>
+            <p className="text-[11px] text-slate-500">
+              게시 뒤에는 문구가 고정됩니다(바꾸려면 철회 후 다시 게시). 내부 메모는 현장에 보내지 않습니다. 현장 응답기한 {responseOb ? formatDue(responseOb.currentDueKind, responseOb.currentDueAt) : '-'}은 게시 순간부터 적용됩니다.
+            </p>
+            <TargetPicker value={target} onChange={setTarget} assignees={view.assignees} />
+            <EnteredByField value={enteredBy} onChange={setEnteredBy} />
+            <button
+              onClick={() => void mutate({ ...base, op: 'publish', ...targetInput(target) })}
+              disabled={saving || view.assignees.length === 0}
+              className="self-start min-h-[38px] px-4 rounded-full bg-sky-700 text-white text-sm font-bold disabled:bg-slate-300"
+            >
+              게시 기록
+            </button>
+          </div>
+        )}
+        {mode && typeof mode === 'object' && 'withdraw' in mode && (
+          <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
+            <p className="text-[11px] text-slate-500">요청을 현장 화면에서 내립니다. 게시·표시 기록은 남고, 현장 응답기한은 게시 전으로 돌아가 문구를 고쳐 다시 게시할 수 있습니다. 철회 뒤 도착한 응답은 기록만 남습니다.</p>
+            <label className="block">
+              <span className={labelClass}>철회 이유(필수)</span>
+              <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />
+            </label>
+            <EnteredByField value={enteredBy} onChange={setEnteredBy} />
+            <button onClick={() => void mutate({ ...base, op: 'withdraw', fieldRequestId: mode.withdraw.id, reason })} disabled={saving} className="self-start min-h-[38px] px-4 rounded-full bg-red-600 text-white text-sm font-bold disabled:bg-slate-300">
+              철회 기록
+            </button>
+          </div>
+        )}
+        {mode && typeof mode === 'object' && 'retarget' in mode && (
+          <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
+            <p className="text-[11px] text-slate-500">지금: {targetText(mode.retarget.target_mode, mode.retarget.target_caregiver_code)}. 문구와 기한은 그대로입니다.</p>
+            <TargetPicker value={target} onChange={setTarget} assignees={view.assignees} />
+            <label className="block">
+              <span className={labelClass}>변경 이유(필수)</span>
+              <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />
+            </label>
+            <EnteredByField value={enteredBy} onChange={setEnteredBy} />
+            <button
+              onClick={() => void mutate({ ...base, op: 'retarget', fieldRequestId: mode.retarget.id, ...targetInput(target), reason })}
+              disabled={saving || view.assignees.length === 0}
+              className="self-start min-h-[38px] px-4 rounded-full bg-slate-900 text-white text-sm font-bold disabled:bg-slate-300"
+            >
+              대상 변경 기록
+            </button>
+          </div>
+        )}
+        {mode === 'verify' && (
+          <div className="flex flex-col gap-2 rounded-xl bg-teal-50 p-3">
+            {currentRequest?.request.status === 'published' && (
+              <p className="text-[11px] text-amber-800">아직 이번 주기 현장 응답이 없습니다. 결과 확인을 기록하면 게시 중인 요청도 함께 내려갑니다(기록은 보존).</p>
+            )}
+            <div className="flex flex-col gap-1" role="radiogroup" aria-label="확인한 결과">
+              <span className={labelClass}>확인한 결과(사실 기록 — 건강 개선 지표로 집계하지 않음)</span>
+              {VERIFICATION_OUTCOMES.map((o) => (
+                <label key={o} className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={verify.outcome === o} onChange={() => setVerify({ ...verify, outcome: o })} />
+                  {VERIFICATION_OUTCOME_LABELS[o]}
+                </label>
+              ))}
+            </div>
+            <label className="block">
+              <span className={labelClass}>결과 요약(필수)</span>
+              <textarea value={verify.summary} onChange={(e) => setVerify({ ...verify, summary: e.target.value })} rows={2} className={inputClass} />
+            </label>
+            <label className="block">
+              <span className={labelClass}>근거(필수 — 현장 응답·통화 등 무엇으로 확인했는지)</span>
+              <textarea value={evidence} onChange={(e) => setEvidence(e.target.value)} rows={3} className={inputClass} />
+            </label>
+            {(() => {
+              const required = verify.outcome !== '' && OUTCOMES_REQUIRING_FOLLOWUP_NOTE.includes(verify.outcome)
+              return (
+                <>
+                  <label className="block">
+                    <span className={labelClass}>남은 문제{required ? '(필수)' : '(선택)'}</span>
+                    <textarea value={remaining} onChange={(e) => setRemaining(e.target.value)} rows={2} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>다음 책임·업무{required ? '(필수 — 누가 무엇을 이어서 할지)' : '(선택)'}</span>
+                    <input value={verify.nextResp} onChange={(e) => setVerify({ ...verify, nextResp: e.target.value })} className={inputClass} />
+                  </label>
+                </>
+              )
+            })()}
+            <div className="flex flex-col gap-1" role="radiogroup" aria-label="결과 확인 뒤 처리">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" checked={verify.close} onChange={() => setVerify({ ...verify, close: true })} />이 결과로 조치 종결
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" checked={!verify.close} onChange={() => setVerify({ ...verify, close: false })} />
+                추가 확인 — 새 후속 주기 열기(지난 기한·응답 기록은 보존)
+              </label>
+            </div>
+            {!verify.close && (
+              <div className="flex flex-col gap-2 border-t border-teal-100 pt-2">
+                <label className="block">
+                  <span className={labelClass}>다음 주기 현장 요청 문구(초안 — 다시 게시해야 전달)</span>
+                  <textarea value={verify.followMsg} onChange={(e) => setVerify({ ...verify, followMsg: e.target.value })} rows={2} className={inputClass} />
+                </label>
+                <DueEditor label="새 현장 응답기한" value={dueResp} onChange={setDueResp} allowNextVisit />
+                <DueEditor label="새 관리자 결과 재확인기한" value={due} onChange={setDue} allowNextVisit={false} />
+              </div>
+            )}
+            <EnteredByField value={enteredBy} onChange={setEnteredBy} />
+            <button
+              onClick={() =>
+                void mutate({
+                  ...base,
+                  op: 'verify',
+                  outcome: verify.outcome as VerificationOutcome,
+                  summary: verify.summary,
+                  evidence,
+                  remaining,
+                  nextResponsibility: verify.nextResp,
+                  closeAction: verify.close,
+                  followUp: verify.close ? null : { responseDue: toDueInput(dueResp), verificationDue: toDueInput(due), fieldMessageDraft: verify.followMsg },
+                })
+              }
+              disabled={saving}
+              className="self-start min-h-[38px] px-4 rounded-full bg-teal-600 text-white text-sm font-bold disabled:bg-slate-300"
+            >
+              결과 확인 기록
+            </button>
+          </div>
         )}
 
         {mode === 'edit' && (
@@ -825,7 +1132,7 @@ export function ActionDetailPanel({
             </button>
           </div>
         )}
-        {mode && typeof mode === 'object' && (
+        {mode && typeof mode === 'object' && 'due' in mode && (
           <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
             <DueEditor label={`${OBLIGATION_TYPE_LABELS[mode.due.type]} 새 값`} value={due} onChange={setDue} allowNextVisit={mode.due.type === 'field_response'} />
             <p className="text-[11px] text-slate-500">최초 기한({formatDue(mode.due.initialDueKind, mode.due.initialDueAt)})은 그대로 남고, 바꾼 기록이 이력에 쌓입니다.</p>
@@ -871,6 +1178,7 @@ export function ActionDetailPanel({
           <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
             <p className="text-[11px] text-slate-500">이전 완료 기록과 기한은 그대로 두고 새 후속 주기를 만듭니다.</p>
             {action.kind === 'admin_direct' && <DueEditor label="새 관리자 직접 수행기한" value={dueExec} onChange={setDueExec} allowNextVisit={false} />}
+            {action.kind === 'field_request' && <DueEditor label="새 현장 응답기한(다시 게시해야 시작)" value={dueResp} onChange={setDueResp} allowNextVisit />}
             <DueEditor label="새 관리자 결과 재확인기한" value={due} onChange={setDue} allowNextVisit={false} />
             <label className="block">
               <span className={labelClass}>재개 이유(필수)</span>
@@ -878,7 +1186,16 @@ export function ActionDetailPanel({
             </label>
             <EnteredByField value={enteredBy} onChange={setEnteredBy} />
             <button
-              onClick={() => void mutate({ ...base, op: 'reopen', reason, verificationDue: toDueInput(due), executionDue: action.kind === 'admin_direct' ? toDueInput(dueExec) : null })}
+              onClick={() =>
+                void mutate({
+                  ...base,
+                  op: 'reopen',
+                  reason,
+                  verificationDue: toDueInput(due),
+                  executionDue: action.kind === 'admin_direct' ? toDueInput(dueExec) : null,
+                  responseDue: action.kind === 'field_request' ? toDueInput(dueResp) : null,
+                })
+              }
               disabled={saving}
               className="self-start min-h-[38px] px-4 rounded-full bg-slate-900 text-white text-sm font-bold disabled:bg-slate-300"
             >
@@ -888,6 +1205,82 @@ export function ActionDetailPanel({
         )}
         <ErrorLine error={error} onReload={reload} />
       </section>
+
+      {action.kind === 'field_request' && (
+        <section className="rounded-2xl bg-white border border-slate-100 p-4">
+          <h3 className="font-bold text-slate-900 mb-1">현장 요청 ({frReady ? `${view.requests.length}건 · 기록은 지워지지 않음` : '준비 중'})</h3>
+          {!frReady && <p className="text-sm text-slate-500">현장 요청 저장소(3단계 DB 마이그레이션)가 적용되기 전입니다 — 요청 내용은 미게시 초안으로만 남습니다.</p>}
+          {frReady && view.requests.length === 0 && <p className="text-sm text-slate-500">아직 게시한 요청이 없습니다.</p>}
+          <div className="flex flex-col gap-3">
+            {view.requests.map(({ request: r, summary: rs, responses }) => (
+              <div key={r.id} className="rounded-xl border border-slate-200 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">{FIELD_REQUEST_STATUS_LABELS[r.status]}</span>
+                  <span className="text-slate-500 text-xs">
+                    주기 {r.cycle_no} · 게시 {formatKoreanDateTime(r.published_at)} · {targetText(r.target_mode, r.target_caregiver_code)}
+                  </span>
+                </div>
+                <p className="text-slate-800 mt-1">“{r.message}”</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {r.first_shown_at ? `현장 화면 첫 표시 ${formatKoreanDateTime(r.first_shown_at)}(${r.first_shown_to})` : '현장 화면 표시 기록 없음 — 읽음으로 추정하지 않음'}
+                  {r.answered_at && ` · 응답 도착 ${formatKoreanDateTime(r.answered_at)}`}
+                  {r.ended_at && ` · ${formatKoreanDateTime(r.ended_at)} 종료: ${r.end_reason ?? ''}`}
+                </p>
+                {rs.waitState && (
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {REQUEST_WAIT_LABELS[rs.waitState]}
+                    {rs.reportsSincePublish > 0 && ` · 게시 뒤 이 수급자 보고 ${rs.reportsSincePublish}건`}
+                  </p>
+                )}
+                {rs.routing && <p className="text-[11px] text-orange-700 font-semibold mt-0.5">{ROUTING_PROBLEM_LABELS[rs.routing]}</p>}
+                {responses.length > 0 && (
+                  <ul className="text-xs flex flex-col gap-1 mt-2">
+                    {responses.map((x) => (
+                      <ResponseLine key={x.id} r={x} onOpenReport={onOpenReport} />
+                    ))}
+                  </ul>
+                )}
+                {r.status === 'published' && action.status === 'open' && (
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => open({ retarget: r })} className="min-h-[32px] px-3 rounded-full border border-slate-300 text-xs font-bold text-slate-700">
+                      대상 변경
+                    </button>
+                    <button onClick={() => open({ withdraw: r })} className="min-h-[32px] px-3 rounded-full border border-red-300 text-xs font-bold text-red-700">
+                      철회
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {view.verifications.length > 0 && (
+        <section className="rounded-2xl bg-white border border-slate-100 p-4">
+          <h3 className="font-bold text-slate-900 mb-1">관리자 결과 확인 ({view.verifications.length}건 · 수정·삭제되지 않음)</h3>
+          <ol className="text-sm flex flex-col gap-2">
+            {[...view.verifications]
+              .sort((a, b) => Date.parse(b.verified_at) - Date.parse(a.verified_at))
+              .map((v) => (
+                <li key={v.id} className="rounded-xl bg-slate-50 p-2">
+                  <p>
+                    <span className="font-bold text-slate-900">{VERIFICATION_OUTCOME_LABELS[v.outcome]}</span> · 주기 {v.cycle_no} · {formatKoreanDateTime(v.verified_at)} ·{' '}
+                    {v.closes_action ? '조치 종결' : '추가 확인(새 주기)'}
+                  </p>
+                  <p className="text-slate-700">요약: {v.summary}</p>
+                  <p className="text-slate-700 whitespace-pre-line">근거: {v.evidence}</p>
+                  {v.remaining_issue && <p className="text-slate-700">남은 문제: {v.remaining_issue}</p>}
+                  {v.next_responsibility && <p className="text-slate-700">다음 책임: {v.next_responsibility}</p>}
+                  <p className="text-[11px] text-slate-500">
+                    연결된 현장 응답 {v.response_ids.length}건 · {ADMIN_ACTOR_SCOPE_LABEL}
+                    {v.entered_by_label && ` · 입력한 확인자 ${v.entered_by_label}`}
+                  </p>
+                </li>
+              ))}
+          </ol>
+        </section>
+      )}
 
       {view.linkedSafetyReviews.length > 0 && (
         <section className="rounded-2xl bg-white border border-slate-100 p-4">
@@ -911,7 +1304,8 @@ export function ActionDetailPanel({
             <li key={e.id} className="border-t border-slate-50 pt-1">
               <span className="font-bold text-slate-800">{EVENT_LABELS[e.event_type]}</span> · {formatKoreanDateTime(e.occurred_at)}
               {e.reason && ` · 이유: ${e.reason}`}
-              {e.event_type === 'due_changed' && describeDueChange(e.detail)}
+              {describeEvent(e, allResponses)}
+              {e.actor_scope === 'caregiver_session' && ' · 기록 주체: 요양보호사 세션'}
               {e.entered_by_label && ` · 입력한 확인자 ${e.entered_by_label}`}
               {` · 당시 담당 ${e.owner_label_at_event ?? '미지정'}`}
             </li>

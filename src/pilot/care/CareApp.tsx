@@ -29,6 +29,9 @@ import { STANDARD_SCENARIOS } from '../../../shared/statsCalc'
 import { detectEmergencyPhrase } from '../../../shared/emergency'
 import { detectStopRequest } from '../../../shared/stopRequest'
 import { extractCaregiverNote } from '../../../shared/caregiverNote'
+import type { CenterRequestView, CenterResponseResult } from '../../../shared/fieldRequests'
+import { CenterRequestAnswers, CenterRequestNotice } from './CenterRequests'
+import { missingAnswerDetail, toResponseInputs, type CenterAnswerDraft } from './centerAnswers'
 
 const CENTER_PHONE = import.meta.env.VITE_CENTER_PHONE_NUMBER?.trim() || undefined
 
@@ -351,6 +354,10 @@ function CareApp() {
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null)
   const [scenarioSubmittedCount, setScenarioSubmittedCount] = useState(0)
   const [showRecipientPicker, setShowRecipientPicker] = useState(false)
+  // 3단계: 센터가 게시한 확인 요청(현재 수급자·배정 기준)과 이번 보고에서 고른 답.
+  const [centerRequests, setCenterRequests] = useState<{ recipient: string; list: CenterRequestView[] } | null>(null)
+  const [centerAnswers, setCenterAnswers] = useState<Record<string, CenterAnswerDraft>>({})
+  const [centerSubmitNote, setCenterSubmitNote] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(false)
   const requestBusy = useRef(false)
@@ -546,6 +553,27 @@ function CareApp() {
     if (answerVoice.state === 'idle' && answerVoice.error) setError(answerVoice.error)
   }, [answerVoice.state, answerVoice.error])
 
+  // 3단계: 센터 확인 요청은 홈에 올 때마다(또는 수급자를 바꾸거나 이어서 작성을 복원했을 때) 새로 불러온다.
+  // 불러오지 못해도 보고는 막지 않는다(요청 안내만 빠진다). 연습(표준상황)에는 보여주지 않는다.
+  const centerLoadedFor = centerRequests?.recipient ?? null
+  useEffect(() => {
+    if (phase !== 'app' || !recipientCode || scenarioRoute) return
+    if (screen !== 'home' && centerLoadedFor === recipientCode) return
+    let cancelled = false
+    repo
+      .listCenterRequests(recipientCode)
+      .then((res) => !cancelled && setCenterRequests({ recipient: recipientCode, list: res.requests }))
+      .catch(() => !cancelled && setCenterRequests({ recipient: recipientCode, list: [] }))
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, recipientCode, scenarioRoute, screen])
+  const liveCenterRequests = !activeScenarioId && centerRequests?.recipient === recipientCode ? centerRequests.list : []
+  const markCenterShown = (ids: string[]) => void repo.markCenterRequestsShown(ids).catch(() => undefined)
+  const centerEvidenceTexts = () =>
+    Array.from(new Set([rawInput, ...followupHistory.map((h) => h.answer), ...noChangeRawTextsRef.current].map((t) => (t ?? '').trim()).filter(Boolean)))
+
   // 객체 재생성이 아니라 실제 질문/화면의 변경에만 반응한다. 정리 함수가 이전
   // 발화를 취소하므로 같은 화면의 다음 질문과 재진입도 각각 올바르게 읽는다.
   const questionSpeechText = currentQuestion?.question ?? null
@@ -612,6 +640,7 @@ function CareApp() {
 
   const selectRecipient = (code: string) => {
     setRecipientCode(code)
+    setCenterAnswers({})
     // 대상자를 바꾸면 "오늘 기본보고 제출 여부"도 그 대상자 기준으로 다시
     // 계산한다 — 이전 대상자의 완료 상태가 그대로 남아 있으면 안 된다(D3).
     setDailySubmitted(computeDailySubmitted(recentReports, code, today))
@@ -648,6 +677,8 @@ function CareApp() {
     setEmergencyDraftText('')
     setError(null)
     setRetryAction(null)
+    setCenterAnswers({})
+    setCenterSubmitNote(null)
     setScreen(homeScreenName)
   }
 
@@ -1061,21 +1092,51 @@ function CareApp() {
 
   const handleSubmitReport = async () => {
     if (!reportId || requestBusy.current) return
+    if (missingAnswerDetail(liveCenterRequests, centerAnswers)) {
+      setError('센터 확인 요청에 "기타"를 고르셨다면 어떤 상황이었는지 적어 주세요.')
+      return
+    }
     requestBusy.current = true
     cancelSpeech()
     setLoading(true)
     setError(null)
     setRetryAction(null)
+    let centerResults: CenterResponseResult[] = []
     try {
-      await repo.patchReport({ id: reportId, caregiverFinalReport: finalReport, submit: true })
+      // 3단계: 고른 답만 보고와 함께 보낸다. 서버는 보고를 먼저 저장하고 답을 원 요청·조치·보고에 연결한다.
+      const res = await repo.submitReport({
+        id: reportId,
+        caregiverFinalReport: finalReport,
+        centerResponses: toResponseInputs(liveCenterRequests, centerAnswers, centerEvidenceTexts()),
+      })
+      centerResults = res.centerResponses
     } catch (e) {
       // 저장 자체가 실패했을 때만 오류·재시도를 보여준다 — 완료 화면으로 넘어가지 않는다.
-      setError(requestError(e, '최종 제출'))
+      // (보고는 저장됐고 답만 실패한 경우 서버 문구를 그대로 보여준다 — 재시도해도 보고는 한 번만 저장된다.)
+      setError(e instanceof ApiClientError && e.status === 502 && e.message.includes('센터 요청') ? e.message : requestError(e, '최종 제출'))
       setRetryAction(() => () => void handleSubmitReport())
       requestBusy.current = false
       setLoading(false)
       return
     }
+    const delivered = centerResults.filter((r) => r.status === 'ok' || r.status === 'duplicate').length
+    const undelivered = centerResults.filter((r) => r.status !== 'ok' && r.status !== 'duplicate')
+    const reasonText: Record<CenterResponseResult['status'], string> = {
+      ok: '',
+      duplicate: '',
+      forbidden: '지금 담당이 아니거나 다른 분께 보낸 요청',
+      invalid: '답을 받을 수 없는 요청',
+      not_found: '요청을 찾지 못함',
+      not_ready: '센터 요청 기능 준비 중',
+    }
+    setCenterSubmitNote(
+      centerResults.length === 0
+        ? null
+        : undelivered.length === 0
+          ? `센터 확인 요청 ${delivered}건에 대한 답도 함께 전달했어요.`
+          : `센터 확인 요청 답 ${delivered}건 전달 · ${undelivered.length}건은 전달되지 않았어요(${undelivered.map((r) => reasonText[r.status]).join(', ')}). 보고는 정상 저장됐어요.`,
+    )
+    setCenterAnswers({})
     clearDraft()
     setScreen('submitted')
     requestBusy.current = false
@@ -1213,6 +1274,7 @@ function CareApp() {
         <div className="care-home-actions">
           {error && <div className="care-error" role="alert"><p>{error}</p>
             {retryAction && <button disabled={loading} onClick={retryAction}>다시 시도</button>}</div>}
+          <CenterRequestNotice requests={liveCenterRequests} onShown={markCenterShown} />
           {recipientCodes.length > 0 && !dailySubmitted && <>
             <PrimaryButton onClick={() => void startReport('daily')} disabled={loading || !recipientCode}>
               <MicIcon className="w-6 h-6" />{loading ? '준비 중...' : '이야기 시작'}
@@ -1310,6 +1372,7 @@ function CareApp() {
             <h2 className="text-xl font-bold text-slate-900 text-center leading-relaxed">아래 예시로 대화를 연습해 주세요</h2>
           ) : (
             <>
+              <CenterRequestNotice requests={liveCenterRequests} onShown={markCenterShown} compact />
               {/* 말하는 동안 실시간 전사가 채팅 말풍선으로 자란다 — 완료 후에는
                   아래 편집 상자에서 검토·수정한다(같은 내용을 두 번 보여주지 않음). */}
               <ConversationLog turns={buildRecordTurns()} />
@@ -1751,6 +1814,14 @@ function CareApp() {
               />
             </div>
           ))}
+          <CenterRequestAnswers
+            requests={liveCenterRequests}
+            texts={centerEvidenceTexts()}
+            answers={centerAnswers}
+            onChange={(id, next) => setCenterAnswers((prev) => ({ ...prev, [id]: next }))}
+            onShown={markCenterShown}
+            disabled={loading}
+          />
           {error && (
             <div className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">
               <p>{error}</p>
@@ -1781,6 +1852,7 @@ function CareApp() {
                 ? '이 브라우저에 데모 기록을 저장했어요 · 실제 센터로 전송하지 않았어요.'
                 : '센터에 보고되었습니다.'}
           </p>
+          {centerSubmitNote && !activeScenarioId && <p className="text-base text-sky-800 text-center" role="status">{centerSubmitNote}</p>}
           {/* 데모 완료 확인은 같은 Vercel origin의 /admin?demo=1로만 보낸다 —
               운영 관리자 주소로 보내면 데모 기록을 찾을 수 없다(DEP-03). */}
           {demo && !activeScenarioId && (

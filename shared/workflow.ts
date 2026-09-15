@@ -10,7 +10,8 @@
  * - 기존 manager_status / actual_followup_type(연구용 평가)은 여기로 옮기거나 해석하지 않는다.
  * - 공유 관리자 계정이라 실제 행위자는 "기관 공유 관리자 계정" 범위로만 기록한다. 화면에서 고른
  *   업무 담당(owner_label)·입력한 확인자(entered_by_label)는 입력값이지 로그인 신원이 아니다.
- * - 현장 요청 내용은 이번 단계에서 미게시 초안이다(게시·응답은 3단계). */
+ * - 현장 요청은 관리자가 명시적으로 게시해야 현장에 보인다(3단계). 게시 문구는 고정되고,
+ *   응답 도착·관리자 결과 확인·종결은 서로 다른 상태다. */
 
 export const ADMIN_ACTOR_SCOPE = 'org_admin_shared' as const
 export const ADMIN_ACTOR_SCOPE_LABEL = '기관 공유 관리자 계정(개인 식별 불가)'
@@ -113,9 +114,10 @@ export interface CareAction {
   kind: ActionKind
   purpose: string
   action_content: string | null
-  /** 현장에 전달할 요청 초안. 이번 단계에서는 게시하지 않는다. */
+  /** 현장에 전달할 요청 초안. 게시하면 그 시점의 문구가 field_requests.message로 고정된다. */
   field_message_draft: string | null
-  field_message_status: 'unpublished' | 'not_applicable'
+  /** 현재 주기의 게시 상태(3단계). 'published'는 현재 주기에 게시된 요청이 있다는 뜻. */
+  field_message_status: 'unpublished' | 'published' | 'not_applicable'
   /** 관리자 내부 메모 — 현장 API 응답에 절대 넣지 않는다. */
   internal_note: string | null
   /** 업무 담당(입력값). null이면 담당 미지정. */
@@ -128,10 +130,115 @@ export interface CareAction {
   completed_at: string | null
   cancel_reason: string | null
   cancelled_at: string | null
+  /** 결과 확인으로 종결할 때의 결과(3단계). 건강 개선 지표가 아니라 사실 구분이다. */
+  closure_outcome?: VerificationOutcome | null
   created_at: string
   updated_at: string
   created_by_scope: string
   create_request_id: string
+}
+
+// ── 현장 요청 · 응답 · 결과 확인(3단계) ─────────────────────────────
+export type RequestTargetMode = 'recipient_assignees' | 'specific_caregiver'
+export const REQUEST_TARGET_LABELS: Record<RequestTargetMode, string> = {
+  recipient_assignees: '이 수급자의 현재 담당 요양보호사(다음 방문자)',
+  specific_caregiver: '지정한 요양보호사',
+}
+
+export type FieldRequestStatus = 'published' | 'answered' | 'withdrawn' | 'closed'
+export const FIELD_REQUEST_STATUS_LABELS: Record<FieldRequestStatus, string> = {
+  published: '게시됨 · 응답 대기',
+  answered: '응답 도착',
+  withdrawn: '철회됨',
+  closed: '결과 확인으로 게시 종료',
+}
+
+/** 관리자가 명시적으로 게시한 현장 요청(인계). 문구는 게시 시점 값으로 고정된다. */
+export interface FieldRequest {
+  id: string
+  organization_id: string
+  action_id: string
+  obligation_id: string
+  cycle_no: number
+  recipient_code: string
+  message: string
+  target_mode: RequestTargetMode
+  target_caregiver_code: string | null
+  status: FieldRequestStatus
+  published_at: string
+  /** 요양보호사 화면에 처음 표시된 시각 — 게시만으로 추정하지 않는다(표시 기록이 없으면 null). */
+  first_shown_at: string | null
+  first_shown_to: string | null
+  answered_at: string | null
+  ended_at: string | null
+  end_reason: string | null
+  version: number
+  publish_request_id: string
+}
+
+export const RESPONSE_STATUSES = ['observed', 'performed', 'not_observed', 'refused', 'other'] as const
+export type ResponseStatus = (typeof RESPONSE_STATUSES)[number]
+export const RESPONSE_STATUS_LABELS: Record<ResponseStatus, string> = {
+  observed: '확인했어요(관찰함)',
+  performed: '요청대로 했어요(수행함)',
+  not_observed: '이번에 확인하지 못했어요(미관찰)',
+  refused: '어르신·보호자가 거절했어요',
+  other: '기타',
+}
+
+/** 현장 응답 — 새 보고에 붙어 온다(원 요청·조치·의무·보고 id로 연결). 수정·삭제하지 않는다. */
+export interface FieldResponse {
+  id: string
+  field_request_id: string
+  action_id: string
+  obligation_id: string
+  report_id: string
+  recipient_code: string
+  /** 실제 응답자(요양보호사 세션의 참여자 코드). */
+  responder_code: string
+  response_status: ResponseStatus
+  response_text: string | null
+  /** 이번 보고 원문에서 요양보호사가 확인해 연결한 부분(없으면 null). */
+  evidence_excerpt: string | null
+  evidence_source: 'report_text' | 'typed' | null
+  /** 응답이 도착했을 때의 요청 상태 — 철회·종결 뒤 늦은 응답도 기록은 남긴다. */
+  request_state_at_response: FieldRequestStatus
+  /** 이 응답으로 현장 응답 의무가 해소됐는지(게시 중이던 요청의 첫 응답만 true). */
+  fulfilled_obligation: boolean
+  submitted_at: string
+  request_id: string
+}
+
+export const VERIFICATION_OUTCOMES = ['improved', 'no_change', 'unable_to_confirm', 'refused', 'unreachable', 'external_handoff'] as const
+export type VerificationOutcome = (typeof VERIFICATION_OUTCOMES)[number]
+export const VERIFICATION_OUTCOME_LABELS: Record<VerificationOutcome, string> = {
+  improved: '나아진 것으로 확인',
+  no_change: '변화 없음 확인',
+  unable_to_confirm: '확인 불가',
+  refused: '거절',
+  unreachable: '연락 불가',
+  external_handoff: '외부 기관 인계',
+}
+/** 남은 문제와 다음 책임을 반드시 적어야 하는 결과. */
+export const OUTCOMES_REQUIRING_FOLLOWUP_NOTE: VerificationOutcome[] = ['unable_to_confirm', 'refused', 'unreachable', 'external_handoff']
+
+/** 관리자 결과 확인(재확인) — 요약·시각·근거. 수정·삭제하지 않는다. */
+export interface ActionVerification {
+  id: string
+  action_id: string
+  cycle_no: number
+  outcome: VerificationOutcome
+  summary: string
+  evidence: string
+  response_ids: string[]
+  remaining_issue: string | null
+  next_responsibility: string | null
+  /** true면 조치를 종결, false면 새 후속 주기를 열었다. */
+  closes_action: boolean
+  verified_at: string
+  actor_scope: string
+  entered_by_label: string | null
+  request_id: string
 }
 
 export interface ActionObligation {
@@ -151,7 +258,19 @@ export interface ActionObligation {
   created_at: string
 }
 
-export type ActionEventType = 'created' | 'activated' | 'updated' | 'due_changed' | 'completed' | 'cancelled' | 'reopened'
+export type ActionEventType =
+  | 'created'
+  | 'activated'
+  | 'updated'
+  | 'due_changed'
+  | 'completed'
+  | 'cancelled'
+  | 'reopened'
+  | 'published'
+  | 'withdrawn'
+  | 'retargeted'
+  | 'response_received'
+  | 'verified'
 
 export interface ActionEvent {
   id: string
@@ -182,8 +301,8 @@ export interface ReportEvent {
 
 // ── 오류 ─────────────────────────────────────────────────────────────
 export class WorkflowError extends Error {
-  status: 400 | 404 | 409
-  constructor(status: 400 | 404 | 409, message: string) {
+  status: 400 | 403 | 404 | 409
+  constructor(status: 400 | 403 | 404 | 409, message: string) {
     super(message)
     this.status = status
   }
@@ -335,20 +454,31 @@ export interface CreateActionInput {
 export interface ActionState {
   action: CareAction
   obligations: ActionObligation[]
+  /** 3단계: 이 조치의 현장 요청·응답(없으면 빈 배열로 본다). */
+  requests?: FieldRequest[]
+  responses?: FieldResponse[]
+  /** 3단계: 게시·대상 변경 검증용 — 이 수급자에게 지금 활성 배정된 요양보호사 코드. */
+  assignees?: string[]
 }
 
-export interface ActionPlan extends ActionState {
-  /** 이번 요청으로 새로 생기는 의무(생성·재개). */
+export interface ActionPlan {
+  action: CareAction
+  obligations: ActionObligation[]
+  /** 이번 요청으로 새로 생기는 의무(생성·재개·새 후속 주기). */
   obligationInserts: ActionObligation[]
   /** 이번 요청으로 바뀌는 기존 의무(전체 행). */
   obligationUpdates: ActionObligation[]
+  /** 3단계: 새로 게시하는 현장 요청 / 상태가 바뀌는 기존 요청 / 결과 확인 기록. */
+  requestInserts: FieldRequest[]
+  requestUpdates: FieldRequest[]
+  verificationInserts: ActionVerification[]
   /** 이번 요청의 이력 한 줄(요청 하나 = 이벤트 하나, request_id로 중복 방지). */
   event: ActionEvent
 }
 
 function obligationStatusFor(type: ObligationType, actionStatus: ActionStatus): ObligationStatus {
   if (actionStatus === 'draft') return 'inactive'
-  // 현장 응답 의무는 요청을 게시해야 시작된다 — 이번 단계는 게시 기능이 없다.
+  // 현장 응답 의무는 관리자가 요청을 명시적으로 게시해야 시작된다.
   if (type === 'field_response') return 'pending_publish'
   return 'active'
 }
@@ -446,6 +576,9 @@ export function planCreateAction(input: CreateActionInput, ctx: WorkflowContext)
     obligations,
     obligationInserts: obligations,
     obligationUpdates: [],
+    requestInserts: [],
+    requestUpdates: [],
+    verificationInserts: [],
     event: {
       id: ctx.newId(),
       action_id: id,
@@ -463,15 +596,52 @@ export function planCreateAction(input: CreateActionInput, ctx: WorkflowContext)
 }
 
 // ── 조치 변경 ───────────────────────────────────────────────────────
+export interface FollowUpInput {
+  responseDue?: DueInput | null
+  verificationDue?: DueInput | null
+  executionDue?: DueInput | null
+  fieldMessageDraft?: string | null
+}
+
 export type ActionMutation =
   | { op: 'update'; purpose?: string; actionContent?: string | null; fieldMessageDraft?: string | null; internalNote?: string | null; ownerLabel?: string | null; reason?: string | null }
   | { op: 'change_due'; obligationId: string; due: DueInput; reason: string }
   | { op: 'activate' }
   | { op: 'complete'; evidence: string; remaining?: string | null }
   | { op: 'cancel'; reason: string }
-  | { op: 'reopen'; reason: string; verificationDue?: DueInput | null; executionDue?: DueInput | null }
+  | { op: 'reopen'; reason: string; verificationDue?: DueInput | null; executionDue?: DueInput | null; responseDue?: DueInput | null }
+  // 3단계
+  | { op: 'publish'; targetMode: RequestTargetMode; targetCaregiverCode?: string | null }
+  | { op: 'withdraw'; fieldRequestId: string; reason: string }
+  | { op: 'retarget'; fieldRequestId: string; targetMode: RequestTargetMode; targetCaregiverCode?: string | null; reason: string }
+  | {
+      op: 'verify'
+      outcome: VerificationOutcome
+      summary: string
+      evidence: string
+      remaining?: string | null
+      nextResponsibility?: string | null
+      /** true: 조치 종결, false: 추가 확인 — 새 후속 주기를 연다. */
+      closeAction: boolean
+      followUp?: FollowUpInput | null
+    }
 
 export type ActionMutationInput = ActionMutation & { actionId: string; expectedVersion: number; requestId: string; enteredByLabel?: string | null }
+
+/** 3단계 변경(게시·철회·대상 변경·결과 확인)은 3단계 저장소가 있어야 한다. */
+export const FIELD_REQUEST_OPS: ReadonlyArray<ActionMutation['op']> = ['publish', 'withdraw', 'retarget', 'verify']
+
+function resolveTarget(mode: RequestTargetMode, code: string | null | undefined, assignees: string[]): string | null {
+  if (!(['recipient_assignees', 'specific_caregiver'] as string[]).includes(mode)) throw new WorkflowError(400, '요청 대상을 선택해 주세요.')
+  if (assignees.length === 0) {
+    throw new WorkflowError(409, '이 수급자에게 지금 배정된 요양보호사가 없어 요청을 보낼 수 없습니다. 배정을 먼저 확인해 주세요.')
+  }
+  if (mode === 'recipient_assignees') return null
+  const target = text(code)?.toUpperCase() ?? null
+  if (!target) throw new WorkflowError(400, '요청을 받을 요양보호사를 선택해 주세요.')
+  if (!assignees.includes(target)) throw new WorkflowError(409, `${target}은(는) 지금 이 수급자에게 배정되어 있지 않습니다.`)
+  return target
+}
 
 export function planActionMutation(state: ActionState, input: ActionMutationInput, ctx: WorkflowContext): ActionPlan {
   const current = state.action
@@ -479,14 +649,46 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
     throw new WorkflowError(409, '다른 곳에서 이 조치가 먼저 수정됐습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.')
   }
   const requestId = requireText(input.requestId, '요청 식별자가 없습니다.')
+  const requests = state.requests ?? []
+  const responses = state.responses ?? []
   const next: CareAction = { ...current, version: current.version + 1, updated_at: ctx.now }
   const updates: ActionObligation[] = []
   const inserts: ActionObligation[] = []
+  const requestInserts: FieldRequest[] = []
+  const requestUpdates: FieldRequest[] = []
+  const verificationInserts: ActionVerification[] = []
   let eventType: ActionEventType
   let reason: string | null = null
   let obligationId: string | null = null
   let detail: Record<string, unknown> = {}
   const editable = current.status === 'draft' || current.status === 'open'
+  const setObligation = (ob: ActionObligation, patch: Partial<ActionObligation>) => {
+    const i = updates.findIndex((u) => u.id === ob.id)
+    const base = i >= 0 ? updates[i] : ob
+    const merged = { ...base, ...patch }
+    if (i >= 0) updates[i] = merged
+    else updates.push(merged)
+  }
+  /** 게시 중인 요청을 끝내고(철회·종결), 아직 이행되지 않은 그 요청의 현장 응답 의무를 취소하거나
+   * (요청만 철회할 때) 게시 전으로 되돌린다 — 같은 주기에서 문구를 고쳐 새 요청으로 다시 게시할 수 있게.
+   * 기록은 지우지 않는다 — 철회된 요청 행은 상태와 끝난 이유를 남긴 채 그대로 둔다. */
+  const endPublished = (filter: (r: FieldRequest) => boolean, status: 'withdrawn' | 'closed', why: string, obligationAfter: 'cancelled' | 'pending_publish' = 'cancelled') => {
+    for (const r of requests.filter((x) => x.status === 'published' && filter(x))) {
+      requestUpdates.push({ ...r, status, ended_at: ctx.now, end_reason: why, version: r.version + 1 })
+      const ob = state.obligations.find((o) => o.id === r.obligation_id)
+      if (ob && ob.status !== 'fulfilled' && ob.status !== 'cancelled') {
+        setObligation(ob, obligationAfter === 'cancelled' ? { status: 'cancelled', cancelled_at: ctx.now } : { status: 'pending_publish', activated_at: null })
+      }
+    }
+  }
+  const newCycle = (cycle: number, follow: FollowUpInput | null | undefined) => {
+    if (current.kind === 'field_request') {
+      inserts.push(newObligation(ctx, current.id, cycle, 'field_response', normalizeDue(follow?.responseDue, true, OBLIGATION_TYPE_LABELS.field_response), 'open'))
+    } else {
+      inserts.push(newObligation(ctx, current.id, cycle, 'admin_execution', normalizeDue(follow?.executionDue, false, OBLIGATION_TYPE_LABELS.admin_execution), 'open'))
+    }
+    inserts.push(newObligation(ctx, current.id, cycle, 'admin_verification', normalizeDue(follow?.verificationDue, false, OBLIGATION_TYPE_LABELS.admin_verification), 'open'))
+  }
 
   switch (input.op) {
     case 'update': {
@@ -510,13 +712,13 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
       const ob = state.obligations.find((o) => o.id === input.obligationId)
       if (!ob) throw new WorkflowError(404, '기한을 찾을 수 없습니다.')
       if (ob.cycle_no !== current.current_cycle || ob.status === 'fulfilled' || ob.status === 'cancelled') {
-        throw new WorkflowError(409, '이미 끝난 기한은 바꿀 수 없습니다. 새 확인이 필요하면 조치를 재개해 주세요.')
+        throw new WorkflowError(409, '이미 끝난 기한은 바꿀 수 없습니다. 새 확인이 필요하면 새 후속 주기를 여세요.')
       }
       reason = requireText(input.reason, '기한을 바꾸는 이유를 입력해 주세요.')
       const due = normalizeDue(input.due, ob.obligation_type === 'field_response', OBLIGATION_TYPE_LABELS[ob.obligation_type])
       if (due.kind === ob.current_due_kind && timeOf(due.at) === timeOf(ob.current_due_at)) throw new WorkflowError(400, '바뀐 기한이 없습니다.')
       // 최초 기한(initial_*)은 그대로 두고 현재 기한만 바꾼다 — 과거 지연 기록을 지우지 않는다.
-      updates.push({ ...ob, current_due_kind: due.kind, current_due_at: due.at })
+      setObligation(ob, { current_due_kind: due.kind, current_due_at: due.at })
       eventType = 'due_changed'
       obligationId = ob.id
       detail = {
@@ -536,7 +738,7 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
       next.status = 'open'
       for (const ob of state.obligations.filter((o) => o.status === 'inactive')) {
         const status = obligationStatusFor(ob.obligation_type, 'open')
-        updates.push({ ...ob, status, activated_at: status === 'active' ? ctx.now : null })
+        setObligation(ob, { status, activated_at: status === 'active' ? ctx.now : null })
       }
       eventType = 'activated'
       break
@@ -544,8 +746,8 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
     case 'complete': {
       if (current.status !== 'open') throw new WorkflowError(409, '진행 중인 조치만 완료할 수 있습니다.')
       if (current.kind === 'field_request') {
-        // 현장 답변이 필요한 조치는 답변(3단계)을 확인하기 전에 완료하지 않는다.
-        throw new WorkflowError(409, '현장 확인 요청은 현장 답변을 받아 확인하기 전에는 완료할 수 없습니다(필요하면 취소).')
+        // 현장 답변이 필요한 조치는 "결과 확인"으로만 끝낸다(답변 도착 ≠ 완료).
+        throw new WorkflowError(409, '현장 확인 요청은 "결과 확인"에서 근거를 남겨 종결합니다(답변 도착만으로 완료하지 않음).')
       }
       const evidence = requireText(input.evidence, '실제로 한 일과 결과 근거를 입력해 주세요.')
       next.status = 'completed'
@@ -553,7 +755,7 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
       next.completion_remaining = text(input.remaining)
       next.completed_at = ctx.now
       for (const ob of state.obligations.filter((o) => o.cycle_no === current.current_cycle && o.status === 'active')) {
-        updates.push({ ...ob, status: 'fulfilled', fulfilled_at: ctx.now })
+        setObligation(ob, { status: 'fulfilled', fulfilled_at: ctx.now })
       }
       eventType = 'completed'
       detail = { evidence, remaining: next.completion_remaining }
@@ -565,34 +767,174 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
       next.status = 'cancelled'
       next.cancel_reason = reason
       next.cancelled_at = ctx.now
+      if (current.kind === 'field_request') next.field_message_status = 'unpublished'
+      // 게시 중인 요청도 함께 철회한다 — 취소 뒤 늦게 온 응답은 기록만 남고 조치를 되살리지 않는다.
+      endPublished(() => true, 'withdrawn', `조치 취소: ${reason}`)
       for (const ob of state.obligations.filter((o) => o.status !== 'fulfilled' && o.status !== 'cancelled')) {
-        updates.push({ ...ob, status: 'cancelled', cancelled_at: ctx.now })
+        setObligation(ob, { status: 'cancelled', cancelled_at: ctx.now })
       }
       eventType = 'cancelled'
       detail = {
-        overdue_at_cancel: state.obligations
-          .filter((o) => isObligationOverdue(o, ctx.now))
-          .map((o) => o.id),
+        overdue_at_cancel: state.obligations.filter((o) => isObligationOverdue(o, ctx.now)).map((o) => o.id),
+        withdrawn_requests: requestUpdates.map((r) => r.id),
       }
       break
     }
     case 'reopen': {
       if (current.status !== 'completed') throw new WorkflowError(409, '완료된 조치만 재개할 수 있습니다.')
       reason = requireText(input.reason, '재개하는 이유를 입력해 주세요.')
-      // 기존 완료·기한 기록은 그대로 두고 새 후속 주기를 만든다.
+      // 기존 완료·기한·결과 확인 기록은 그대로 두고 새 후속 주기를 만든다.
       const cycle = current.current_cycle + 1
       next.status = 'open'
       next.current_cycle = cycle
-      if (current.kind === 'admin_direct') {
-        inserts.push(newObligation(ctx, current.id, cycle, 'admin_execution', normalizeDue(input.executionDue, false, OBLIGATION_TYPE_LABELS.admin_execution), 'open'))
-      }
-      inserts.push(newObligation(ctx, current.id, cycle, 'admin_verification', normalizeDue(input.verificationDue, false, OBLIGATION_TYPE_LABELS.admin_verification), 'open'))
+      if (current.kind === 'field_request') next.field_message_status = 'unpublished'
+      newCycle(cycle, { responseDue: input.responseDue, verificationDue: input.verificationDue, executionDue: input.executionDue })
       eventType = 'reopened'
       detail = {
         previous_completed_at: current.completed_at,
         previous_evidence: current.completion_evidence,
+        previous_outcome: current.closure_outcome ?? null,
         new_cycle: cycle,
         new_obligations: inserts.map((o) => ({ id: o.id, type: o.obligation_type, due_kind: o.initial_due_kind, due_at: o.initial_due_at })),
+      }
+      break
+    }
+    case 'publish': {
+      if (current.status !== 'open') throw new WorkflowError(409, '진행 중인 조치만 현장에 게시할 수 있습니다.')
+      if (current.kind !== 'field_request') throw new WorkflowError(400, '관리자 직접 조치는 현장에 게시하지 않습니다.')
+      const message = requireText(current.field_message_draft, '현장에 전달할 요청 내용을 먼저 입력해 주세요.')
+      const ob = state.obligations.find((o) => o.cycle_no === current.current_cycle && o.obligation_type === 'field_response')
+      if (!ob || ob.status !== 'pending_publish' || requests.some((r) => r.cycle_no === current.current_cycle && (r.status === 'published' || r.status === 'answered'))) {
+        throw new WorkflowError(409, '이번 후속 주기의 현장 요청은 이미 게시됐거나 끝났습니다.')
+      }
+      const target = resolveTarget(input.targetMode, input.targetCaregiverCode, state.assignees ?? [])
+      const req: FieldRequest = {
+        id: ctx.newId(),
+        organization_id: current.organization_id,
+        action_id: current.id,
+        obligation_id: ob.id,
+        cycle_no: current.current_cycle,
+        recipient_code: current.recipient_code,
+        message,
+        target_mode: input.targetMode,
+        target_caregiver_code: target,
+        status: 'published',
+        published_at: ctx.now,
+        first_shown_at: null,
+        first_shown_to: null,
+        answered_at: null,
+        ended_at: null,
+        end_reason: null,
+        version: 1,
+        publish_request_id: requestId,
+      }
+      requestInserts.push(req)
+      // 게시 순간부터 현장 응답기한이 시작된다. '다음 실제 방문'이면 날짜 없이 방문 대기로 남는다.
+      setObligation(ob, { status: 'active', activated_at: ctx.now })
+      next.field_message_status = 'published'
+      eventType = 'published'
+      obligationId = ob.id
+      detail = {
+        field_request_id: req.id,
+        target_mode: req.target_mode,
+        target_caregiver_code: target,
+        assignees_at_publish: state.assignees ?? [],
+        response_due: { kind: ob.current_due_kind, at: ob.current_due_at },
+      }
+      break
+    }
+    case 'withdraw': {
+      if (!editable) throw new WorkflowError(409, '완료·취소된 조치의 요청은 이미 끝났습니다.')
+      const req = requests.find((r) => r.id === input.fieldRequestId)
+      if (!req) throw new WorkflowError(404, '현장 요청을 찾을 수 없습니다.')
+      if (req.status !== 'published') throw new WorkflowError(409, '게시 중인 요청만 철회할 수 있습니다.')
+      reason = requireText(input.reason, '철회 이유를 입력해 주세요.')
+      // 현장 응답 의무는 게시 전으로 돌아간다(최초·현재 기한은 그대로) — 문구를 고쳐 다시 게시할 수 있다.
+      endPublished((r) => r.id === req.id, 'withdrawn', reason, 'pending_publish')
+      next.field_message_status = 'unpublished'
+      eventType = 'withdrawn'
+      obligationId = req.obligation_id
+      detail = { field_request_id: req.id, first_shown_at: req.first_shown_at, obligation_back_to: 'pending_publish' }
+      break
+    }
+    case 'retarget': {
+      if (current.status !== 'open') throw new WorkflowError(409, '진행 중인 조치의 요청만 대상을 바꿀 수 있습니다.')
+      const req = requests.find((r) => r.id === input.fieldRequestId)
+      if (!req) throw new WorkflowError(404, '현장 요청을 찾을 수 없습니다.')
+      if (req.status !== 'published') throw new WorkflowError(409, '응답 대기 중인 요청만 대상을 바꿀 수 있습니다.')
+      reason = requireText(input.reason, '대상을 바꾸는 이유를 입력해 주세요.')
+      const target = resolveTarget(input.targetMode, input.targetCaregiverCode, state.assignees ?? [])
+      if (input.targetMode === req.target_mode && target === req.target_caregiver_code) throw new WorkflowError(400, '바뀐 대상이 없습니다.')
+      requestUpdates.push({ ...req, target_mode: input.targetMode, target_caregiver_code: target, version: req.version + 1 })
+      eventType = 'retargeted'
+      obligationId = req.obligation_id
+      detail = {
+        field_request_id: req.id,
+        from: { mode: req.target_mode, caregiver: req.target_caregiver_code },
+        to: { mode: input.targetMode, caregiver: target },
+        assignees_at_change: state.assignees ?? [],
+      }
+      break
+    }
+    case 'verify': {
+      if (current.status !== 'open') throw new WorkflowError(409, '진행 중인 조치만 결과를 확인할 수 있습니다.')
+      if (!(VERIFICATION_OUTCOMES as readonly string[]).includes(input.outcome)) throw new WorkflowError(400, '확인한 결과를 선택해 주세요.')
+      const summary = requireText(input.summary, '결과 요약을 입력해 주세요.')
+      const evidence = requireText(input.evidence, '무엇을 근거로 확인했는지 입력해 주세요(현장 응답·통화 등).')
+      const remaining = text(input.remaining)
+      const nextResponsibility = text(input.nextResponsibility)
+      if (OUTCOMES_REQUIRING_FOLLOWUP_NOTE.includes(input.outcome) && (!remaining || !nextResponsibility)) {
+        throw new WorkflowError(400, `${VERIFICATION_OUTCOME_LABELS[input.outcome]}(으)로 정리할 때는 남은 문제와 다음 책임·업무를 적어 주세요.`)
+      }
+      const cycle = current.current_cycle
+      const cycleRequestIds = new Set(requests.filter((r) => r.cycle_no === cycle).map((r) => r.id))
+      const responseIds = responses.filter((r) => cycleRequestIds.has(r.field_request_id)).map((r) => r.id)
+      // 이 주기에서 아직 답을 기다리던 요청은 결과 확인과 함께 게시를 끝낸다(기록은 보존).
+      endPublished((r) => r.cycle_no === cycle, 'closed', '관리자 결과 확인으로 게시 종료')
+      for (const ob of state.obligations.filter((o) => o.cycle_no === cycle)) {
+        if (ob.status === 'pending_publish' || ob.status === 'inactive') setObligation(ob, { status: 'cancelled', cancelled_at: ctx.now })
+        else if (ob.status === 'active' && ob.obligation_type !== 'field_response') setObligation(ob, { status: 'fulfilled', fulfilled_at: ctx.now })
+      }
+      const verification: ActionVerification = {
+        id: ctx.newId(),
+        action_id: current.id,
+        cycle_no: cycle,
+        outcome: input.outcome,
+        summary,
+        evidence,
+        response_ids: responseIds,
+        remaining_issue: remaining,
+        next_responsibility: nextResponsibility,
+        closes_action: Boolean(input.closeAction),
+        verified_at: ctx.now,
+        actor_scope: ADMIN_ACTOR_SCOPE,
+        entered_by_label: text(input.enteredByLabel),
+        request_id: requestId,
+      }
+      verificationInserts.push(verification)
+      if (current.kind === 'field_request') next.field_message_status = 'unpublished'
+      if (input.closeAction) {
+        // 종결은 사실(결과)의 기록일 뿐 — 건강 개선으로 세지 않는다.
+        next.status = 'completed'
+        next.closure_outcome = input.outcome
+        next.completion_evidence = `${summary} — 근거: ${evidence}`
+        next.completion_remaining = remaining
+        next.completed_at = ctx.now
+      } else {
+        const nextCycle = cycle + 1
+        next.current_cycle = nextCycle
+        if (current.kind === 'field_request' && input.followUp?.fieldMessageDraft !== undefined) {
+          next.field_message_draft = text(input.followUp.fieldMessageDraft) ?? current.field_message_draft
+        }
+        newCycle(nextCycle, input.followUp)
+      }
+      eventType = 'verified'
+      detail = {
+        verification_id: verification.id,
+        outcome: input.outcome,
+        closes_action: verification.closes_action,
+        response_ids: responseIds,
+        new_cycle: input.closeAction ? null : cycle + 1,
       }
       break
     }
@@ -606,6 +948,9 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
     obligations: merged,
     obligationInserts: inserts,
     obligationUpdates: updates,
+    requestInserts,
+    requestUpdates,
+    verificationInserts,
     event: {
       id: ctx.newId(),
       action_id: current.id,
@@ -620,6 +965,110 @@ export function planActionMutation(state: ActionState, input: ActionMutationInpu
       occurred_at: ctx.now,
     },
   }
+}
+
+// ── 현장 응답 기록(3단계) ─────────────────────────────────────────
+export interface FieldResponseInput {
+  fieldRequestId: string
+  status: ResponseStatus
+  text?: string | null
+  /** 요양보호사가 확인해 연결한 이번 보고 원문 일부(없으면 직접 입력한 답만). */
+  evidenceExcerpt?: string | null
+  requestId: string
+}
+
+export interface FieldResponseContext {
+  report: { id: string; recipient_code: string; participant_code: string; status: string; report_source?: string }
+  responderCode: string
+  /** 응답 시점에 이 수급자에게 활성 배정된 요양보호사. */
+  assignees: string[]
+  request: FieldRequest
+  action: CareAction
+  obligation: ActionObligation | null
+}
+
+export interface FieldResponsePlan {
+  response: FieldResponse
+  /** 게시 중이던 요청의 첫 응답일 때만: 요청 → 응답 도착, 현장 응답 의무 → 이행, 조치 버전 +1. */
+  requestUpdate: FieldRequest | null
+  obligationUpdate: ActionObligation | null
+  actionUpdate: CareAction | null
+  event: ActionEvent
+}
+
+/** 현장 응답 한 건. 권한(배정·지정 대상·본인 보고)을 확인하고, 철회·종결 뒤 늦게 온 응답은
+ * 기록만 남긴다 — 조치를 되살리거나 완료시키지 않는다. 응답 도착은 완료가 아니다
+ * (관리자 결과 확인 의무는 그대로 남는다). */
+export function planFieldResponse(c: FieldResponseContext, input: FieldResponseInput, ctx: WorkflowContext): FieldResponsePlan {
+  const { report, request } = c
+  if (report.status !== 'submitted') throw new WorkflowError(409, '제출된 보고에만 센터 요청 답변을 연결할 수 있습니다.')
+  if ((report.report_source ?? 'live') !== 'live') throw new WorkflowError(400, '연습 보고는 센터 요청에 답할 수 없습니다.')
+  if (report.participant_code !== c.responderCode) throw new WorkflowError(403, '본인이 작성한 보고에만 답변을 연결할 수 있습니다.')
+  if (report.recipient_code !== request.recipient_code) throw new WorkflowError(400, '다른 수급자의 요청에는 이 보고로 답할 수 없습니다.')
+  if (!c.assignees.includes(c.responderCode)) throw new WorkflowError(403, '지금 배정되지 않은 수급자의 요청에는 답할 수 없습니다.')
+  if (request.target_mode === 'specific_caregiver' && request.target_caregiver_code !== c.responderCode) {
+    throw new WorkflowError(403, '다른 요양보호사에게 보낸 요청입니다.')
+  }
+  if (!(RESPONSE_STATUSES as readonly string[]).includes(input.status)) throw new WorkflowError(400, '답변 종류를 선택해 주세요.')
+  const responseText = text(input.text)
+  const evidence = text(input.evidenceExcerpt)
+  if (input.status === 'other' && !responseText && !evidence) throw new WorkflowError(400, '"기타"는 내용을 적어 주세요.')
+  const firstAnswer = request.status === 'published'
+  const response: FieldResponse = {
+    id: ctx.newId(),
+    field_request_id: request.id,
+    action_id: request.action_id,
+    obligation_id: request.obligation_id,
+    report_id: report.id,
+    recipient_code: request.recipient_code,
+    responder_code: c.responderCode,
+    response_status: input.status,
+    response_text: responseText,
+    evidence_excerpt: evidence,
+    evidence_source: evidence ? 'report_text' : responseText ? 'typed' : null,
+    request_state_at_response: request.status,
+    fulfilled_obligation: firstAnswer,
+    submitted_at: ctx.now,
+    request_id: requireText(input.requestId, '요청 식별자가 없습니다.'),
+  }
+  const requestUpdate = firstAnswer ? { ...request, status: 'answered' as const, answered_at: ctx.now, version: request.version + 1 } : null
+  const obligationUpdate =
+    firstAnswer && c.obligation && c.obligation.status === 'active' ? { ...c.obligation, status: 'fulfilled' as const, fulfilled_at: ctx.now } : null
+  const actionUpdate = firstAnswer ? { ...c.action, version: c.action.version + 1, updated_at: ctx.now } : null
+  return {
+    response,
+    requestUpdate,
+    obligationUpdate,
+    actionUpdate,
+    event: {
+      id: ctx.newId(),
+      action_id: request.action_id,
+      obligation_id: request.obligation_id,
+      event_type: 'response_received',
+      reason: null,
+      detail: {
+        field_request_id: request.id,
+        response_id: response.id,
+        report_id: report.id,
+        response_status: input.status,
+        request_state_at_response: request.status,
+        fulfilled_obligation: firstAnswer,
+        late: request.status === 'withdrawn' || request.status === 'closed',
+      },
+      actor_scope: 'caregiver_session',
+      entered_by_label: null,
+      owner_label_at_event: c.action.owner_label,
+      request_id: response.request_id,
+      occurred_at: ctx.now,
+    },
+  }
+}
+
+/** 요양보호사 화면에 보일 요청인지(현재 배정·지정 대상 기준). 게시 중인 요청만 보인다. */
+export function isRequestVisibleTo(request: Pick<FieldRequest, 'status' | 'target_mode' | 'target_caregiver_code' | 'recipient_code'>, caregiverCode: string, assignedRecipients: string[]): boolean {
+  if (request.status !== 'published') return false
+  if (!assignedRecipients.includes(request.recipient_code)) return false
+  return request.target_mode === 'recipient_assignees' || request.target_caregiver_code === caregiverCode
 }
 
 // ── 한국 시간 날짜 경계 ────────────────────────────────────────────

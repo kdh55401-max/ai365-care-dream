@@ -105,7 +105,7 @@ describe('조치 변경 규칙', () => {
 
   it('현장 확인 요청은 답변 확인 전 완료할 수 없고, 직접 조치 완료는 근거가 필요하다', () => {
     const f = fieldRequest()
-    expectError(() => planActionMutation(f, { actionId: f.action.id, op: 'complete', evidence: '했음', expectedVersion: 1, requestId: 'y' }, ctx()), 409, /현장 답변/)
+    expectError(() => planActionMutation(f, { actionId: f.action.id, op: 'complete', evidence: '했음', expectedVersion: 1, requestId: 'y' }, ctx()), 409, /결과 확인/)
     const d = direct()
     expectError(() => planActionMutation(d, { actionId: d.action.id, op: 'complete', evidence: '', expectedVersion: 1, requestId: 'y' }, ctx()), 400)
     const done = planActionMutation(d, { actionId: d.action.id, op: 'complete', evidence: '보호자와 통화, 병원 동행 예정', expectedVersion: 1, requestId: 'y' }, ctx())

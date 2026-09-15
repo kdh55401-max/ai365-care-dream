@@ -1,5 +1,5 @@
 import { normalizeReportRecord, type CareReportRecord } from '../../../shared/careTypes.js'
-import type { ActionEvent, ActionObligation, AdminDecision, CareAction, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
+import type { ActionEvent, ActionObligation, ActionVerification, AdminDecision, CareAction, FieldRequest, FieldResponse, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
 
 /** 데모 모드 전용 저장소. Supabase/Gemini 없이도 /care?demo=1, /admin?demo=1 화면
  * 전체 흐름을 즉시 시연할 수 있도록 브라우저 localStorage에만 저장한다.
@@ -40,7 +40,7 @@ export const DEMO_ASSIGNMENTS: Record<string, string[]> = {
  * 배정 관계가 아예 없는(오타 등) 코드는 빈 배열 — 다른 요양보호사의 수급자로
  * 폴백하지 않는다. */
 export function demoAssignedRecipients(caregiverCode: string): string[] {
-  return DEMO_ASSIGNMENTS[caregiverCode] ?? []
+  return demoAssignmentMap()[caregiverCode] ?? []
 }
 export const DEMO_ADMIN_PASSWORD = 'demo1234'
 
@@ -74,6 +74,10 @@ export interface DemoWorkflow {
   obligations: ActionObligation[]
   actionEvents: ActionEvent[]
   reportEvents: ReportEvent[]
+  /** 3단계 */
+  fieldRequests: FieldRequest[]
+  fieldResponses: FieldResponse[]
+  verifications: ActionVerification[]
 }
 
 interface DemoDb {
@@ -82,10 +86,17 @@ interface DemoDb {
   careSession: string | null // 로그인한 참여자 코드
   adminSession: boolean
   workflow: DemoWorkflow
+  /** 배정 변경을 시연·검증할 때만 쓰는 덮어쓰기(없으면 DEMO_ASSIGNMENTS). */
+  assignments?: Record<string, string[]>
+}
+
+/** 지금 유효한 데모 배정(요양보호사 → 수급자). */
+export function demoAssignmentMap(): Record<string, string[]> {
+  return readDb().assignments ?? DEMO_ASSIGNMENTS
 }
 
 function emptyWorkflow(): DemoWorkflow {
-  return { decisions: [], safetyReviews: [], actions: [], obligations: [], actionEvents: [], reportEvents: [] }
+  return { decisions: [], safetyReviews: [], actions: [], obligations: [], actionEvents: [], reportEvents: [], fieldRequests: [], fieldResponses: [], verifications: [] }
 }
 
 function emptyDb(): DemoDb {

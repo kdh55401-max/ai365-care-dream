@@ -1,3 +1,42 @@
+## 2026-09-15 (3차) — 돌봄 연속성 3단계: 현장 요청 게시 → 현장 응답 → 관리자 결과 확인 · 종결
+
+목적·기대 동작: 관리자가 확인해 게시한 현장 확인 요청이 수급자의 현재 담당(또는 지정한) 요양보호사 화면에 뜨고, 요양보호사는
+기존 말하기 흐름의 보고 확인 화면에서 답한다(이미 말한 문장으로 한 번에 답 — 다시 묻지 않음). 답은 원 요청·조치·의무·보고에
+연결되고, 응답 도착은 현장 응답 대기만 해소하며 관리자 결과 확인(요약·근거·시각)을 거쳐야 종결된다. 설계·규칙·DB 적용 절차는
+[docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md) §6.
+
+기준: origin/master 5a9f083 → 브랜치 `claude/continuity-stage3-field-response`(워크트리 `.claude/worktrees/continuity-stage1`).
+
+**DB: `db/migrations/2026-09-16-field-requests.sql` 은 이 환경에서 운영 Supabase에 적용하지 못했다(접근 권한 없음).** 이 파일은
+2단계 `2026-09-15-admin-workflow.sql`이 먼저 적용돼 있어야 실행된다(없으면 첫 줄에서 멈춤). 적용 전 운영 화면은 게시·결과 확인을
+"준비 중"으로 끄고, 서버는 해당 저장을 503으로 거부하며, 현장 요청 조회는 빈 목록을 준다.
+
+수정 파일:
+- 공통 규칙: `shared/workflow.ts`(게시·철회·대상 변경·결과 확인 계획, 현장 응답 계획 `planFieldResponse`, 노출 판정 `isRequestVisibleTo`,
+  철회 시 현장 응답 의무를 게시 전으로 되돌림), `shared/fieldRequests.ts`(신규 — 현장용 요청 보기, 대기 상태, 재배정 판정, 원문 근거 문장 찾기·검증),
+  `shared/workBoard.ts`(카드 3개·목록·통합 순서), `shared/workflowViews.ts`(요청 요약·조치 상세 보기)
+- DB: `db/migrations/2026-09-16-field-requests.sql`(신규 — 테이블 3·컬럼 1·불변 트리거·`workflow_apply_action_change` 상위 호환 교체·`workflow_record_field_response` 신규·권한)
+- 서버: `api/_lib/fieldRequestsStore.ts`(신규), `api/admin/workflow.ts`(게시·결과 확인 op, 상세에 요청·응답·결과 확인·현재 배정), `api/care/reports.ts`(요청 조회·첫 표시·제출과 함께 응답)
+- 화면: `src/pilot/care/CenterRequests.tsx`·`centerAnswers.ts`(신규), `CareApp.tsx`(홈·기록·보고 확인·완료 화면 연결, 제출을 `submitReport`로),
+  `src/pilot/admin/WorkflowPanels.tsx`(게시·요청 목록·철회·대상 변경·결과 확인·이력), `WorkBoardPanels.tsx`(카드 3개·목록), `ActionSummaryRow.tsx`, `adminFormat.ts`, `adminRoutes.ts`
+- 데모: `src/pilot/demo/demoWorkflowRepo.ts`(3단계 흉내·`?demo_workflow=stage2`), `demoCareRepo.ts`, `demoStore.ts`(배정 덮어쓰기), `demoAdminRepo.ts`, `src/pilot/shared/careRepo.ts`
+- 테스트: `shared/fieldRequests.test.ts`(18), `api/_lib/fieldRequestsMigration.test.ts`(8, PGlite), `e2e/field-requests.spec.ts`(5), `shared/workflow.test.ts`(문구 1줄)
+- 문서: `docs/CONTINUITY_STAGES.md`(§6 추가, §5 깨진 식별자 복구), `CHANGE_LOG.md`, `MASTER_CONTEXT.md`
+
+직접 수행한 검증: tsc 0 오류, vitest 195/195(신규 26: 3단계 규칙·보드·근거 문장 18 + 마이그레이션 PGlite 8), oxlint 경고 4(기존과 동일), vite build 성공(번들 580KB, Vite 500KB 권고 경고).
+e2e(데모, Chromium mobile-390/360, 제한 60초): 94건 중 90 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로 1·2단계 때와 같은 기존 결함(같은 오류 — 새 요청 안내는 요청이 없으면 아무것도 그리지 않음). 신규 `field-requests.spec.ts` 5건×2화면 모두 통과: 게시 → 현장 홈에 문구만(내부 메모 비노출) → 첫 표시 기록 → 말한 문장으로 답 → 답한 요청 재노출 없음 → 결과 확인 대기 카드 → 결과 확인·종결 / 확인 불가는 남은 문제·다음 책임 필수·추가 확인 새 주기·재게시 / 검토 화면에 있는 사이 철회 → 늦은 응답 기록만·재게시 가능 / 배정 변경 → 재배정 필요·지정 대상 비노출·대상 변경 후 새 담당에게만 노출 / 3단계 DB 적용 전 '준비 중'. `admin-workflow.spec.ts` 5건×2화면 통과. 새 화면(현장 홈 안내·답 블록·조치 상세·첫 화면 카드)은 390px 스크린샷으로 직접 확인했다.
+
+확인할 화면(데모): 조치 상세의 "현장에 게시" → `/care?demo=1` 홈의 "센터 확인 요청" → 추가 상태변화 보고의 보고 확인 화면 "센터 확인 요청에 대한 답"
+→ 첫 화면 "응답 도착 · 결과 확인 대기" 카드 → 조치 상세 "결과 확인". `/admin?demo=1&demo_workflow=stage2`는 3단계 DB 적용 전 상태 흉내.
+
+검토 요청(Codex): (1) `workflow_record_field_response`의 잠금 순서(조치→요청)와 `workflow_apply_action_change`의 요청 버전 대조가
+응답·철회 경합에서 한쪽만 반영하는지, (2) 현장 API가 내부 메모를 어떤 경로로도 내보내지 않는지, (3) 원문 근거 문장 검증(`sanitizeEvidence`)이
+우회되지 않는지, (4) 늦은 응답이 조치 버전·의무를 바꾸지 않는지.
+
+한계: 요청을 Gemini 질문 순서에 넣지 않았다(실제 Gemini 경로 검증 불가) — 보고 확인 화면의 한 번 확인으로 대신. 근거 문장 찾기는 키워드
+규칙이라 못 찾을 수 있다. 방문 일정 자료가 없어 다음 실제 방문 경과를 판단하지 않는다. 배정 변경 이력 테이블은 없다(이벤트에 당시 배정 기록).
+운영 DB 연결은 PGlite로만 검증했다.
+
 ## 2026-09-15 (2차) — 돌봄 연속성 2단계: 관리자 판단 · 조치 · 의무 기한 · 안전 신호 검토 · 보고 이벤트
 
 목적·기대 동작: 관리자가 보고를 근거로 판단(추가 조치 불필요/추가 관찰 필요/조치 필요/판단 보류)을 남기고, 필요한 조치를

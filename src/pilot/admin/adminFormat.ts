@@ -31,5 +31,5 @@ export function formatDue(kind: DueKind, at: string | null): string {
   return '미정'
 }
 
-export type WorkCard = 'safety' | 'reports' | 'overdue' | 'today'
-export const WORK_CARDS: WorkCard[] = ['safety', 'reports', 'overdue', 'today']
+export type WorkCard = 'safety' | 'reports' | 'overdue' | 'today' | 'requests' | 'verification' | 'reassign'
+export const WORK_CARDS: WorkCard[] = ['safety', 'reports', 'overdue', 'today', 'requests', 'verification', 'reassign']

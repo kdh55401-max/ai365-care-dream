@@ -5,6 +5,8 @@ import { requireCareSession } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { todayKstDateString } from '../_lib/date.js'
 import { STANDARD_SCENARIOS } from '../../shared/statsCalc.js'
+import { listCenterRequestsFor, markRequestsShown, parseCenterResponses, recordCenterResponses } from '../_lib/fieldRequestsStore.js'
+import { reportEvidenceTexts, sanitizeEvidence } from '../../shared/fieldRequests.js'
 
 const CARE_DETAIL_COLUMNS = '*'
 
@@ -52,6 +54,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const supabase = getSupabaseAdmin()
 
     if (req.method === 'GET') {
+      // 3단계: 관리자가 게시한 센터 요청(공개 문구·기한만, 내부 메모 없음). 배정·지정 대상은 서버가 확인한다.
+      if (getQuery(req).get('view') === 'center_requests') {
+        const recipientCode = String(getQuery(req).get('recipient') ?? '').trim().toUpperCase()
+        if (!/^[A-Z0-9]{1,10}$/.test(recipientCode)) throw new ApiError(400, '수급자 코드를 확인해 주세요.')
+        sendJson(res, 200, await listCenterRequestsFor(supabase, session.participantCode, recipientCode))
+        return
+      }
       const id = getQuery(req).get('id')
       if (id) {
         const { data, error } = await supabase
@@ -81,6 +90,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     if (req.method === 'POST') {
       const body = await readJsonBody(req)
+      // 3단계: 센터 요청이 요양보호사 화면에 실제로 표시됐다는 기록(첫 표시 1회). 읽음·수행과 다르다.
+      if (body.op === 'mark_center_requests_shown') {
+        const ids = Array.isArray(body.requestIds) ? body.requestIds.filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)) : []
+        await markRequestsShown(supabase, session.participantCode, ids)
+        sendJson(res, 200, { ok: true })
+        return
+      }
       const recipientCode = String(body.recipientCode ?? '').trim().toUpperCase()
       const reportType = body.reportType === 'additional' ? 'additional' : 'daily'
       const inputMethod = body.inputMethod === 'voice' ? 'voice' : 'text'
@@ -206,8 +222,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       .maybeSingle()
     if (fetchError) throw new ApiError(500, '보고를 불러오지 못했습니다.')
     if (!existing) throw new ApiError(404, '보고를 찾을 수 없습니다.')
+    // 3단계: 제출과 함께 온 센터 요청 답변. 제출 성공 뒤 붙인다(보고 id가 근거). 재시도는 요청 식별자로 한 번만 저장된다.
+    const centerResponses = body.submit === true ? parseCenterResponses(body.centerResponses) : []
     if (existing.status === 'submitted' && body.submit === true && sameFinalReport(existing.caregiver_final_report, body.caregiverFinalReport)) {
-      sendJson(res, 200, { report: existing })
+      // 보고는 이미 저장됐지만 답변 저장이 실패해 다시 온 재시도 — 답변만 이어서 저장한다.
+      const results = await recordCenterResponses(supabase, session.participantCode, id, sanitizeEvidence(centerResponses, reportEvidenceTexts(existing)))
+      sendJson(res, 200, { report: existing, centerResponses: results })
       return
     }
     if (existing.status !== 'draft') {
@@ -286,6 +306,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         console.error('ai_fallback_used/ai_fallback_stage 저장 실패(핵심 보고 저장은 정상 완료됨):', fallbackError.code, fallbackError.message)
       }
     }
-    sendJson(res, 200, { report: finalReport })
+    // 근거 문장은 이 보고에 실제로 저장된 원문에서 온 것만 '보고 원문' 근거로 남긴다.
+    const centerResults = updated.status === 'submitted' ? await recordCenterResponses(supabase, session.participantCode, id, sanitizeEvidence(centerResponses, reportEvidenceTexts(updated))) : []
+    sendJson(res, 200, { report: finalReport, centerResponses: centerResults })
   })
 }
