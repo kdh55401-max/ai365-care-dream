@@ -29,6 +29,8 @@ PGlite(WASM Postgres)에서 실제 실행해 검증(8건): 2·3단계 없이 실
 ### 검증
 tsc 0 오류, vitest 214/214(신규 19: 4단계 규칙·상충·버전·파일 판정 10 + 마이그레이션 PGlite 9, 3단계 PGlite 느린 한 건에 제한시간 지정), oxlint 경고 4(기존과 동일), vite build 성공(번들 636KB, Vite 500KB 권고 경고). Vercel 함수 12개 유지.
 e2e(데모, Chromium mobile-390/360, 제한 60초): 104건 중 100 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로 1~3단계 때와 같은 기존 결함(같은 오류). 신규 `baseline-docs.spec.ts` 5건×2화면 모두 통과: 원본 올리기(기준일 미기재 유지·출처·원본 보기) → 문서로 입력·관리자 확인(관찰·계획 구분) → 조치 근거 연결 → 기준정보 v2 수정 뒤에도 조치에 판단 당시 v1 / 상충 값 보존·참고값 선택·정식 척도 필수 항목 거부(입력 유지) / 형식이 틀린 파일 저장 안 됨·문서 철회 뒤 원본·기준정보 보존 / 과거 항목 태그 "항목별 근거 연결 전"·보고 전체 열기·평소 기준 이동 / 4단계 DB 적용 전 '준비 중'과 기준정보 없이 조치·현장 요청 게시. 기존 `field-requests`·`admin-workflow`·`recipient-hub` 스펙도 통과. 새 화면(기준정보 섹션·입력 양식)은 390px 스크린샷으로 직접 확인했다.
+### 배포
+배포: 커밋 d136f5c → origin/master fast-forward(7578892..d136f5c) → Vercel Production success(https://ai365-care-dream.vercel.app). 배포 후 운영 주소 확인: /admin·수급자 상세·/admin/actions/x·/care 200, 새 번들에 기준문서·기준정보 섹션·"항목별 근거 연결 전"·근거 기준정보·원본 올리기 포함, 비로그인·위조 쿠키의 기준정보 조회·원본 보기·원본 올리기·기준정보 저장·근거 연결 모두 401(3단계 현장 요청 조회도 401 유지), 운영 주소 데모 모드 e2e 23/23(baseline-docs 5 + field-requests 5 + admin-workflow 5 + recipient-hub 3 + demo-mode-persistence 5, mobile-390). 미확인: 운영 DB 마이그레이션(2단계 → 3단계 → 4단계 순서)·비공개 버킷 생성과 실제 관리자 로그인 후 원본 올리기·원본 보기·기준정보 저장(관리자 비밀번호·DB·Storage 권한 없음). 되돌리기: master에서 d136f5c revert 후 push(마이그레이션을 적용했더라도 새 테이블·버킷은 이전 앱이 읽지 않는다).
 
 ## 2026-09-15 (3차) — 돌봄 연속성 3단계: 현장 요청 게시 → 현장 응답 → 관리자 결과 확인
 
