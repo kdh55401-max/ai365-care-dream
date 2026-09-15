@@ -9,8 +9,12 @@ import {
   pilotDateRange,
 } from '../../../shared/statsCalc'
 import { toCsv } from '../../../shared/csv'
+import { checkOrganizationAccess, DEPLOYMENT_ORGANIZATION, type Organization } from '../../../shared/organization'
+import { buildRecipientTimeline, buildReviewQueue, summarizeRecipients } from '../../../shared/recipientHub'
 import {
+  DEMO_ASSIGNMENTS,
   DEMO_PIN,
+  DEMO_RECIPIENT_CODES,
   demoAdminLogin,
   demoAdminLogout,
   demoAdminSession,
@@ -35,6 +39,25 @@ function randomPin(): string {
   return String(Math.floor(Math.random() * 10000)).padStart(4, '0')
 }
 
+/** 실서버(requireAdminOrganization)와 같은 계약: 로그인 안 됐으면 401, 세션 기관과 다른
+ * 기관이면 403. 데모 관리자 세션은 항상 이 배포의 기관 세션이다. */
+function demoOrganization(orgId: string): Organization {
+  if (!demoAdminSession()) throw Object.assign(new Error('관리자 로그인이 필요합니다.'), { status: 401 })
+  const access = checkOrganizationAccess(DEPLOYMENT_ORGANIZATION.id, orgId)
+  if (!access.ok) throw Object.assign(new Error(access.reason), { status: access.status })
+  return access.organization
+}
+
+function demoRecipientRows() {
+  return DEMO_RECIPIENT_CODES.map((code) => ({ code, active: true }))
+}
+
+function demoAssignmentRows() {
+  return Object.entries(DEMO_ASSIGNMENTS).flatMap(([caregiver, codes]) =>
+    codes.map((code) => ({ caregiver_code: caregiver, recipient_code: code, active: true })),
+  )
+}
+
 export const demoAdminRepo: AdminRepo = {
   async login(password) {
     if (!demoAdminLogin(password)) throw Object.assign(new Error('비밀번호가 올바르지 않습니다.'), { status: 401 })
@@ -43,7 +66,26 @@ export const demoAdminRepo: AdminRepo = {
     demoAdminLogout()
   },
   async getSession() {
-    return { authenticated: demoAdminSession() }
+    const authenticated = demoAdminSession()
+    return { authenticated, organization: authenticated ? DEPLOYMENT_ORGANIZATION : null }
+  },
+  async getRecipientHub(orgId) {
+    const organization = demoOrganization(orgId)
+    const rows = demoAllReports()
+    return {
+      organization,
+      generatedAt: new Date().toISOString(),
+      recipients: summarizeRecipients(demoRecipientRows(), demoAssignmentRows(), rows),
+      reviewQueue: buildReviewQueue(rows),
+    }
+  },
+  async getRecipientTimeline(orgId, code, period) {
+    const organization = demoOrganization(orgId)
+    const recipient = demoRecipientRows().find((r) => r.code === code)
+    if (!recipient) throw Object.assign(new Error('이 기관에서 해당 수급자를 찾을 수 없습니다.'), { status: 404 })
+    const own = demoAllReports().filter((r) => r.recipient_code === code)
+    const [summary] = summarizeRecipients([recipient], demoAssignmentRows(), own)
+    return { organization, recipient: summary, timeline: buildRecipientTimeline(own, period, todayKst()) }
   },
   async getStats(): Promise<StatsResponse> {
     const rows = demoAllReports()

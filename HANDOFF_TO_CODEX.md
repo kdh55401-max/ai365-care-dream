@@ -1,3 +1,40 @@
+## 2026-09-15 — 돌봄 연속성 1단계: 관리자 수급자 허브 (기관 → 수급자 목록 → 수급자 상세)
+
+목적·기대 동작: 관리자가 "어떤 수급자의 무엇을 왜 확인해야 하는지" 기관 첫 화면에서 보고, 수급자별 보고 이력에서
+원문·구조화 기록·관리자 검토상태를 구분해 확인한 뒤 기존 보고 상세에서 승인/반려한다. 실행 기준·판정표·다기관 전
+필요 작업은 [docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md). 2단계(관리자 조치)는 사용자 승인 대기.
+
+기준: origin/master 40e7c34 → 브랜치 `claude/continuity-stage1-admin-hub`(별도 워크트리 `.claude/worktrees/
+continuity-stage1`). 메인 폴더의 미커밋 "4차" 변경(상태변화 기록지·careReportAi 등)은 포함하지 않았다.
+
+수정 파일:
+- `shared/organization.ts`(신규) 기관 정의·세션 기관 대조 / `shared/recipientHub.ts`(신규) 목록·검토 대기·타임라인 계산
+- `api/_lib/auth.ts` 관리자 JWT `orgId` 클레임, `requireAdminOrganization` / `api/admin/session.ts` 기관 반환
+- `api/admin/recipients.ts`(신규, 읽기 전용) / `api/admin/{reports,stats,export,participants}.ts` 기관 범위 확인으로 교체(한 줄씩)
+- `src/pilot/admin/AdminApp.tsx` 주소 기반 화면 전환, "수급자" 탭, 기관 첫 화면 검토 대기 목록, 보고 상세↔수급자 연결·오류 표시
+- `src/pilot/admin/RecipientHub.tsx`(신규) 목록·상세·검토 대기 UI / `adminRoutes.ts`(신규) / `adminFormat.ts`·`adminBadges.tsx`(기존 도우미 이동)
+- `src/pilot/shared/adminRepo.ts`, `src/pilot/demo/demoAdminRepo.ts` 허브 조회(데모도 같은 403/404 계약)
+- 테스트: `api/_lib/adminOrganization.test.ts`, `shared/recipientHub.test.ts`, `src/pilot/admin/adminRoutes.test.ts`, `e2e/recipient-hub.spec.ts`
+- DB 변경 없음.
+
+직접 수행한 검증: tsc 0 오류, vitest 147/147, oxlint 경고 4(기존과 동일), vite build 성공, 신규 e2e 6/6(390·360),
+전체 e2e 63/74 — 실패 11건은 기준 커밋 대조로 기존 결함 4건 + 30초 제한 근처 시간초과로 판정(상세 CHANGE_LOG
+2026-09-15). 로컬 데모 화면(375px)에서 첫 화면 검토 대기·수급자 상세 직접 확인. 2단계 전 확인 사항(DomainStatus·
+안전 신호·시각·인증·집계 위치)은 docs/CONTINUITY_STAGES.md §3.
+
+기존 e2e 결함(이번 변경 전부터 실패, 수정 안 함): `companion-redesign.spec.ts:12`(관리자 상세에 같은 원문 div가 2개라
+strict 위반 / 360px 아바타 폭 200), `multi-recipient-flow.spec.ts:13`('이야기할 준비가 됐어요' 문구 없음).
+
+확인할 화면·재현(데모): `/care?demo=1` c1/6003 보고 제출 → `/admin?demo=1`(demo1234) 첫 화면 "검토할 보고와 이유" →
+"A01 기록 흐름 보기" → 카드의 ①②③ 구분 → "원본 보고 열기 · 승인/반려" → 승인 → "← 뒤로" → 새로고침. 직접 URL
+`/admin/org/other-center/recipients/A01?demo=1`은 권한 없음, `/admin/org/gadream365/recipients/Z99?demo=1`은 없음.
+
+Codex 점검 요청:
+1. 운영에서 실제 관리자 로그인 후 `/admin/org/gadream365/recipients`·상세가 실제 DB 보고와 맞는지(작성자·수급자·검토상태).
+2. 기존 관리자 세션(기관 클레임 없음)이 재로그인 없이 계속 동작하는지.
+3. 대부분 운영 보고에 항목별 상태가 비어 보이는 것이 실제 DB 값(`*_domains_json` 빈 배열)과 일치하는지.
+4. 수급자 목록 API는 `reports`를 `select('*')`로 최대 5000건 읽는다 — 파일럿 규모에선 문제없지만 확장 시 컬럼 축소 필요.
+
 ## 2026-09-11 — 모바일 첫 viewport 검증
 
 기준 origin/master 85bb2be 이후 원격 변경 없음. 기존 초안 격리·재시도·모드·지표 정의를 유지했다.

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ApiError, requireMethod, sendJson, withHandler } from '../_lib/http.js'
-import { requireAdminSession } from '../_lib/auth.js'
+import { requireAdminOrganization } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { todayKstDateString } from '../_lib/date.js'
 import type { CareReportRecord } from '../../shared/careTypes.js'
@@ -18,7 +18,7 @@ const PILOT_END = process.env.CARE_PILOT_END_DATE ?? '2026-09-18'
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
     requireMethod(req, 'GET')
-    await requireAdminSession(req)
+    await requireAdminOrganization(req)
 
     const { data, error } = await getSupabaseAdmin().from('reports').select('*').eq('deleted', false).limit(5000)
     if (error) throw new ApiError(500, '통계를 계산하지 못했습니다.')

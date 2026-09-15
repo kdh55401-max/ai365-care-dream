@@ -10,8 +10,14 @@ import { demoAdminRepo } from '../demo/demoAdminRepo'
 import { resetDemoData, DEMO_ADMIN_ALIAS_PASSWORD } from '../demo/demoStore'
 import { computeRawInformativeness, type Fraction } from '../../../shared/statsCalc'
 import { BeforeAfterBarChart, CumulativeLineChart, type BeforeAfterMetric } from './charts'
+import { FIELD_LABELS, formatKoreanDateTime } from './adminFormat'
+import { FallbackBadge, SpinnerIcon } from './adminBadges'
+import { adminUrl, parseAdminPath, type AdminRoute } from './adminRoutes'
+import { RecipientDetailPanel, RecipientsPanel, ReviewQueueList } from './RecipientHub'
+import { DEPLOYMENT_ORGANIZATION, type Organization } from '../../../shared/organization'
+import { parseTimelinePeriod, type ReviewQueueItem } from '../../../shared/recipientHub'
 
-type Tab = 'dashboard' | 'reports' | 'participants'
+type Tab = 'dashboard' | 'recipients' | 'reports' | 'participants'
 const PARTICIPANT_CODES = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09']
 const INSTITUTION_NAME = '가드림365재가복지센터'
 const TARGET_PARTICIPANTS = 9
@@ -29,40 +35,6 @@ function truncateText(v: string | undefined, max = 40): string | null {
   if (!v || !v.trim()) return null
   const t = v.trim()
   return t.length > max ? `${t.slice(0, max)}…` : t
-}
-
-/** AI가 어르신 위험도를 판단하는 게 아니라, "Gemini 응답을 실제로 썼는지"만 보여주는
- * 기술 상태 배지. 응급신호(위험도) 배지와 절대 섞지 않는다.
- *
- * 추적 범위(중요): ai_fallback_used는 "최종 기록(구조화 보고문) 생성" 단계 하나만
- * 본다 — 추가질문 생성도 같은 Gemini 호출(runCareReportTurn)을 거치지만, 그
- * 단계는 실패해도 대체(fallback)로 조용히 넘어가는 경로 자체가 코드에 없다(성공
- * 아니면 오류를 던져 재시도 화면으로 감 — 실패한 시도는 저장되지 않는다). 그래서
- * "제출된 보고"라면 추가질문 단계들은 (재시도를 거쳤더라도) 전부 성공한 뒤에야
- * 여기 온 것이지만, 이 배지 자체는 그 사실까지 보증하지 않고 "최종 기록" 단계만
- * 말한다는 걸 라벨에 명시한다.
- * ruleBasedByDesign=true("평소와 비슷했어요" 흐름)면 애초에 Gemini를 부르지 않는
- * 설계이므로, "추적 안 됨(확인 불가)"과 구분해 "AI 미호출(규칙 기반)"로 보여준다. */
-function FallbackBadge({ used, ruleBasedByDesign }: { used: boolean | null | undefined; ruleBasedByDesign?: boolean }) {
-  if (ruleBasedByDesign) {
-    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">전체: AI 미호출(규칙 기반)</span>
-  }
-  if (used === null || used === undefined) {
-    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">최종 기록: AI 처리상태 확인 불가</span>
-  }
-  if (used) {
-    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">최종 기록: AI 대체 처리됨</span>
-  }
-  return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-400">최종 기록: AI 처리 성공</span>
-}
-
-function SpinnerIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={`animate-spin ${className ?? ''}`} aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.25" />
-      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
-  )
 }
 
 function InfoTip({ title, formula, num, den, note }: { title: string; formula: string; num?: number; den?: number; note?: string }) {
@@ -234,7 +206,14 @@ function ParticipantTable({ stats, reports }: { stats: StatsResponse; reports: R
  * AI 오류(폴백/처리실패)와 어르신 위험도(응급신호)는 서로 다른 축이라 절대 같은
  * 배지로 섞지 않는다: 응급신호는 "우선 확인이 필요한 보고"에, AI 처리 이상은
  * 각 카드 안의 별도 문구로만 보여준다. */
-function PriorityCareStrip({ reports, today, onOpen }: { reports: ReportListItem[]; today: string; onOpen: (id: string) => void }) {
+function PriorityCareStrip({ reports, today, onOpen, queue, queueError, onOpenRecipient }: {
+  reports: ReportListItem[]
+  today: string
+  onOpen: (id: string) => void
+  queue: ReviewQueueItem[] | null
+  queueError: string | null
+  onOpenRecipient: (code: string) => void
+}) {
   const submitted = reports.filter((r) => r.status === 'submitted' && r.report_source !== 'scenario')
   const urgent = submitted.filter((r) => r.emergency_flagged && (r.review_status ?? 'pending') === 'pending')
   const unreviewed = submitted.filter((r) => (r.review_status ?? 'pending') === 'pending')
@@ -244,7 +223,12 @@ function PriorityCareStrip({ reports, today, onOpen }: { reports: ReportListItem
   return (
     <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
       <h2 className="font-bold text-slate-900 mb-3">센터가 확인할 돌봄</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* 숫자만으로는 "누구의 무엇을 봐야 하는지" 알 수 없다 — 실제 검토 대기 보고와
+          그 이유(저장된 값 기준)를 먼저 나열하고, 보고·수급자 기록으로 이동시킨다.
+          기존 요약 숫자는 그 아래에 그대로 둔다. */}
+      <h3 className="font-bold text-slate-900 text-sm mb-2">검토할 보고와 이유</h3>
+      <ReviewQueueList items={queue} error={queueError} onOpenReport={onOpen} onOpenRecipient={onOpenRecipient} />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
         <div className={`rounded-2xl p-3 ${urgent.length > 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50'}`}>
           <p className={`text-2xl font-bold ${urgent.length > 0 ? 'text-red-700' : 'text-slate-900'}`}>{urgent.length}건</p>
           <p className={`text-xs mt-0.5 ${urgent.length > 0 ? 'text-red-600' : 'text-slate-400'}`}>우선 확인 필요(응급신호·미확인)</p>
@@ -262,27 +246,19 @@ function PriorityCareStrip({ reports, today, onOpen }: { reports: ReportListItem
           <p className="text-slate-400 text-xs mt-0.5">오늘 참여한 요양보호사</p>
         </div>
       </div>
-      {urgent.length > 0 && (
-        <div className="mt-3 flex flex-col gap-2">
-          {urgent.slice(0, 3).map((r) => (
-            <button
-              key={r.id}
-              onClick={() => onOpen(r.id)}
-              className="text-left rounded-xl border border-red-200 bg-red-50 p-3 hover:border-red-400 transition"
-            >
-              <span className="font-bold text-red-700 text-sm">
-                🔴 {r.participant_code} → {r.recipient_code}
-              </span>
-              <span className="text-red-500 text-xs ml-2">{r.submitted_at?.slice(0, 16).replace('T', ' ')}</span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
 
-function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: StatsResponse | null; reports: ReportListItem[]; onOpen: (id: string) => void }) {
+function Dashboard({ demo, data, reports, onOpen, queue, queueError, onOpenRecipient }: {
+  demo: boolean
+  data: StatsResponse | null
+  reports: ReportListItem[]
+  onOpen: (id: string) => void
+  queue: ReviewQueueItem[] | null
+  queueError: string | null
+  onOpenRecipient: (code: string) => void
+}) {
   if (!data) {
     return (
       <div className="flex justify-center py-16">
@@ -317,6 +293,9 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
         </div>
       )}
 
+      {/* 기관 첫 화면은 "지금 할 일과 이유"가 먼저다 — 실증 대시보드 요약은 그 아래. */}
+      <PriorityCareStrip reports={reports} today={data.today} onOpen={onOpen} queue={queue} queueError={queueError} onOpenRecipient={onOpenRecipient} />
+
       <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
         <div className="flex flex-wrap justify-between items-start gap-3">
           <div>
@@ -340,8 +319,6 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
           <p className="text-slate-400 text-sm mt-4">관리자 평가가 10건 이상 쌓이면 실증 요약 문장이 자동으로 표시됩니다.</p>
         )}
       </div>
-
-      <PriorityCareStrip reports={reports} today={data.today} onOpen={onOpen} />
 
       <details className="rounded-3xl bg-white border border-slate-100 shadow-sm">
         <summary className="cursor-pointer select-none p-5 font-bold text-slate-900">실증 지표 자세히 보기 (연구용)</summary>
@@ -648,29 +625,8 @@ function Dashboard({ demo, data, reports, onOpen }: { demo: boolean; data: Stats
   )
 }
 
-const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
-  { key: 'change', label: '관찰한 돌봄 상황' },
-  { key: 'action', label: '현장에서 한 조치' },
-  { key: 'result', label: '현재 상태' },
-  { key: 'escalation', label: '센터 확인사항' },
-  { key: 'caregiverNote', label: '요양보호사 상황·지원 요청 (발화 원문 발췌)' },
-]
-
 function emptyStructuredReport(): StructuredReport {
   return { change: '', action: '', result: '', escalation: '', caregiverNote: '' }
-}
-
-/** 관리자 화면 전반에서 시각을 사람이 바로 읽을 수 있는 형태로 보여준다("2026-09-
- * 12T02:14:22.716+00:00" 같은 원본 문자열을 그대로 노출하지 않는다) — 올해면 연도를
- * 생략해 더 짧게 보여준다. */
-function formatKoreanDateTime(iso: string | null | undefined): string {
-  if (!iso) return '-'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '-'
-  const sameYear = d.getFullYear() === new Date().getFullYear()
-  const datePart = d.toLocaleDateString('ko-KR', { year: sameYear ? undefined : 'numeric', month: 'long', day: 'numeric' })
-  const timePart = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
-  return `${datePart} ${timePart}`
 }
 
 /** "관리자 재확인·수정 시간"(사업계획서 핵심 실증 지표)의 원재료 — 열람 시각과
@@ -687,8 +643,15 @@ function formatElapsedMinutes(fromIso: string | null, toIso: string | null): str
   return `${Math.floor(minutes / 60)}시간 ${minutes % 60}분`
 }
 
-function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; id: string; onBack: () => void; onChanged: () => void }) {
+function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient }: {
+  repo: AdminRepo
+  id: string
+  onBack: () => void
+  onChanged: () => void
+  onOpenRecipient: (code: string) => void
+}) {
   const [report, setReport] = useState<ReportDetail | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -746,9 +709,27 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
   }
 
   useEffect(() => {
-    void load()
+    // 직접 주소로 열었는데 없는 보고·권한 밖 보고면 끝없이 로딩하지 않고 이유를 보여준다.
+    // (이 패널은 보고 id를 key로 새로 그려지므로 이전 오류를 지울 필요가 없다.)
+    load().catch((e) => {
+      const status = e instanceof ApiClientError ? e.status : (e as { status?: number })?.status
+      setLoadError(
+        status === 404 ? '보고를 찾을 수 없습니다(삭제됐거나 주소가 잘못됨).' : status === 403 ? '이 기관의 기록에 접근할 권한이 없습니다.' : '보고를 불러오지 못했습니다.',
+      )
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col gap-3">
+        <button onClick={onBack} className="text-slate-400 text-sm self-start">
+          ← 뒤로
+        </button>
+        <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{loadError}</p>
+      </div>
+    )
+  }
 
   if (!report) {
     return (
@@ -874,9 +855,14 @@ function ReportDetailPanel({ repo, id, onBack, onChanged }: { repo: AdminRepo; i
 
   return (
     <div className="flex flex-col gap-5">
-      <button onClick={onBack} className="text-slate-400 text-sm self-start">
-        ← 목록으로
-      </button>
+      <div className="flex justify-between items-center gap-2">
+        <button onClick={onBack} className="text-slate-400 text-sm">
+          ← 뒤로
+        </button>
+        <button onClick={() => onOpenRecipient(report.recipient_code)} className="text-teal-700 text-xs font-bold underline">
+          수급자 {report.recipient_code}의 기록 흐름 보기
+        </button>
+      </div>
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-bold text-slate-900">
           {report.participant_code} · {report.recipient_code} · {report.report_type === 'daily' ? '기본' : '추가'}
@@ -1441,15 +1427,51 @@ function PresentationView({ data, demo, status }: { data: StatsResponse; demo: b
 function AdminApp() {
   const demo = isDemoMode()
   const repo: AdminRepo = demo ? demoAdminRepo : realAdminRepo
-  const presentationRoute = window.location.pathname.startsWith('/admin/presentation')
+  // 화면 상태는 주소에 담는다 — 새로고침·직접 주소·뒤로가기가 같은 화면으로 돌아온다.
+  const [location, setLocation] = useState(() => ({ pathname: window.location.pathname, search: window.location.search }))
+  const route = parseAdminPath(location.pathname)
+  const presentationRoute = route.kind === 'presentation'
+  const tab: Tab =
+    route.kind === 'recipients' || route.kind === 'recipient'
+      ? 'recipients'
+      : route.kind === 'reports' || route.kind === 'report'
+        ? 'reports'
+        : route.kind === 'participants'
+          ? 'participants'
+          : 'dashboard'
 
   const [phase, setPhase] = useState<'loading' | 'login' | 'app'>('loading')
-  const [tab, setTab] = useState<Tab>('dashboard')
+  const [organization, setOrganization] = useState<Organization | null>(null)
   const [stats, setStats] = useState<StatsResponse | null>(null)
   const [liveReports, setLiveReports] = useState<ReportListItem[]>([])
-  const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
+  const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[] | null>(null)
+  const [reviewQueueError, setReviewQueueError] = useState<string | null>(null)
   const [presentationStatus, setPresentationStatus] = useState<'in_progress' | 'final'>('in_progress')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 서버가 세션 기관을 알려주지 않는 경우(구버전 응답)에도 화면이 멈추지 않게 이 배포의
+  // 기관으로 요청한다 — 권한 판단은 어차피 서버가 세션 기관과 대조해서 한다.
+  const orgId = organization?.id ?? DEPLOYMENT_ORGANIZATION.id
+
+  useEffect(() => {
+    const onPopState = () => setLocation({ pathname: window.location.pathname, search: window.location.search })
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  const go = (next: AdminRoute, extra?: Record<string, string>) => {
+    const url = adminUrl(next, window.location.search, extra)
+    window.history.pushState({ adminInApp: true }, '', url)
+    setLocation({ pathname: window.location.pathname, search: window.location.search })
+    window.scrollTo(0, 0)
+  }
+  // 앱 안에서 이동해 온 경우에만 브라우저 뒤로가기를 쓴다 — 직접 주소로 들어왔으면
+  // 뒤로가기가 사이트 밖으로 나가므로 대신 목록으로 보낸다.
+  const goBack = (fallback: AdminRoute) => {
+    if ((window.history.state as { adminInApp?: boolean } | null)?.adminInApp) window.history.back()
+    else go(fallback)
+  }
+  const openReport = (id: string) => go({ kind: 'report', id })
+  const openRecipient = (code: string) => go({ kind: 'recipient', orgId, code })
 
   const loadStats = () => {
     void Promise.all([repo.getStats(), repo.listReports('live')])
@@ -1458,13 +1480,26 @@ function AdminApp() {
         setLiveReports(r.filter((x) => x.status === 'submitted'))
       })
       .catch(() => undefined)
+    // 검토 대기 목록은 따로 불러온다 — 실패해도 기존 지표 화면은 그대로 뜨게.
+    void repo
+      .getRecipientHub(orgId)
+      .then((hub) => {
+        setReviewQueue(hub.reviewQueue)
+        setReviewQueueError(null)
+      })
+      .catch((e) => setReviewQueueError(e instanceof Error ? `검토 대기 목록을 불러오지 못했습니다: ${e.message}` : '검토 대기 목록을 불러오지 못했습니다.'))
+  }
+
+  const loadSession = async () => {
+    const session = await repo.getSession()
+    setOrganization(session.organization ?? null)
+    return session.authenticated
   }
 
   useEffect(() => {
     void (async () => {
       try {
-        const session = await repo.getSession()
-        setPhase(session.authenticated ? 'app' : 'login')
+        setPhase((await loadSession()) ? 'app' : 'login')
       } catch {
         setPhase('login')
       }
@@ -1480,10 +1515,11 @@ function AdminApp() {
       if (pollRef.current) clearInterval(pollRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
+  }, [phase, orgId])
 
   const handleLogin = async (password: string) => {
     await repo.login(password)
+    await loadSession().catch(() => undefined)
     setPhase('app')
   }
   const handleLogout = async () => {
@@ -1564,21 +1600,19 @@ function AdminApp() {
           </div>
         </div>
 
-        <div className="flex gap-2 border-b border-slate-200">
+        <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
           {(
             [
-              ['dashboard', '대시보드'],
-              ['reports', '보고 목록'],
-              ['participants', '참여자 관리'],
+              ['dashboard', '대시보드', { kind: 'dashboard' }],
+              ['recipients', '수급자', { kind: 'recipients', orgId }],
+              ['reports', '보고 목록', { kind: 'reports' }],
+              ['participants', '참여자 관리', { kind: 'participants' }],
             ] as const
-          ).map(([id, label]) => (
+          ).map(([id, label, target]) => (
             <button
               key={id}
-              onClick={() => {
-                setTab(id)
-                setSelectedReportId(null)
-              }}
-              className={`px-3 py-2 text-sm font-bold border-b-2 -mb-px ${tab === id ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-400'}`}
+              onClick={() => go(target)}
+              className={`px-3 py-2 text-sm font-bold border-b-2 -mb-px whitespace-nowrap ${tab === id ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-400'}`}
             >
               {label}
             </button>
@@ -1592,14 +1626,46 @@ function AdminApp() {
             DEMO DATA · 실제 실증 결과가 아닙니다
           </div>
         )}
-        {tab === 'dashboard' && <Dashboard demo={demo} data={stats} reports={liveReports} onOpen={(id) => { setTab('reports'); setSelectedReportId(id) }} />}
-        {tab === 'reports' &&
-          (selectedReportId ? (
-            <ReportDetailPanel repo={repo} id={selectedReportId} onBack={() => setSelectedReportId(null)} onChanged={loadStats} />
-          ) : (
-            <ReportsPanel repo={repo} onOpen={setSelectedReportId} />
-          ))}
-        {tab === 'participants' && <ParticipantsPanel repo={repo} />}
+        {route.kind === 'dashboard' && (
+          <Dashboard
+            demo={demo}
+            data={stats}
+            reports={liveReports}
+            onOpen={openReport}
+            queue={reviewQueue}
+            queueError={reviewQueueError}
+            onOpenRecipient={openRecipient}
+          />
+        )}
+        {route.kind === 'recipients' && <RecipientsPanel key={route.orgId} repo={repo} orgId={route.orgId} onOpenRecipient={openRecipient} />}
+        {route.kind === 'recipient' && (
+          <RecipientDetailPanel
+            key={`${route.orgId}/${route.code}`}
+            repo={repo}
+            orgId={route.orgId}
+            code={route.code}
+            period={parseTimelinePeriod(new URLSearchParams(location.search).get('period'))}
+            onChangePeriod={(p) => {
+              const url = adminUrl(route, window.location.search, { period: p })
+              window.history.replaceState(window.history.state, '', url)
+              setLocation({ pathname: window.location.pathname, search: window.location.search })
+            }}
+            onOpenReport={openReport}
+            onBackToList={() => go({ kind: 'recipients', orgId: route.orgId })}
+          />
+        )}
+        {route.kind === 'report' && (
+          <ReportDetailPanel
+            key={route.id}
+            repo={repo}
+            id={route.id}
+            onBack={() => goBack({ kind: 'reports' })}
+            onChanged={loadStats}
+            onOpenRecipient={openRecipient}
+          />
+        )}
+        {route.kind === 'reports' && <ReportsPanel repo={repo} onOpen={openReport} />}
+        {route.kind === 'participants' && <ParticipantsPanel repo={repo} />}
       </div>
       <div className="w-full max-w-5xl">
         <SafetyFooter />

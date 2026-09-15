@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ApiError, getQuery, requireMethod, withHandler } from '../_lib/http.js'
-import { requireAdminSession } from '../_lib/auth.js'
+import { requireAdminOrganization } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import { toCsv } from '../../shared/csv.js'
@@ -79,7 +79,7 @@ function fullExtraRow(r: Report): unknown[] {
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
     requireMethod(req, 'GET')
-    await requireAdminSession(req)
+    await requireAdminOrganization(req)
 
     const type = getQuery(req).get('type') === 'full' ? 'full' : 'summary'
 

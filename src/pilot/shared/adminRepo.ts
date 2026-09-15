@@ -1,6 +1,8 @@
 import { api, ApiClientError } from './api'
 import type { CareReportRecord, StructuredReport } from './types'
 import type { StatsResult } from '../../../shared/statsCalc'
+import type { Organization } from '../../../shared/organization'
+import type { RecipientSummary, RecipientTimeline, ReviewQueueItem, TimelinePeriod } from '../../../shared/recipientHub'
 
 export interface ParticipationCell {
   date: string
@@ -69,10 +71,27 @@ export class ReviewConflictError extends Error {
   }
 }
 
+export interface RecipientHubResponse {
+  organization: Organization
+  generatedAt: string
+  recipients: RecipientSummary[]
+  reviewQueue: ReviewQueueItem[]
+}
+
+export interface RecipientTimelineResponse {
+  organization: Organization
+  recipient: RecipientSummary
+  timeline: RecipientTimeline
+}
+
 export interface AdminRepo {
   login(password: string): Promise<void>
   logout(): Promise<void>
-  getSession(): Promise<{ authenticated: boolean }>
+  getSession(): Promise<{ authenticated: boolean; organization?: Organization | null }>
+  /** 기관 수급자 목록 + 검토 대기 목록. orgId가 세션 기관과 다르면 403. */
+  getRecipientHub(orgId: string): Promise<RecipientHubResponse>
+  /** 수급자 한 명의 보고 타임라인. 기관 범위 밖이면 403, 없는 수급자면 404. */
+  getRecipientTimeline(orgId: string, code: string, period: TimelinePeriod): Promise<RecipientTimelineResponse>
   getStats(): Promise<StatsResponse>
   listReports(source?: 'live' | 'scenario' | 'all'): Promise<ReportListItem[]>
   getReport(id: string): Promise<ReportDetail>
@@ -107,6 +126,14 @@ export const realAdminRepo: AdminRepo = {
   },
   async getSession() {
     return api.get('/api/admin/session')
+  },
+  async getRecipientHub(orgId) {
+    return api.get<RecipientHubResponse>(`/api/admin/recipients?org=${encodeURIComponent(orgId)}`)
+  },
+  async getRecipientTimeline(orgId, code, period) {
+    return api.get<RecipientTimelineResponse>(
+      `/api/admin/recipients?org=${encodeURIComponent(orgId)}&code=${encodeURIComponent(code)}&period=${period}`,
+    )
   },
   async getStats() {
     return api.get<StatsResponse>('/api/admin/stats')

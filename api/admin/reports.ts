@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ApiError, getQuery, readJsonBody, requireMethod, sendJson, withHandler } from '../_lib/http.js'
-import { requireAdminSession } from '../_lib/auth.js'
+import { requireAdminOrganization } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import type { StructuredReport } from '../../shared/careTypes.js'
@@ -28,7 +28,7 @@ function isStructuredReport(v: unknown): v is StructuredReport {
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
     requireMethod(req, 'GET', 'PATCH', 'DELETE')
-    await requireAdminSession(req)
+    await requireAdminOrganization(req)
     const supabase = getSupabaseAdmin()
 
     if (req.method === 'GET') {

@@ -1,3 +1,36 @@
+## 2026-09-15 — 돌봄 연속성 1단계: 기관 → 수급자 목록 → 수급자 상세(보고 타임라인)
+
+실행 기준: 사용자가 제공한 `AI365_Continuity_ClaudeCode_Plan_v2.md`(문서 자동화보다 관리자 조치·다음 방문 연결을
+먼저). 이번은 1단계만. 기준 origin/master 40e7c34, 브랜치 `claude/continuity-stage1-admin-hub`(메인 폴더의 미커밋
+"4차" 작업과 분리된 별도 워크트리). 착수 시 기존 구현 판정표와 상세는 [docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md).
+
+- 기관 범위: 관리자 세션 JWT에 기관 ID. `requireAdminOrganization`(api/_lib/auth.ts)이 모든 관리자 데이터 API에서
+  세션 기관을 확인하고 요청 `org`가 다르면 403. 기관 클레임 없는 기존 세션은 이 배포의 기관으로 읽는다.
+  `/api/admin/session`이 기관 정보를 함께 준다. 기관 정의 `shared/organization.ts`(배포 = 기관 한 곳).
+- 신규 `GET /api/admin/recipients`(읽기 전용): 수급자 목록·검토 대기 목록 / `?code=&period=7|30|all` 타임라인.
+  계산 `shared/recipientHub.ts`를 서버와 데모 저장소가 함께 쓴다.
+- 화면: 기관 첫 화면 맨 위에 "검토할 보고와 이유"(실제 보고·저장값 기반 이유·보고/수급자로 이동, 기존 숫자
+  타일·연구 지표 유지). "수급자" 탭(목록)과 수급자 상세(담당·검토 대기·최근 관찰·기간 선택·보고별 ① 원문
+  ② 구조화 ③ 관리자 검토·항목별 저장 상태). 보고 상세에 "수급자 기록 흐름 보기" 연결, 없는 보고·권한 밖이면
+  이유 표시. 화면 상태를 주소에 담아 새로고침·직접 URL·뒤로가기 동작(`src/pilot/admin/adminRoutes.ts`).
+- 표시 도우미 이동: `FIELD_LABELS`·`formatKoreanDateTime` → `adminFormat.ts`, `FallbackBadge`·`SpinnerIcon` →
+  `adminBadges.tsx`(동작 변경 없음, 두 화면이 함께 쓰기 위함).
+- 변경하지 않은 것: DB 스키마(마이그레이션 없음), 현장(/care) 흐름, 승인/반려 API·이력, 지표 정의
+  (information_added_count 포함), AI 호출, 문서 처리.
+- 발견(수정 안 함): 현재 현장 흐름은 `*_domains_json`(항목별 상태)을 저장하지 않는다 — 그래서 대부분 보고의
+  타임라인에는 "항목별 상태가 저장되지 않았습니다"가 보인다. 저장을 추가하면 현장 흐름·지표가 바뀌므로 별도 결정.
+
+### 검증
+`npx tsc -b` 0 오류, `npx vitest run` 147/147(신규: 서명된 세션으로 기관 범위 5건 — 기존 세션 호환·다른 기관
+403·알 수 없는 기관 403·세션 없음/위조 401, 수급자 허브 13건 — 저장값만 표시·검토 이유·연습/삭제/임시저장 제외·
+정렬·기간·원문/구조화/검토 분리, 주소 규칙 3건). `npx oxlint` 경고 4(기존과 동일), `npx vite build` 성공.
+e2e(데모 모드, Chromium mobile-390/360): 신규 `recipient-hub.spec.ts` 6/6(두 화면 크기). 전체 스위트 74건 중 63 통과·
+11 실패 — 실패분을 기준 커밋 40e7c34(변경 전 코드) 별도 워크트리에서 같은 명령으로 재실행해 대조했다:
+`companion-redesign:12`·`multi-recipient-flow:13`(각 2화면)은 기준 커밋에서도 같은 오류로 실패(기존 결함, 이번 변경과
+무관). 나머지(`care-flow:42/55`, `permission-flow:18`, `persistence-flow:32`)는 기준·변경 양쪽에서 25~29초 걸리는 테스트가
+30초 제한을 화면 크기별로 번갈아 넘긴 것이며, 변경 브랜치에서 60초 제한으로 단독 재실행 시 4/4 통과했다.
+운영 DB 쓰기 검증은 하지 않았다(관리자 자격증명·시험 영역 없음).
+
 ## 2026-09-12 (3차) — Gemini 호출 경로에 Vertex AI 옵션 추가 (기존 API 키 경로와 병행)
 
 Master가 "실제 사용량만큼 과금되는" Vertex AI로 전환을 요청했다(ChatGPT/Astra급
