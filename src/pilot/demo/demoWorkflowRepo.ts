@@ -28,6 +28,7 @@ import {
 import { toCenterRequestView, type CenterRequestView, type CenterResponseResult } from '../../../shared/fieldRequests'
 import { DEPLOYMENT_ORGANIZATION } from '../../../shared/organization'
 import { demoAllReports, demoAssignmentMap, demoGetReport, demoReadWorkflow, demoWriteWorkflow, newDemoId } from './demoStore'
+import { demoActionBaselineFields } from './demoBaselineRepo'
 
 /** 데모 모드의 관리자 업무(2·3단계). 실서버와 같은 규칙(shared/workflow.ts)을 쓰고, 실DB 함수가
  * 하는 확인(중복 요청·버전 충돌·근거 보고/판단의 수급자 일치·응답 권한·늦은 응답)을 같은 계약으로
@@ -51,6 +52,7 @@ export function demoWorkflowReady(): boolean {
 
 export function demoFieldRequestsReady(): boolean {
   return demoWorkflowReady() && flag() !== 'stage2'
+  // 'stage3'(4단계만 미적용)에서는 3단계 기능이 켜져 있다 — demoBaselineRepo.ts 참고.
 }
 
 function orgId(): string {
@@ -193,6 +195,7 @@ export function demoGetAction(actionId: string): ActionDetailView {
         : [],
       verifications: rc ? wf.verifications.filter((v) => v.action_id === actionId) : [],
       assignees: assigneesByRecipient()[action.recipient_code] ?? [],
+      ...demoActionBaselineFields(actionId, action.recipient_code),
     }
   })
 }

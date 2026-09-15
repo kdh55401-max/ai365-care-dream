@@ -23,6 +23,14 @@ import {
   demoWorkBoard,
 } from './demoWorkflowRepo'
 import {
+  demoBaselineOp,
+  demoDocumentFileUrl,
+  demoGetRecipientBaseline,
+  demoLinkActionBaseline,
+  demoUnlinkActionBaseline,
+  demoUploadDocument,
+} from './demoBaselineRepo'
+import {
   demoAssignmentMap,
   DEMO_PIN,
   DEMO_RECIPIENT_CODES,
@@ -129,6 +137,32 @@ export const demoAdminRepo: AdminRepo = {
   async mutateAction(orgId, input) {
     demoOrganization(orgId)
     return demoMutateAction(input)
+  },
+  async getRecipientBaseline(orgId, recipientCode) {
+    demoOrganization(orgId)
+    return demoGetRecipientBaseline(recipientCode)
+  },
+  async uploadDocument(orgId, input, file) {
+    demoOrganization(orgId)
+    return demoUploadDocument(input, file)
+  },
+  async documentFileUrl(orgId, documentId) {
+    demoOrganization(orgId)
+    return demoDocumentFileUrl(documentId)
+  },
+  async baselineOp(orgId, input) {
+    demoOrganization(orgId)
+    return demoBaselineOp(input)
+  },
+  async linkActionBaseline(orgId, input) {
+    demoOrganization(orgId)
+    demoLinkActionBaseline(input)
+    return demoGetAction(input.actionId)
+  },
+  async unlinkActionBaseline(orgId, input) {
+    demoOrganization(orgId)
+    demoUnlinkActionBaseline(input)
+    return demoGetAction(input.actionId)
   },
   async getStats(): Promise<StatsResponse> {
     const rows = demoAllReports()

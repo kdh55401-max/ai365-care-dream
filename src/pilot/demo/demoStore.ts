@@ -1,5 +1,6 @@
 import { normalizeReportRecord, type CareReportRecord } from '../../../shared/careTypes.js'
 import type { ActionEvent, ActionObligation, ActionVerification, AdminDecision, CareAction, FieldRequest, FieldResponse, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
+import type { ActionBaselineLink, BaselineEntry, ReferenceChoice, SourceDocument } from '../../../shared/baseline.js'
 
 /** 데모 모드 전용 저장소. Supabase/Gemini 없이도 /care?demo=1, /admin?demo=1 화면
  * 전체 흐름을 즉시 시연할 수 있도록 브라우저 localStorage에만 저장한다.
@@ -78,7 +79,19 @@ export interface DemoWorkflow {
   fieldRequests: FieldRequest[]
   fieldResponses: FieldResponse[]
   verifications: ActionVerification[]
+  /** 4단계(없으면 빈 것으로 본다). 원본 파일 바이트는 DEMO_FILES_KEY에 따로 둔다. */
+  baseline?: DemoBaseline
 }
+
+export interface DemoBaseline {
+  documents: SourceDocument[]
+  entries: BaselineEntry[]
+  choices: ReferenceChoice[]
+  links: ActionBaselineLink[]
+}
+
+/** 데모 원본 파일(base64) — 이 브라우저에만 저장되고 서버로 보내지 않는다. */
+export const DEMO_FILES_KEY = 'ai365_care_demo_files_v1'
 
 interface DemoDb {
   reports: CareReportRecord[]
@@ -138,6 +151,11 @@ function writeDb(db: DemoDb) {
 
 export function resetDemoData() {
   writeDb(emptyDb())
+  try {
+    localStorage.removeItem(DEMO_FILES_KEY)
+  } catch {
+    // 저장 공간을 쓸 수 없어도 초기화 진행은 막지 않는다.
+  }
 }
 
 export function subscribeDemoUpdates(onChange: () => void): () => void {

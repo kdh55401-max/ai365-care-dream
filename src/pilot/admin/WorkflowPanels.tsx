@@ -38,6 +38,7 @@ import { REQUEST_WAIT_LABELS, ROUTING_PROBLEM_LABELS } from '../../../shared/fie
 import { formatDue, formatKoreanDateTime } from './adminFormat'
 import { SpinnerIcon } from './adminBadges'
 import { ActionSummaryRow } from './ActionSummaryRow'
+import { ActionBaselineSection } from './BaselinePanels'
 
 /** 관리자 판단·안전 검토·조치(2단계) 화면. 저장은 모두 요청 식별자(재시도 중복 방지)와
  * 버전/최신 기록 대조(동시 수정 충돌)를 거친다. 실패해도 입력값은 지우지 않는다. */
@@ -541,6 +542,8 @@ const EVENT_LABELS: Record<ActionEventType, string> = {
   retargeted: '요청 대상 변경',
   response_received: '현장 응답 도착',
   verified: '관리자 결과 확인',
+  baseline_linked: '근거 기준정보 연결',
+  baseline_unlinked: '근거 기준정보 연결 해제',
 }
 
 type Mode =
@@ -630,6 +633,7 @@ function describeEvent(e: ActionEvent, responses: FieldResponse[]): string {
     const status = d.response_status ? ` · ${RESPONSE_STATUS_LABELS[d.response_status as FieldResponse['response_status']]}` : ''
     return `${who}${status}${d.late ? ' · 늦은 응답(기록만)' : d.fulfilled_obligation ? ' · 현장 응답 대기 해소' : ' · 추가 응답'}`
   }
+  if (e.event_type === 'baseline_linked' && typeof d.entry_version === 'number') return ` · 기준정보 v${d.entry_version}(연결 당시 버전)`
   if (e.event_type === 'verified') {
     const outcome = d.outcome ? VERIFICATION_OUTCOME_LABELS[d.outcome as VerificationOutcome] : ''
     return ` · ${outcome}${d.closes_action ? ' · 종결' : d.new_cycle ? ` · 추가 확인(주기 ${d.new_cycle})` : ''}`
@@ -1281,6 +1285,8 @@ export function ActionDetailPanel({
           </ol>
         </section>
       )}
+
+      <ActionBaselineSection repo={repo} orgId={orgId} view={view} onUpdated={setFresh} onOpenRecipient={onOpenRecipient} />
 
       {view.linkedSafetyReviews.length > 0 && (
         <section className="rounded-2xl bg-white border border-slate-100 p-4">

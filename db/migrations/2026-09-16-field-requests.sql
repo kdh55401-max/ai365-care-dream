@@ -35,7 +35,9 @@ alter table care_actions add constraint care_actions_field_message_status_check
 alter table action_events drop constraint if exists action_events_event_type_check;
 alter table action_events add constraint action_events_event_type_check
   check (event_type in ('created', 'activated', 'updated', 'due_changed', 'completed', 'cancelled', 'reopened',
-                        'published', 'withdrawn', 'retargeted', 'response_received', 'verified'));
+                        'published', 'withdrawn', 'retargeted', 'response_received', 'verified',
+                        -- 4단계(2026-09-17) 값도 미리 허용 — 4단계 적용 뒤 이 파일을 다시 실행해도 제약 재생성이 실패하지 않게
+                        'baseline_linked', 'baseline_unlinked'));
 
 -- ── 2. 현장 요청(관리자가 명시적으로 게시한 인계) ────────────────────────────
 create table if not exists field_requests (

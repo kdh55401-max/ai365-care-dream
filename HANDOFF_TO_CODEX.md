@@ -1,3 +1,39 @@
+## 2026-09-15 (4차) — 돌봄 연속성 4단계: 기준문서 원본 · 관리자 확인 기준정보 · 조치 근거
+
+목적·기대 동작: 관리자가 수급자별 원본 문서(급여제공계획서·이용계획서·평가 자료 등)를 비공개로 올리고, 원본을 보며 기준정보를 입력·확인해
+관찰 표시와 조치의 근거로 잇는다. 계획·목표와 관찰·평가 결과를 구분하고, 빈 값은 null, 상충 값은 출처별 보존 + 관리자 참고값 선택,
+정식 척도는 필수 항목이 다 있을 때만, 과거 항목 태그는 "항목별 근거 연결 전". 기준정보는 선택 사항이다. 설계·규칙·DB 적용 절차는
+[docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md) §7.
+
+기준: origin/master 7578892 → 브랜치 `claude/continuity-stage4-baseline-docs`(워크트리 `.claude/worktrees/continuity-stage1`).
+
+**기존 업로드·스토리지 기능은 저장소 어디에도 없었다** — "재사용" 대신 이미 쓰는 Supabase 프로젝트의 비공개 Storage 버킷을 서버(Service Role)만 쓰게 했다.
+**DB: `db/migrations/2026-09-17-source-documents.sql` 은 이 환경에서 운영 Supabase에 적용하지 못했다(접근 권한 없음).** 2단계 → 3단계 → 이 파일 순서.
+적용 전 운영 화면은 기준정보를 "준비 중"으로 끄고 서버는 저장을 503으로 거부한다. 버킷 생성·파일 올리기·내려받기는 운영에서 처음 확인해야 한다.
+
+수정 파일:
+- 공통 규칙: `shared/baseline.ts`(신규 — 문서 등록·철회, 기준정보 저장·확인·철회, 참고값, 조치 연결, 파일 형식 판정, 화면용 묶음·상충 계산),
+  `shared/workflow.ts`(이벤트 종류 2개), `shared/workflowViews.ts`(조치 상세에 근거 연결)
+- DB: `db/migrations/2026-09-17-source-documents.sql`(신규 — 테이블 4·불변 트리거·`baseline_apply`·비공개 버킷·권한)
+- 서버: `api/_lib/baselineStore.ts`(신규 — 준비 여부·비공개 버킷 입출력·원본 본문 읽기), `api/admin/workflow.ts`(원본 올리기·원본 보기·기준정보·근거 연결)
+- 화면: `src/pilot/admin/BaselinePanels.tsx`(신규), `RecipientHub.tsx`(기준정보 섹션·항목 태그 표시), `WorkflowPanels.tsx`(근거 기준정보 섹션·이력 라벨), `adminRoutes.ts`
+- 데모: `src/pilot/demo/demoBaselineRepo.ts`(신규 — `?demo_workflow=stage3`), `demoStore.ts`, `demoAdminRepo.ts`, `demoWorkflowRepo.ts`, `src/pilot/shared/adminRepo.ts`
+- 테스트: `shared/baseline.test.ts`(10), `api/_lib/baselineMigration.test.ts`(8, PGlite), `e2e/baseline-docs.spec.ts`(5), 3단계 PGlite 테스트의 느린 한 건에 제한시간 지정
+- 문서: `docs/CONTINUITY_STAGES.md`(§7), `CHANGE_LOG.md`, `MASTER_CONTEXT.md`
+
+직접 수행한 검증: tsc 0 오류, vitest 214/214(신규 19: 4단계 규칙·상충·버전·파일 판정 10 + 마이그레이션 PGlite 9, 3단계 PGlite 느린 한 건에 제한시간 지정), oxlint 경고 4(기존과 동일), vite build 성공(번들 636KB, Vite 500KB 권고 경고). Vercel 함수 12개 유지.
+e2e(데모, Chromium mobile-390/360, 제한 60초): 104건 중 100 통과. 실패 4건은 `companion-redesign.spec.ts:12`·`multi-recipient-flow.spec.ts:13`(각 2화면)으로 1~3단계 때와 같은 기존 결함(같은 오류). 신규 `baseline-docs.spec.ts` 5건×2화면 모두 통과: 원본 올리기(기준일 미기재 유지·출처·원본 보기) → 문서로 입력·관리자 확인(관찰·계획 구분) → 조치 근거 연결 → 기준정보 v2 수정 뒤에도 조치에 판단 당시 v1 / 상충 값 보존·참고값 선택·정식 척도 필수 항목 거부(입력 유지) / 형식이 틀린 파일 저장 안 됨·문서 철회 뒤 원본·기준정보 보존 / 과거 항목 태그 "항목별 근거 연결 전"·보고 전체 열기·평소 기준 이동 / 4단계 DB 적용 전 '준비 중'과 기준정보 없이 조치·현장 요청 게시. 기존 `field-requests`·`admin-workflow`·`recipient-hub` 스펙도 통과. 새 화면(기준정보 섹션·입력 양식)은 390px 스크린샷으로 직접 확인했다.
+
+확인할 화면(데모): `/admin/org/gadream365/recipients/A01?demo=1`의 "기준문서 · 기준정보"(문서 올리기 → 이 문서로 기준정보 입력 → 저장하고 관리자 확인,
+상충 상자, 고치기(새 버전), 철회) → 조치 상세 "근거 기준정보"(연결 → 기준정보 수정 뒤 "판단 당시 v1"). `?demo_workflow=stage3`는 4단계 DB 적용 전 흉내.
+
+검토 요청(Codex): (1) `handleUpload`의 "파일 저장 → 기록 저장 → 실패 시 기록이 실제로 없을 때만 파일 삭제"가 부분 저장을 남기지 않는지,
+(2) `baseline_apply`의 버전·최신 여부·기관/수급자 확인이 경합에서 충분한지, (3) 원본 보기 응답 헤더(nosniff·no-store·inline)와 매직 바이트 판정,
+(4) 비공개 버킷·테이블 권한이 브라우저 키에 열리지 않는지.
+
+한계: 파일 4MB(Vercel 요청 한도). OCR·자동 추출 없음. 잘못 올린 문서는 철회만(물리 삭제는 사용자 결정). 데모 원본은 브라우저 저장공간 1MB.
+운영 Supabase(Storage·PostgREST)는 확인하지 못했다.
+
 ## 2026-09-15 (3차) — 돌봄 연속성 3단계: 현장 요청 게시 → 현장 응답 → 관리자 결과 확인 · 종결
 
 목적·기대 동작: 관리자가 확인해 게시한 현장 확인 요청이 수급자의 현재 담당(또는 지정한) 요양보호사 화면에 뜨고, 요양보호사는

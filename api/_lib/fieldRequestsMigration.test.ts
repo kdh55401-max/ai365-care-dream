@@ -107,7 +107,7 @@ describe('3단계 마이그레이션 적용 순서', () => {
     const bare = new PGlite()
     await bare.exec(read('db/schema.sql'))
     await expect(bare.exec(read('db/migrations/2026-09-16-field-requests.sql'))).rejects.toThrow(/2단계/)
-  })
+  }, 60_000) // 빈 Postgres를 새로 띄워 느리다(다른 PGlite 테스트와 병렬)
 })
 
 describe('관리자 요청 → 현장 응답 → 관리자 결과 확인 → 종결 (DB id 연결)', () => {

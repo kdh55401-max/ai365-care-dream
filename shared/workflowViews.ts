@@ -26,6 +26,7 @@ import {
   type VerificationOutcome,
 } from './workflow.js'
 import { requestWaitState, routingProblem, type RequestWaitState, type RoutingProblem } from './fieldRequests.js'
+import type { ActionBaselineLinkView, BaselineOption } from './baseline.js'
 
 export interface ObligationView {
   id: string
@@ -225,6 +226,10 @@ export interface ActionDetailView {
   verifications: ActionVerification[]
   /** 게시·대상 변경에 쓰는 현재 활성 배정 요양보호사. */
   assignees: string[]
+  /** 4단계: 기준정보 저장소 준비 여부와 이 조치의 근거 연결(연결 당시 버전) · 연결할 수 있는 확인된 값. */
+  baselineReady: boolean
+  baselineLinks: ActionBaselineLinkView[]
+  baselineOptions: BaselineOption[]
 }
 
 export interface RecipientWorkflowView {

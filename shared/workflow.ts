@@ -271,6 +271,9 @@ export type ActionEventType =
   | 'retargeted'
   | 'response_received'
   | 'verified'
+  // 4단계: 기준정보 근거 연결·해제(조치 상태·버전은 바꾸지 않는다)
+  | 'baseline_linked'
+  | 'baseline_unlinked'
 
 export interface ActionEvent {
   id: string

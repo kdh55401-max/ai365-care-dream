@@ -6,6 +6,16 @@ import type { RecipientSummary, RecipientTimeline, ReviewQueueItem, TimelinePeri
 import type { WorkBoard } from '../../../shared/workBoard'
 import type { ActionMutationInput, CreateActionInput, DecisionInput, SafetyReviewInput } from '../../../shared/workflow'
 import type { ActionDetailView, ActionFilter, ActionSummary, RecipientWorkflowView, ReportWorkflowView } from '../../../shared/workflowViews'
+import type {
+  ChooseReferenceInput,
+  LinkActionInput,
+  RecipientBaselineView,
+  RegisterDocumentInput,
+  SaveEntryInput,
+  SetEntryStatusInput,
+  SourceDocument,
+  WithdrawDocumentInput,
+} from '../../../shared/baseline'
 
 export interface ParticipationCell {
   date: string
@@ -106,6 +116,21 @@ export type SafetyReviewRequest = SafetyReviewInput
 export type CreateActionRequest = CreateActionInput
 export type MutateActionRequest = ActionMutationInput
 
+/** 4단계 기준정보 요청(원본 올리기는 파일과 함께 따로 보낸다). */
+export type BaselineOpRequest =
+  | ({ baselineOp: 'withdraw_document' } & WithdrawDocumentInput)
+  | ({ baselineOp: 'save_entry' } & SaveEntryInput)
+  | ({ baselineOp: 'set_entry_status' } & SetEntryStatusInput)
+  | ({ baselineOp: 'choose_reference' } & ChooseReferenceInput)
+export type UploadDocumentRequest = Omit<RegisterDocumentInput, 'originalFilename'>
+export interface UnlinkActionBaselineRequest {
+  actionId: string
+  linkId: string
+  reason: string
+  requestId: string
+  enteredByLabel?: string | null
+}
+
 /** 업무 저장 실패(409 충돌·503 준비 전 등). 입력값은 호출부가 지우지 않고 유지한다. */
 export class WorkflowRequestError extends Error {
   status: number
@@ -132,6 +157,15 @@ export interface AdminRepo {
   recordSafetyReview(orgId: string, input: SafetyReviewRequest): Promise<ReportWorkflowView>
   createAction(orgId: string, input: CreateActionRequest): Promise<ActionDetailView>
   mutateAction(orgId: string, input: MutateActionRequest): Promise<ActionDetailView>
+  /** 4단계: 수급자 기준문서·기준정보. 저장소 준비 전이면 ready:false(가짜 0 없음). */
+  getRecipientBaseline(orgId: string, recipientCode: string): Promise<RecipientBaselineView>
+  /** 원본 올리기 — 같은 requestId로 다시 보내면 한 벌만 저장된다. */
+  uploadDocument(orgId: string, input: UploadDocumentRequest, file: File): Promise<{ document: SourceDocument; baseline: RecipientBaselineView }>
+  /** 원본을 새 창에서 열 주소(관리자 세션 필요). */
+  documentFileUrl(orgId: string, documentId: string): Promise<string>
+  baselineOp(orgId: string, input: BaselineOpRequest): Promise<RecipientBaselineView>
+  linkActionBaseline(orgId: string, input: LinkActionInput): Promise<ActionDetailView>
+  unlinkActionBaseline(orgId: string, input: UnlinkActionBaselineRequest): Promise<ActionDetailView>
   getStats(): Promise<StatsResponse>
   listReports(source?: 'live' | 'scenario' | 'all'): Promise<ReportListItem[]>
   getReport(id: string): Promise<ReportDetail>
@@ -168,6 +202,17 @@ async function workflowPost<T>(orgId: string, body: Record<string, unknown>): Pr
     if (e instanceof ApiClientError) throw new WorkflowRequestError(e.status, e.message)
     throw e
   }
+}
+
+async function sha256Hex(data: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(digest), (x) => x.toString(16).padStart(2, '0')).join('')
+}
+
+function base64Utf8(text: string): string {
+  let bin = ''
+  for (const byte of new TextEncoder().encode(text)) bin += String.fromCharCode(byte)
+  return btoa(bin)
 }
 
 export const realAdminRepo: AdminRepo = {
@@ -212,6 +257,42 @@ export const realAdminRepo: AdminRepo = {
     // 조치 변경 종류(input.op)는 body의 mutation 필드로 옮기고, 요청 종류는 mutate_action으로 둔다.
     const { op, ...rest } = input
     return workflowPost<ActionDetailView>(orgId, { ...rest, op: 'mutate_action', mutation: op })
+  },
+  async getRecipientBaseline(orgId, recipientCode) {
+    return api.get<RecipientBaselineView>(`${workflowUrl(orgId)}&view=baseline&code=${encodeURIComponent(recipientCode)}`)
+  },
+  async uploadDocument(orgId, input, file) {
+    const bytes = await file.arrayBuffer()
+    const meta = { ...input, originalFilename: file.name, sha256: await sha256Hex(bytes) }
+    let res: Response
+    try {
+      res = await fetch(`${workflowUrl(orgId)}&op=upload_document`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/octet-stream', 'x-document-meta': base64Utf8(JSON.stringify(meta)) },
+        body: bytes,
+      })
+    } catch {
+      throw new WorkflowRequestError(0, '연결이 끊겨 올렸는지 확인하지 못했습니다. 같은 파일로 다시 시도하면 한 번만 저장됩니다.')
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      const message = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : `올리기에 실패했습니다 (${res.status})`
+      throw new WorkflowRequestError(res.status, message)
+    }
+    return data as { document: SourceDocument; baseline: RecipientBaselineView }
+  },
+  async documentFileUrl(orgId, documentId) {
+    return `${workflowUrl(orgId)}&view=document_file&id=${encodeURIComponent(documentId)}`
+  },
+  async baselineOp(orgId, input) {
+    return workflowPost<RecipientBaselineView>(orgId, { ...input, op: 'baseline' })
+  },
+  async linkActionBaseline(orgId, input) {
+    return workflowPost<ActionDetailView>(orgId, { ...input, op: 'link_baseline' })
+  },
+  async unlinkActionBaseline(orgId, input) {
+    return workflowPost<ActionDetailView>(orgId, { ...input, op: 'unlink_baseline' })
   },
   async getStats() {
     return api.get<StatsResponse>('/api/admin/stats')

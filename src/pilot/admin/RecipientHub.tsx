@@ -7,6 +7,8 @@ import { FallbackBadge, SpinnerIcon } from './adminBadges'
 import { ActionSummaryRow } from './ActionSummaryRow'
 import { DECISION_LABELS, SAFETY_OUTCOME_LABELS } from '../../../shared/workflow'
 import type { RecipientWorkflowView } from '../../../shared/workflowViews'
+import type { RecipientBaselineView } from '../../../shared/baseline'
+import { RecipientBaselineSection } from './BaselinePanels'
 
 /** 관리자 수급자 허브 — 기관 → 수급자 목록 → 수급자 상세(보고 타임라인)와 기관 첫
  * 화면의 "검토할 보고" 목록. 계산은 shared/recipientHub.ts(서버·데모 공통)가 하고
@@ -209,7 +211,18 @@ function sameStructured(a: StructuredReport | null, b: StructuredReport | null):
 }
 
 /** workflow: undefined = 업무 저장소 준비 전(표시 안 함), null = 준비됐지만 이 보고에 기록 없음. */
-function TimelineCard({ entry, onOpenReport, workflow }: { entry: TimelineEntry; onOpenReport: (id: string) => void; workflow?: RecipientWorkflowView['byReport'][string] | null }) {
+function TimelineCard({
+  entry,
+  onOpenReport,
+  workflow,
+  baselineDomains,
+}: {
+  entry: TimelineEntry
+  onOpenReport: (id: string) => void
+  workflow?: RecipientWorkflowView['byReport'][string] | null
+  /** 관리자 확인된 기준정보가 있는 세부 영역(관찰 표시에서 평소 기준으로 이동). */
+  baselineDomains?: Set<string>
+}) {
   const pending = entry.review.status === 'pending'
   const { structured, review } = entry
   return (
@@ -248,22 +261,36 @@ function TimelineCard({ entry, onOpenReport, workflow }: { entry: TimelineEntry;
         {entry.observations.length === 0 ? (
           <p className="text-xs text-slate-400">이 보고에는 항목별 상태가 저장되지 않았습니다 — 정상·이상으로 해석하지 않습니다.</p>
         ) : (
-          <ul className="flex flex-wrap gap-1">
-            {entry.observations.map((o) => (
-              <li
-                key={`${o.domain}-${o.status}`}
-                className={`text-[11px] px-2 py-0.5 rounded-full border ${
-                  o.status === 'changed'
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : o.status === 'same_as_usual'
-                      ? 'bg-teal-50 border-teal-100 text-teal-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-600'
-                }`}
-              >
-                {o.label}: {o.statusLabel}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-wrap gap-1">
+              {entry.observations.map((o) => (
+                <li key={`${o.domain}-${o.status}`} className="flex items-center gap-0.5">
+                  {/* 저장된 태그에는 항목별 근거 문장이 없다 — 보고 전체를 근거로 연다(문장을 만들어 붙이지 않음). */}
+                  <button
+                    onClick={() => onOpenReport(entry.reportId)}
+                    title="항목별 근거 연결 전 — 보고 전체 열기"
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                      o.status === 'changed'
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : o.status === 'same_as_usual'
+                          ? 'bg-teal-50 border-teal-100 text-teal-800'
+                          : 'bg-slate-50 border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {o.label}: {o.statusLabel}
+                  </button>
+                  {baselineDomains?.has(o.domain) && (
+                    <a href={`#baseline-domain-${o.domain}`} className="text-[10px] text-teal-700 underline">
+                      평소 기준
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[10px] text-slate-400 mt-0.5" data-testid="item-evidence-note">
+              항목별 근거 연결 전 — 이 표시는 보고 전체를 근거로 합니다(원문에서 항목별 문장을 따로 연결하지 않았습니다). 표시를 누르면 보고 전체가 열립니다.
+            </p>
+          </>
         )}
       </div>
 
@@ -392,6 +419,23 @@ export function RecipientDetailPanel({
     }
   }, [repo, orgId, code, period, requestKey])
 
+  // 4단계 기준문서·기준정보 — 타임라인과 따로 불러와, 준비 전·실패해도 기록 흐름은 그대로 보인다.
+  const [baselineReload, setBaselineReload] = useState(0)
+  const baselineKey = `${orgId}|${code}|${baselineReload}`
+  const [baseline, setBaseline] = useState<{ key: string; view?: RecipientBaselineView; error?: string } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    repo
+      .getRecipientBaseline(orgId, code)
+      .then((view) => !cancelled && setBaseline({ key: baselineKey, view }))
+      .catch((e) => !cancelled && setBaseline({ key: baselineKey, error: errorMessage(e, '기준정보를 불러오지 못했습니다.') }))
+    return () => {
+      cancelled = true
+    }
+  }, [repo, orgId, code, baselineKey])
+  const baselineView = baseline?.key === baselineKey ? baseline.view : undefined
+  const baselineDomains = new Set(baselineView?.lineages.filter((l) => l.effective && l.domain).map((l) => l.domain as string) ?? [])
+
   const current = result?.key === requestKey ? result : null
   const data = current?.data ?? null
   const error = current?.error ?? null
@@ -485,6 +529,16 @@ export function RecipientDetailPanel({
         )}
       </section>
 
+      <RecipientBaselineSection
+        repo={repo}
+        orgId={orgId}
+        recipientCode={recipient.code}
+        view={baseline?.key === baselineKey ? (baseline.view ?? null) : null}
+        error={baseline?.key === baselineKey ? (baseline.error ?? null) : null}
+        onChanged={(view) => setBaseline({ key: baselineKey, view })}
+        onReload={() => setBaselineReload((k) => k + 1)}
+      />
+
       <div className="flex flex-col gap-1.5">
         <div className="flex gap-2" role="group" aria-label="조회 기간">
           {PERIOD_OPTIONS.map((p) => (
@@ -529,7 +583,13 @@ export function RecipientDetailPanel({
         <div className="flex flex-col gap-3">
           <p className="text-slate-500 text-xs">보고 {timeline.entries.length}건 · 최신 제출이 위</p>
           {timeline.entries.map((entry) => (
-            <TimelineCard key={entry.reportId} entry={entry} onOpenReport={onOpenReport} workflow={data.workflow.workflowReady ? (data.workflow.byReport[entry.reportId] ?? null) : undefined} />
+            <TimelineCard
+              key={entry.reportId}
+              entry={entry}
+              onOpenReport={onOpenReport}
+              workflow={data.workflow.workflowReady ? (data.workflow.byReport[entry.reportId] ?? null) : undefined}
+              baselineDomains={baselineDomains}
+            />
           ))}
         </div>
       )}

@@ -7,6 +7,43 @@ import { logAudit } from '../_lib/audit.js'
 import { todayKstDateString } from '../_lib/date.js'
 import { callWorkflowRpc, fetchAll, loadActionState, loadWorkflowRows, workflowReady, type RpcResult } from '../_lib/workflowStore.js'
 import { fieldRequestsReady, loadAssigneesByRecipient, loadFieldRows } from '../_lib/fieldRequestsStore.js'
+import {
+  baselineReady,
+  callBaselineRpc,
+  findDocumentByRequest,
+  getOriginal,
+  loadActionLinks,
+  loadDocument,
+  loadEntry,
+  loadLineage,
+  loadRecipientBaselineRows,
+  putOriginal,
+  readRawBody,
+  removeOriginal,
+  sha256Hex,
+  storageReady,
+} from '../_lib/baselineStore.js'
+import {
+  buildActionBaseline,
+  buildRecipientBaseline,
+  detectDocumentMime,
+  emptyBaselineView,
+  planChooseReference,
+  planLinkAction,
+  planRegisterDocument,
+  planSaveEntry,
+  planSetEntryStatus,
+  planUnlinkAction,
+  planWithdrawDocument,
+  type ChooseReferenceInput,
+  type LinkActionInput,
+  type RecipientBaselineView,
+  type RegisterDocumentInput,
+  type SaveEntryInput,
+  type SetEntryStatusInput,
+  type SourceDocument,
+  type WithdrawDocumentInput,
+} from '../../shared/baseline.js'
 import type { CareReportRecord } from '../../shared/careTypes.js'
 import type { Organization } from '../../shared/organization.js'
 import {
@@ -20,6 +57,7 @@ import {
 } from '../../shared/recipientHub.js'
 import { buildWorkBoard } from '../../shared/workBoard.js'
 import {
+  ADMIN_ACTOR_SCOPE,
   FIELD_REQUEST_OPS,
   latestBy,
   planActionMutation,
@@ -50,7 +88,8 @@ import {
 const RECIPIENT_CODE_PATTERN = /^[A-Z0-9]{1,10}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** 관리자 업무 API — 1단계 수급자 허브(조회), 2단계 판단·조치·안전 검토, 3단계 현장 요청 게시·결과 확인을 한 곳에서.
+/** 관리자 업무 API — 1단계 수급자 허브(조회), 2단계 판단·조치·안전 검토, 3단계 현장 요청 게시·결과 확인,
+ * 4단계 기준문서·기준정보를 한 곳에서.
  * (Vercel 무료 요금제의 배포당 함수 12개 한도 때문에 파일을 늘리지 않고 이 한 함수로 묶었다.)
  *
  * 모든 요청은 관리자 세션 + 세션 기관 확인(requireAdminOrganization). 요청의 org가 다르면 403.
@@ -59,6 +98,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * 3단계 테이블(db/migrations/2026-09-16-field-requests.sql)이 없으면 fieldRequestsReady:false,
  * 게시·철회·대상 변경·결과 확인(mutate_action의 publish|withdraw|retarget|verify)은 503.
  * 현장 응답 자체는 요양보호사 보고 제출(api/care/reports.ts)에서 들어온다.
+ * 4단계 테이블·비공개 버킷(db/migrations/2026-09-17-source-documents.sql)이 없으면 기준정보 조회는 ready:false,
+ * 올리기·입력은 503. 기준정보가 없어도 조치·현장 요청은 그대로 쓴다(필수 관문이 아님).
  *
  * GET  ?org=&view=recipients                      수급자 목록 + 검토 대기(1단계)
  * GET  ?org=&view=recipient&code=A01&period=30    수급자 타임라인 + 보고별 판단·안전 검토·조치
@@ -66,17 +107,24 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * GET  ?org=&view=report&reportId=                보고 한 건의 이벤트·판단·안전 검토·조치
  * GET  ?org=&view=actions&filter=&recipient=      조치 목록
  * GET  ?org=&view=action&id=                      조치 상세(의무·이력·현장 요청·응답·결과 확인·현재 배정)
- * POST ?org=  {op:'decide'|'safety_review'|'create_action'|'mutate_action', ...} */
+ * GET  ?org=&view=baseline&code=A01               수급자 기준문서·기준정보(버전·상충·참고값)
+ * GET  ?org=&view=document_file&id=               원본 파일(관리자만, 캐시 금지)
+ * POST ?org=&op=upload_document  (본문 = 파일 바이트, 헤더 x-document-meta = base64 JSON)
+ * POST ?org=  {op:'decide'|'safety_review'|'create_action'|'mutate_action'|'baseline'|'link_baseline'|'unlink_baseline', ...} */
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
     requireMethod(req, 'GET', 'POST')
     const { organization } = await requireAdminOrganization(req)
     const supabase = getSupabaseAdmin()
+    const q = getQuery(req)
+    if (req.method === 'POST' && q.get('op') === 'upload_document') {
+      await handleUpload(req, supabase, organization, res)
+      return
+    }
     if (req.method === 'POST') {
       await handlePost(supabase, organization, await readJsonBody(req), res)
       return
     }
-    const q = getQuery(req)
     switch (q.get('view')) {
       case 'recipients':
         return sendJson(res, 200, await recipientsView(supabase, organization))
@@ -90,6 +138,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         return sendJson(res, 200, await actionsView(supabase, organization, q.get('filter'), q.get('recipient')))
       case 'action':
         return sendJson(res, 200, await actionView(supabase, organization, q.get('id') ?? ''))
+      case 'baseline':
+        return sendJson(res, 200, await baselineView(supabase, organization, q.get('code') ?? ''))
+      case 'document_file':
+        return sendDocumentFile(supabase, organization, q.get('id') ?? '', res)
       default:
         throw new ApiError(400, '알 수 없는 조회입니다.')
     }
@@ -285,7 +337,20 @@ async function actionView(supabase: SupabaseClient, organization: Organization, 
       : [],
     verifications: s.field.verifications,
     assignees: s.assignees,
+    ...(await actionBaselineView(supabase, organization, s.action)),
   }
+}
+
+/** 조치의 근거 기준정보(연결 당시 버전)와 연결할 수 있는 확인된 값. 4단계 저장소가 없으면 비어 있다. */
+async function actionBaselineView(
+  supabase: SupabaseClient,
+  organization: Organization,
+  action: CareAction,
+): Promise<Pick<ActionDetailView, 'baselineReady' | 'baselineLinks' | 'baselineOptions'>> {
+  if (!(await baselineReady(supabase))) return { baselineReady: false, baselineLinks: [], baselineOptions: [] }
+  const [links, rows] = await Promise.all([loadActionLinks(supabase, action.id), loadRecipientBaselineRows(supabase, organization.id, action.recipient_code)])
+  const built = buildActionBaseline(action.id, links, rows.entries, rows.documents)
+  return { baselineReady: true, baselineLinks: built.links, baselineOptions: built.options }
 }
 
 // ── 저장 ─────────────────────────────────────────────────────────────
@@ -381,6 +446,11 @@ async function handlePost(supabase: SupabaseClient, organization: Organization, 
         if (result.status === 'ok') await logAudit('mutate_action', actionId, { op: input.op })
         return sendJson(res, 200, await actionView(supabase, organization, actionId))
       }
+      case 'baseline':
+        return sendJson(res, 200, await handleBaselineOp(supabase, organization, body))
+      case 'link_baseline':
+      case 'unlink_baseline':
+        return sendJson(res, 200, await handleBaselineLink(supabase, organization, body))
       default:
         throw new ApiError(400, '알 수 없는 요청입니다.')
     }
@@ -388,4 +458,250 @@ async function handlePost(supabase: SupabaseClient, organization: Organization, 
     if (e instanceof WorkflowError) throw new ApiError(e.status, e.message)
     throw e
   }
+}
+
+// ── 4단계: 기준문서 · 기준정보 ─────────────────────────────────────────
+
+function recipientCodeOf(raw: string): string {
+  const code = raw.trim().toUpperCase()
+  if (!RECIPIENT_CODE_PATTERN.test(code)) throw new ApiError(400, '수급자 코드가 올바르지 않습니다.')
+  return code
+}
+
+async function requireRecipient(supabase: SupabaseClient, code: string) {
+  const { data, error } = await supabase.from('recipients').select('code').eq('code', code).maybeSingle()
+  if (error) throw new ApiError(500, '수급자 정보를 불러오지 못했습니다.')
+  if (!data) throw new ApiError(404, '이 기관에서 해당 수급자를 찾을 수 없습니다.')
+}
+
+function baselineError(e: unknown): never {
+  if (e instanceof WorkflowError) throw new ApiError(e.status, e.message)
+  throw e
+}
+
+async function baselineView(supabase: SupabaseClient, organization: Organization, rawCode: string): Promise<RecipientBaselineView> {
+  const code = recipientCodeOf(rawCode)
+  await requireRecipient(supabase, code)
+  if (!(await baselineReady(supabase))) return emptyBaselineView(code, false)
+  const [rows, stored] = await Promise.all([loadRecipientBaselineRows(supabase, organization.id, code), storageReady(supabase)])
+  return buildRecipientBaseline(code, rows.documents, rows.entries, rows.choices, { storageReady: stored })
+}
+
+async function sendDocumentFile(supabase: SupabaseClient, organization: Organization, id: string, res: ServerResponse) {
+  if (!UUID_PATTERN.test(id)) throw new ApiError(400, '문서 id가 올바르지 않습니다.')
+  if (!(await baselineReady(supabase))) throw new ApiError(503, '기준정보 저장소가 아직 준비되지 않았습니다(4단계 DB 마이그레이션 적용 필요).')
+  const doc = await loadDocument(supabase, organization.id, id)
+  const bytes = await getOriginal(supabase, doc.storage_path)
+  await logAudit('view_source_document', doc.id, { recipient: doc.recipient_code })
+  res.statusCode = 200
+  res.setHeader('content-type', doc.mime_type)
+  res.setHeader('content-length', String(bytes.length))
+  res.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(doc.original_filename)}`)
+  res.setHeader('cache-control', 'no-store')
+  res.setHeader('x-content-type-options', 'nosniff')
+  res.end(bytes)
+}
+
+function parseDocumentMeta(header: string | string[] | undefined): RegisterDocumentInput & { sha256?: string } {
+  const raw = Array.isArray(header) ? header[0] : header
+  if (!raw || raw.length > 8000) throw new ApiError(400, '문서 정보가 없습니다.')
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not object')
+    return parsed
+  } catch {
+    throw new ApiError(400, '문서 정보가 올바르지 않습니다.')
+  }
+}
+
+/** 원본 올리기: 형식·크기·전송 무결성 확인 → 비공개 버킷 저장 → 기록 저장(한 요청 식별자당 한 벌).
+ * 기록 저장이 실패하면 방금 올린 파일을 지운다(기록이 실제로 없을 때만) — 기록이 없는 파일을 가리키는 일은 없다. */
+async function handleUpload(req: IncomingMessage, supabase: SupabaseClient, organization: Organization, res: ServerResponse) {
+  if (!(await workflowReady(supabase)) || !(await baselineReady(supabase))) throw new ApiError(503, '기준정보 저장소가 아직 준비되지 않았습니다(4단계 DB 마이그레이션 적용 필요).')
+  if (!(await storageReady(supabase))) throw new ApiError(503, '원본 파일 저장소(비공개 버킷)가 아직 준비되지 않았습니다(4단계 DB 마이그레이션 적용 필요).')
+  const meta = parseDocumentMeta(req.headers['x-document-meta'])
+  const bytes = await readRawBody(req)
+  const code = recipientCodeOf(String(meta.recipientCode ?? ''))
+  await requireRecipient(supabase, code)
+  const requestId = String(meta.requestId ?? '')
+  const existing = /^[A-Za-z0-9-]{8,80}$/.test(requestId) ? await findDocumentByRequest(supabase, organization.id, requestId) : null
+  if (existing) return sendJson(res, 200, { document: existing, baseline: await baselineView(supabase, organization, existing.recipient_code) })
+  const sha256 = sha256Hex(bytes)
+  if (meta.sha256 && meta.sha256 !== sha256) throw new ApiError(400, '전송 중 파일이 달라졌습니다. 다시 시도해 주세요(아무것도 저장하지 않았습니다).')
+  let replaced: SourceDocument | null = null
+  if (meta.replacesDocumentId) {
+    if (!UUID_PATTERN.test(String(meta.replacesDocumentId))) throw new ApiError(400, '교체할 문서 id가 올바르지 않습니다.')
+    replaced = await loadDocument(supabase, organization.id, String(meta.replacesDocumentId))
+  }
+  let plan: SourceDocument
+  try {
+    plan = planRegisterDocument({ ...meta, recipientCode: code }, { sizeBytes: bytes.length, sha256, detectedMime: detectDocumentMime(bytes) }, replaced, context(organization))
+  } catch (e) {
+    baselineError(e)
+  }
+  await putOriginal(supabase, plan.storage_path, bytes, plan.mime_type)
+  let result
+  try {
+    result = await callBaselineRpc(supabase, { op: 'register_document', document: plan })
+  } catch (e) {
+    // 기록이 실제로 저장되지 않았을 때만 파일을 지운다(응답만 끊긴 경우 파일을 지우면 기록이 없는 파일을 가리키게 된다).
+    const saved = await findDocumentByRequest(supabase, organization.id, plan.request_id).catch(() => undefined)
+    if (saved === null) await removeOriginal(supabase, plan.storage_path)
+    throw e
+  }
+  if (result.status !== 'ok' && result.status !== 'duplicate') {
+    await removeOriginal(supabase, plan.storage_path)
+    rpcOutcome(result, '다른 곳에서 이 문서가 먼저 바뀌었습니다. 최신 내용을 확인해 주세요.')
+  }
+  if (result.status === 'ok') await logAudit('upload_source_document', plan.id, { recipient: code, type: plan.doc_type, size: plan.size_bytes })
+  const doc = await findDocumentByRequest(supabase, organization.id, plan.request_id)
+  return sendJson(res, 200, { document: doc, baseline: await baselineView(supabase, organization, code) })
+}
+
+function uuidOf(v: unknown, what: string): string {
+  const id = String(v ?? '')
+  if (!UUID_PATTERN.test(id)) throw new ApiError(400, `${what} id가 올바르지 않습니다.`)
+  return id
+}
+
+async function handleBaselineOp(supabase: SupabaseClient, organization: Organization, body: Record<string, unknown>): Promise<RecipientBaselineView> {
+  if (!(await baselineReady(supabase))) throw new ApiError(503, '기준정보 저장소가 아직 준비되지 않았습니다(4단계 DB 마이그레이션 적용 필요).')
+  const ctx = context(organization)
+  try {
+    switch (body.baselineOp) {
+      case 'withdraw_document': {
+        const input = body as unknown as WithdrawDocumentInput
+        const doc = await loadDocument(supabase, organization.id, uuidOf(input.documentId, '문서'))
+        if (doc.withdraw_request_id !== input.requestId) {
+          const next = planWithdrawDocument(doc, input, ctx)
+          rpcOutcome(
+            await callBaselineRpc(supabase, {
+              op: 'withdraw_document',
+              organization_id: organization.id,
+              document_id: doc.id,
+              expected_version: input.expectedVersion,
+              reason: next.withdrawn_reason,
+              request_id: next.withdraw_request_id,
+              at: next.withdrawn_at,
+            }),
+            '다른 곳에서 이 문서가 먼저 바뀌었습니다. 최신 내용을 확인해 주세요.',
+          )
+          await logAudit('withdraw_source_document', doc.id, { recipient: doc.recipient_code })
+        }
+        return baselineView(supabase, organization, doc.recipient_code)
+      }
+      case 'save_entry': {
+        const input = body as unknown as SaveEntryInput
+        const code = recipientCodeOf(String(input.recipientCode ?? ''))
+        await requireRecipient(supabase, code)
+        const document = input.sourceType === 'document' && input.documentId ? await loadDocument(supabase, organization.id, uuidOf(input.documentId, '문서')) : null
+        const lineage = input.lineageId ? await loadLineage(supabase, organization.id, uuidOf(input.lineageId, '기준정보')) : []
+        const entry = planSaveEntry({ ...input, recipientCode: code }, { document, lineage }, ctx)
+        const r = await callBaselineRpc(supabase, { op: 'save_entry', entry })
+        rpcOutcome(r, '다른 곳에서 이 기준정보가 먼저 수정됐습니다. 최신 내용을 확인해 주세요.')
+        if (r.status === 'ok') await logAudit('save_baseline_entry', entry.id, { recipient: code, kind: entry.kind, version: entry.version })
+        return baselineView(supabase, organization, code)
+      }
+      case 'set_entry_status': {
+        const input = body as unknown as SetEntryStatusInput
+        const entry = await loadEntry(supabase, organization.id, uuidOf(input.entryId, '기준정보'))
+        if (entry.status_request_id !== input.requestId) {
+          const lineage = await loadLineage(supabase, organization.id, entry.lineage_id)
+          const [updated] = planSetEntryStatus(entry, lineage, input, ctx)
+          rpcOutcome(
+            await callBaselineRpc(supabase, {
+              op: 'set_entry_status',
+              organization_id: organization.id,
+              entry_id: entry.id,
+              status: updated.status,
+              expected_row_version: input.expectedRowVersion,
+              reason: updated.retract_reason,
+              entered_by_label: updated.confirmed_by_label,
+              request_id: updated.status_request_id,
+              at: ctx.now,
+            }),
+            '다른 곳에서 이 기준정보가 먼저 바뀌었습니다. 최신 내용을 확인해 주세요.',
+          )
+          await logAudit('set_baseline_status', entry.id, { status: updated.status })
+        }
+        return baselineView(supabase, organization, entry.recipient_code)
+      }
+      case 'choose_reference': {
+        const input = body as unknown as ChooseReferenceInput
+        const entry = await loadEntry(supabase, organization.id, uuidOf(input.entryId, '기준정보'))
+        const choice = planChooseReference(entry, input, ctx)
+        rpcOutcome(await callBaselineRpc(supabase, { op: 'choose_reference', choice }), '그 사이 이 값이 바뀌었습니다. 최신 내용을 확인해 주세요.')
+        await logAudit('choose_baseline_reference', entry.id, { group: choice.group_key })
+        return baselineView(supabase, organization, entry.recipient_code)
+      }
+      default:
+        throw new ApiError(400, '알 수 없는 기준정보 요청입니다.')
+    }
+  } catch (e) {
+    baselineError(e)
+  }
+}
+
+async function handleBaselineLink(supabase: SupabaseClient, organization: Organization, body: Record<string, unknown>): Promise<ActionDetailView> {
+  if (!(await baselineReady(supabase))) throw new ApiError(503, '기준정보 저장소가 아직 준비되지 않았습니다(4단계 DB 마이그레이션 적용 필요).')
+  const actionId = uuidOf(body.actionId, '조치')
+  const { action } = await loadActionState(supabase, organization.id, actionId)
+  const links = await loadActionLinks(supabase, actionId)
+  const ctx = context(organization)
+  const enteredBy = typeof body.enteredByLabel === 'string' ? body.enteredByLabel.trim().slice(0, 100) || null : null
+  const event = (type: 'baseline_linked' | 'baseline_unlinked', requestId: string, detail: Record<string, unknown>, reason: string | null) => ({
+    id: ctx.newId(),
+    action_id: action.id,
+    obligation_id: null,
+    event_type: type,
+    reason,
+    detail,
+    actor_scope: ADMIN_ACTOR_SCOPE,
+    entered_by_label: enteredBy,
+    owner_label_at_event: action.owner_label,
+    request_id: requestId,
+    occurred_at: ctx.now,
+  })
+  try {
+    if (body.op === 'link_baseline') {
+      const input = body as unknown as LinkActionInput
+      if (!links.some((l) => l.request_id === input.requestId)) {
+        const entry = await loadEntry(supabase, organization.id, uuidOf(input.entryId, '기준정보'))
+        const link = planLinkAction(action, entry, links, input, ctx)
+        rpcOutcome(
+          await callBaselineRpc(supabase, {
+            op: 'link_action',
+            organization_id: organization.id,
+            link,
+            event: event('baseline_linked', link.request_id, { link_id: link.id, entry_id: entry.id, entry_version: entry.version, lineage_id: entry.lineage_id, document_id: entry.document_id }, link.note),
+          }),
+          '이미 연결됐거나 그 사이 기준정보가 바뀌었습니다. 최신 내용을 확인해 주세요.',
+        )
+        await logAudit('link_action_baseline', action.id, { entry: entry.id })
+      }
+    } else {
+      const linkId = uuidOf(body.linkId, '연결')
+      const link = links.find((l) => l.id === linkId)
+      if (!link) throw new ApiError(404, '연결을 찾을 수 없습니다.')
+      if (link.removed_request_id !== body.requestId) {
+        const next = planUnlinkAction(action, link, { reason: String(body.reason ?? ''), requestId: String(body.requestId ?? '') }, ctx)
+        rpcOutcome(
+          await callBaselineRpc(supabase, {
+            op: 'unlink_action',
+            organization_id: organization.id,
+            link_id: link.id,
+            reason: next.removed_reason,
+            request_id: next.removed_request_id,
+            at: next.removed_at,
+            event: event('baseline_unlinked', next.removed_request_id as string, { link_id: link.id, entry_id: link.entry_id }, next.removed_reason),
+          }),
+          '그 사이 연결이 바뀌었습니다. 최신 내용을 확인해 주세요.',
+        )
+        await logAudit('unlink_action_baseline', action.id, { link: link.id })
+      }
+    }
+  } catch (e) {
+    baselineError(e)
+  }
+  return actionView(supabase, organization, action.id)
 }
