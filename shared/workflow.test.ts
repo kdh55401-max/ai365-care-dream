@@ -235,7 +235,15 @@ describe('업무 카드와 목록', () => {
       ['report_attention', changed.id],
       ['report_general', usualOld.id],
     ])
-    expect(board.cards.reports).toEqual({ reports: 3, recipients: 1 })
+    // 카드는 '일반 미확인'이 밀리지 않도록 변화·확인 필요와 일반을 나눠 세고 각각 최장 대기 시작 시각을 함께 낸다.
+    expect(board.cards.reports).toEqual({
+      reports: 3,
+      recipients: 1,
+      attention: 2,
+      general: 1,
+      oldestSince: usualOld.submitted_at,
+      oldestGeneralSince: usualOld.submitted_at,
+    })
   })
 
   it('보고가 많아도 잘라내지 않는다(카드 수 = 목록 길이)', () => {

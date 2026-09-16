@@ -16,6 +16,7 @@ import {
   demoGetAction,
   demoListActions,
   demoMutateAction,
+  demoOperationMetrics,
   demoRecipientWorkflow,
   demoRecordDecision,
   demoRecordSafetyReview,
@@ -172,6 +173,10 @@ export const demoAdminRepo: AdminRepo = {
   async reviewCandidate(orgId, input) {
     demoOrganization(orgId)
     return demoReviewCandidate(input)
+  },
+  async getOperationMetrics(orgId, period) {
+    demoOrganization(orgId)
+    return demoOperationMetrics(period)
   },
   async getStats(): Promise<StatsResponse> {
     const rows = demoAllReports()

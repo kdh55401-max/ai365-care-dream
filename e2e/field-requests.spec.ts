@@ -76,7 +76,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await publishRequest(admin)
     await expect(admin.getByText('현장 화면 표시 기록 없음 — 읽음으로 추정하지 않음')).toBeVisible()
 
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '현장 응답 대기 요청')).toContainText('1건')
     await expect(card(admin, '현장 응답 대기 요청')).toContainText('방문 대기 1')
 
@@ -89,7 +89,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await expect(care.locator('body')).not.toContainText(INTERNAL)
 
     // 화면 표시 기록(읽음 추정 아님)
-    await admin.getByRole('button', { name: '조치', exact: true }).click()
+    await admin.getByRole('button', { name: '요청과 후속조치' }).click()
     await admin.getByRole('button', { name: /식사량 재확인/ }).click()
     await expect(admin.getByText(/현장 화면 첫 표시 .*\(C01\)/)).toBeVisible()
 
@@ -109,7 +109,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await expect(care.getByRole('region', { name: '센터 확인 요청' })).toHaveCount(0) // 답한 요청은 다시 묻지 않는다
 
     // 관리자: 응답 도착 → 결과 확인 대기(완료 아님)
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '현장 응답 대기 요청')).toContainText('0건')
     await expect(card(admin, '응답 도착 · 결과 확인 대기')).toContainText('1건')
     await card(admin, '응답 도착 · 결과 확인 대기').click()
@@ -132,7 +132,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
 
     await admin.reload()
     await expect(admin.getByText(/이력 \(4건/)).toBeVisible() // 생성·게시·응답 도착·결과 확인
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '응답 도착 · 결과 확인 대기')).toContainText('0건')
   })
 
@@ -198,7 +198,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await expect(admin.getByText('철회됨', { exact: true })).toBeVisible()
     await expect(admin.getByText(/현장 응답 도착 · .*늦은 응답\(기록만\)/)).toBeVisible()
     await expect(admin.getByRole('button', { name: '현장에 게시' })).toBeVisible() // 같은 주기에서 다시 게시 가능
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '응답 도착 · 결과 확인 대기')).toContainText('0건')
   })
 
@@ -211,7 +211,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
 
     // A01 담당이 C01 → C02로 바뀜
     await setAssignments(admin, { C01: ['A02'], C02: ['A03', 'A01'], C03: ['A04', 'A05'] })
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '재배정·담당 필요')).toContainText('1건')
     await card(admin, '재배정·담당 필요').click()
     await expect(admin.getByText('지정한 요양보호사가 지금 이 수급자 담당이 아님 — 재배정 필요')).toBeVisible()
@@ -233,7 +233,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
 
     await care.reload()
     await expect(care.getByRole('region', { name: '센터 확인 요청' })).toContainText(MESSAGE)
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '재배정·담당 필요')).toContainText('0건')
   })
 

@@ -1,3 +1,38 @@
+## 2026-09-16 — 돌봄 연속성 6단계: 책임을 나눈 업무 화면 · 2·3단계 이벤트로 계산하는 운영 지표
+
+목적·기대 동작: 관리자가 첫 화면(오늘의 돌봄)에서 오늘 할 일과 이유를 보고, 실증과 품질 화면에서 "업무가 실제로 이어지는가"를
+2~5단계가 저장한 이벤트로만 센다. 값만 보이지 않고 분자·분모·단위·기간·기준시각·원천 이벤트·제외 건수·해석 주의를 함께 낸다.
+설계·지표 규칙은 [docs/CONTINUITY_STAGES.md](docs/CONTINUITY_STAGES.md) §9.
+
+기준: origin/master aeb6726 → 브랜치 `claude/continuity-stage6-operation-dashboard`(워크트리 `.claude/worktrees/continuity-stage1`).
+
+**DB: 이번 단계는 새 마이그레이션이 없다.** 2~5단계 마이그레이션(2026-09-15 → 09-16 → 09-17 → 09-18)은 여전히 운영 미적용이라
+해당 지표는 '미측정'으로 나온다(가짜 0 없음). 데모 `?demo_workflow=off`로 그 상태를 재현할 수 있다.
+
+수정 파일:
+- 공통 규칙: `shared/operationMetrics.ts`(신규 — 기간 창·6개 지표·다음 방문 별도 집계·원천 상태별 건수·미측정/해당 없음/오류 구분),
+  `shared/workBoard.ts`(새 보고 카드에 변화/일반 구분과 최장 대기 시작 시각)
+- 서버: `api/admin/workflow.ts`(`view=operations&period=`), `api/_lib/workflowStore.ts`(`loadActionEvents` — 기관 조치 이력),
+  `api/_lib/fieldRequestsStore.ts`(주석: 기관 범위가 필요한 호출부는 actionIds를 넘긴다)
+- 화면: `src/pilot/admin/OperationPanels.tsx`(신규 — 운영 지표 카드·원천 상태별 건수·시스템 상태·현장 부담), `AdminApp.tsx`(탭 5책임·
+  오늘/품질 분리·마지막 갱신 시각), `WorkBoardPanels.tsx`(합산 금지 문구·대기시간), `adminRoutes.ts`(`/admin/quality`)
+- 데모: `src/pilot/demo/demoWorkflowRepo.ts`(`demoOperationMetrics`), `demoAdminRepo.ts`, `src/pilot/shared/adminRepo.ts`
+- 테스트: `shared/operationMetrics.test.ts`(19), `e2e/operation-dashboard.spec.ts`(5), `shared/workflow.test.ts`·`adminRoutes.test.ts` 보완,
+  `e2e/helpers.ts`와 기존 spec의 탭 이름 갱신
+- 문서: `docs/CONTINUITY_STAGES.md`(§9), `CHANGE_LOG.md`, `MASTER_CONTEXT.md`
+
+VERIFY_PLACEHOLDER
+
+확인할 화면(데모): `/admin?demo=1`(오늘의 돌봄 — 카드 단위·합산 금지 문구·일반 최장 대기·시스템 상태) →
+`/admin/quality?demo=1`(운영 지표 7종, 기간 7·30·90·전체, "정의·분모·제외 보기"). `?demo_workflow=off`는 앞 단계 DB 미적용 상태.
+
+검토 요청(Codex): (1) 기한 비율이 어떤 경로로도 현재 기한(current_due_*)으로 재계산되지 않는지, (2) 취소·미게시 의무를 분모에서 뺀 뒤에도
+건수가 항상 공개되는지, (3) 한 보고를 여러 번 판단했을 때 이슈가 한 번만 세지는지, (4) `view=operations`가 fetchAll로 전체 범위를 읽는지
+(화면 페이지 길이에 의존하지 않는지), (5) 운영 지표와 연구 지표가 같은 표에 섞이지 않는지.
+
+한계: 전송 실패·재시도, 도입 전 현장 부담, 관찰일 기준 집계는 원천 데이터가 없어 미측정이다. 관리자 판단 시간 감소는 측정하지 않았다
+(체류시간으로 증명하지 않음 — 표준 사례 과업 측정은 별도 승인 과제). 앞 단계 DB 미적용이라 운영 데이터로 계산된 값은 아직 확인하지 못했다.
+
 ## 2026-09-15 (5차) — 돌봄 연속성 5단계: 관찰 달력 · 원문 근거 · 반복 보고 후보 · 비교 가능한 값 차이
 
 목적·기대 동작: 수급자 상세에서 7일·30일 관찰 달력(보고일 기준)으로 항목별 상태와 같은 날 여러·상충 기록을 보고, 칸에서 그날 원문·보고자·시각으로

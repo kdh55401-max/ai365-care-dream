@@ -100,6 +100,21 @@ export async function loadWorkflowRows(
   ).flat()
   return { decisions, safetyReviews, actions, obligations, reportEvents }
 }
+/** 6단계 운영 지표(재개방 건수 등)용 — 이 기관 조치들에 달린 이력 전체.
+ * action_events에는 기관 컬럼이 없어(이 배포 = 기관 한 곳) 조치 id로 범위를 좁힌다. */
+export async function loadActionEvents(supabase: SupabaseClient, actionIds: string[]): Promise<ActionEvent[]> {
+  if (!actionIds.length) return []
+  const pages = await Promise.all(
+    chunk(actionIds, 200).map((ids) =>
+      fetchAll<ActionEvent>(
+        () => supabase.from('action_events').select('*').in('action_id', ids).order('occurred_at', { ascending: true }).order('id', { ascending: true }),
+        '조치 이력',
+      ),
+    ),
+  )
+  return pages.flat()
+}
+
 export async function loadActionState(supabase: SupabaseClient, organizationId: string, actionId: string) {
   const { data: action, error } = await supabase.from('care_actions').select('*').eq('id', actionId).eq('organization_id', organizationId).maybeSingle()
   if (error) throw new ApiError(500, '조치를 불러오지 못했습니다.')

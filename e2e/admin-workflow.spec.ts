@@ -125,7 +125,7 @@ test.describe('admin-workflow: 관리자 판단·조치·안전 검토', () => {
     await expect(entry.getByText('관리자 판단: 검토 완료 · 추가 조치 불필요')).toBeVisible()
     await expect(entry.getByText('이 보고의 조치 0건')).toBeVisible()
     await expect(admin.getByText('진행 중·초안 조치 0건')).toBeVisible()
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(admin, '새 보고 미확인')).toContainText('0건')
   })
 
@@ -159,7 +159,7 @@ test.describe('admin-workflow: 관리자 판단·조치·안전 검토', () => {
     await wf.getByRole('button', { name: '안전 검토 기록' }).click()
     await expect(wf.getByText(/현재: 확인함 · 조치로 연결/)).toBeVisible()
 
-    await page.getByRole('button', { name: '대시보드' }).click()
+    await page.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(page, '안전 신호 미검토')).toContainText('0건')
     await expect(card(page, '기한 지난 조치')).toContainText('1건')
     await card(page, '기한 지난 조치').click()
@@ -168,7 +168,7 @@ test.describe('admin-workflow: 관리자 판단·조치·안전 검토', () => {
     await page.getByLabel(/실제로 한 일과 결과 근거/).fill('보호자와 통화해 상황 안내함')
     await page.getByRole('button', { name: '완료 기록' }).click()
     await expect(page.getByText(/완료 근거: 보호자와 통화해 상황 안내함/)).toBeVisible()
-    await page.getByRole('button', { name: '대시보드' }).click()
+    await page.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(card(page, '기한 지난 조치')).toContainText('0건')
   })
 

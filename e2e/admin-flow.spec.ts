@@ -80,7 +80,7 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await expect(adminPage.getByText(/첫 제출이 오늘인 1명은 관찰 중/)).toBeVisible()
 
     // 원문 평가 → AI 보고 평가 → 지표 변경
-    await adminPage.getByRole('button', { name: '보고 목록' }).click()
+    await adminPage.getByRole('button', { name: '돌봄기록' }).click()
     await adminPage.getByText('A01').first().click()
     await expect(adminPage.getByText('AI 결과 비공개')).toBeVisible()
     await adminPage.getByText('원문만으로 바로 판단 가능한가').locator('..').getByRole('button', { name: '아니오' }).click()
@@ -97,7 +97,7 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await adminPage.getByRole('button', { name: 'AI 평가 저장' }).click()
     await expect(adminPage.getByText('이 건의 변화')).toBeVisible()
 
-    await adminPage.getByRole('button', { name: '대시보드' }).click()
+    await adminPage.getByRole('button', { name: '오늘의 돌봄' }).click()
     await openResearchKpiDetails(adminPage)
     await expect(adminPage.getByText(/AI 적용 후 \d+%/)).toBeVisible()
   })

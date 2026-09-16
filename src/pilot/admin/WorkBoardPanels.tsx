@@ -14,6 +14,7 @@ import { REQUEST_WAIT_LABELS, ROUTING_PROBLEM_LABELS } from '../../../shared/fie
 import { CANDIDATE_DECISION_LABELS } from '../../../shared/changeCandidates'
 import { ACTION_FILTER_LABELS, ACTION_FILTERS, type ActionFilter } from '../../../shared/workflowViews'
 import { formatDue, formatKoreanDateTime, type WorkCard } from './adminFormat'
+import { formatDuration } from '../../../shared/operationMetrics'
 import { SpinnerIcon } from './adminBadges'
 import { ReviewQueueList } from './RecipientHub'
 import { ActionSummaryRow } from './ActionSummaryRow'
@@ -53,10 +54,21 @@ function NotReady() {
 }
 
 /** 네 카드는 대상·단위가 달라 합산하지 않는다. */
+/** 기준 시각에서 얼마나 기다렸는지 — 카드와 목록이 같은 board.asOf를 쓴다. */
+function waitedFor(since: string | null, asOf: string): string | null {
+  const from = since ? Date.parse(since) : NaN
+  const to = Date.parse(asOf)
+  if (Number.isNaN(from) || Number.isNaN(to)) return null
+  return formatDuration(Math.max(0, (to - from) / 1000))
+}
+
 export function WorkCards({ board, onOpenCard }: { board: WorkBoard; onOpenCard: (card: WorkCard) => void }) {
   const { cards } = board
   return (
     <div>
+      <p className="text-[11px] text-slate-400 mb-1.5">
+        카드마다 세는 단위가 다릅니다(신호·보고·조치·요청·수급자) — 숫자를 더하지 마세요. 카드를 누르면 같은 기준 시각·같은 조건의 전체 목록이 열립니다.
+      </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Card title="안전 신호 미검토" onClick={() => onOpenCard('safety')} tone={cards.safety.signals > 0 ? 'alert' : 'plain'}>
           {cards.safety.ready ? (
@@ -84,6 +96,11 @@ export function WorkCards({ board, onOpenCard }: { board: WorkBoard; onOpenCard:
             {cards.reports.reports}건 <span className="text-xs font-normal text-slate-500">· 수급자 {cards.reports.recipients}명</span>
           </p>
           <p className="text-[11px] text-slate-400">제출 후 승인·반려 기록이 없는 보고</p>
+          {/* '일반 미확인'이 계속 뒤로 밀리지 않도록 대기 건수와 최장 대기시간을 카드에서 바로 보인다. */}
+          <p className="text-[11px] text-slate-500 mt-0.5" data-testid="reports-waiting">
+            변화·확인 필요 {cards.reports.attention}건 · 일반 {cards.reports.general}건
+            {cards.reports.oldestGeneralSince && ` · 일반 최장 대기 ${waitedFor(cards.reports.oldestGeneralSince, board.asOf)}`}
+          </p>
         </Card>
         <Card title="기한 지난 조치" onClick={() => onOpenCard('overdue')} tone={cards.overdue.ready ? 'plain' : 'muted'}>
           {cards.overdue.ready ? (

@@ -11,6 +11,8 @@ describe('admin routes', () => {
     expect(parseAdminPath('/admin/reports')).toEqual({ kind: 'reports' })
     expect(parseAdminPath('/admin/participants')).toEqual({ kind: 'participants' })
     expect(parseAdminPath('/admin/presentation')).toEqual({ kind: 'presentation' })
+    expect(parseAdminPath('/admin/quality')).toEqual({ kind: 'quality' })
+    expect(adminUrl({ kind: 'quality' }, '?demo=1')).toBe('/admin/quality?demo=1')
     expect(parseAdminPath('/admin/unknown')).toEqual({ kind: 'dashboard' })
   })
 

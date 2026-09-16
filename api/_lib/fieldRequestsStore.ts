@@ -57,6 +57,8 @@ export async function loadFieldRows(supabase: SupabaseClient, organizationId: st
   if (!actionIds) {
     // 기관 전체 조회일 때도 응답·결과 확인은 이 기관 조치에 딸린 것만 남긴다.
     const own = new Set(requests.map((r) => r.action_id))
+    // (결과 확인은 요청 없는 관리자 직접 조치에도 달리므로 여기서 걸러 내지 않는다 — 기관 범위가
+    //  꼭 필요한 호출부는 actionIds를 넘긴다. 6단계 운영 지표가 그렇게 쓴다.)
     return { requests, responses: responses.filter((r) => own.has(r.action_id)), verifications }
   }
   return { requests, responses, verifications }

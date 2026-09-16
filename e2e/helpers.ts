@@ -39,6 +39,8 @@ export async function loginAdmin(page: Page, password = 'demo1234') {
  * "0 / 9명")을 확인할 수 있다. 네이티브 <details>는 페이지 새로고침 시 항상
  * 닫힌 상태로 되돌아가므로, 새로고침 후 다시 열어야 한다. */
 export async function openResearchKpiDetails(page: Page) {
+  // 6단계에서 연구용 실증 지표는 '실증과 품질' 화면으로 옮겼다(오늘의 돌봄 = 업무).
+  await page.getByRole('button', { name: '실증과 품질' }).click()
   await page.getByText('실증 지표 자세히 보기 (연구용)').click()
 }
 

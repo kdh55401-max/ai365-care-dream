@@ -64,7 +64,7 @@ test.describe('recipient-hub: 기관 → 수급자 → 보고 타임라인', () 
     await expect(admin.locator('article').first().getByText('승인됨').first()).toBeVisible()
 
     // 기관 첫 화면에서도 검토 대기에서 빠진다
-    await admin.getByRole('button', { name: '대시보드' }).click()
+    await admin.getByRole('button', { name: '오늘의 돌봄' }).click()
     await expect(admin.getByRole('button', { name: /^새 보고 미확인/ })).toContainText('0건')
   })
 
@@ -73,7 +73,7 @@ test.describe('recipient-hub: 기관 → 수급자 → 보고 타임라인', () 
     const admin = await context.newPage()
     await loginAdmin(admin)
 
-    await admin.getByRole('button', { name: '수급자', exact: true }).click()
+    await admin.getByRole('button', { name: '수급자 변화' }).click()
     await expect(admin).toHaveURL(/\/admin\/org\/gadream365\/recipients\?demo=1/)
     await expect(admin.getByRole('heading', { name: /가드림365재가복지센터 · 수급자 9명/ })).toBeVisible()
     const first = admin.getByRole('button', { name: /수급자 A01/ })

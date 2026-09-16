@@ -130,7 +130,7 @@ test.describe('observation-calendar: 관찰 달력 · 반복 보고 후보', () 
     await expect(page.getByText('게시됨 · 응답 대기')).toBeVisible()
 
     // 기관 첫 화면 카드와 전체 목록
-    await page.getByRole('button', { name: '대시보드' }).click()
+    await page.getByRole('button', { name: '오늘의 돌봄' }).click()
     const card = page.getByRole('button', { name: /^반복 보고 후보/ })
     await expect(card).toContainText('1건')
     await expect(card).toContainText('판단 전 0건')

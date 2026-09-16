@@ -5,7 +5,7 @@ import { requireAdminOrganization } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import { todayKstDateString } from '../_lib/date.js'
-import { callWorkflowRpc, fetchAll, loadActionState, loadWorkflowRows, workflowReady, type RpcResult } from '../_lib/workflowStore.js'
+import { callWorkflowRpc, fetchAll, loadActionEvents, loadActionState, loadWorkflowRows, workflowReady, type RpcResult } from '../_lib/workflowStore.js'
 import { fieldRequestsReady, loadAssigneesByRecipient, loadFieldRows } from '../_lib/fieldRequestsStore.js'
 import {
   baselineReady,
@@ -60,6 +60,7 @@ import {
   type RecipientRow,
 } from '../../shared/recipientHub.js'
 import { buildWorkBoard } from '../../shared/workBoard.js'
+import { buildOperationMetrics, parseOperationPeriod, type OperationMetricsView } from '../../shared/operationMetrics.js'
 import {
   ADMIN_ACTOR_SCOPE,
   FIELD_REQUEST_OPS,
@@ -116,6 +117,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * GET  ?org=&view=baseline&code=A01               수급자 기준문서·기준정보(버전·상충·참고값)
  * GET  ?org=&view=document_file&id=               원본 파일(관리자만, 캐시 금지)
  * GET  ?org=&view=observations&code=A01&window=7|30  관찰 달력·반복 보고 후보·값 비교·판단 상태·열린 조치
+ * GET  ?org=&view=operations&period=7|30|90|0       운영 지표(최초 검토시간·응답률·기한 내 결과확인율·조치 연결률·결과 근거 보유율·재개방)
  * POST ?org=&op=upload_document  (본문 = 파일 바이트, 헤더 x-document-meta = base64 JSON)
  * POST ?org=  {op:'decide'|'safety_review'|'create_action'|'mutate_action'|'baseline'|'link_baseline'|'unlink_baseline'|'candidate_review', ...} */
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
@@ -151,6 +153,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         return sendDocumentFile(supabase, organization, q.get('id') ?? '', res)
       case 'observations':
         return sendJson(res, 200, await observationsView(supabase, organization, q.get('code') ?? '', q.get('window')))
+      case 'operations':
+        return sendJson(res, 200, await operationsView(supabase, organization, q.get('period')))
       default:
         throw new ApiError(400, '알 수 없는 조회입니다.')
     }
@@ -744,6 +748,38 @@ async function observationsView(supabase: SupabaseClient, organization: Organiza
     reviewsReady: rReady,
     baselineEntries: baselineRows ? baselineRows.entries : null,
     actions,
+  })
+}
+
+/** 6단계 운영 지표 — 2·3단계가 실제로 저장한 이벤트만으로 계산한다.
+ * 화면에 로딩된 일부가 아니라 기관 권한 범위의 전체 행을 fetchAll로 끝까지 읽어 서버에서 센다.
+ * 저장소가 없으면 숫자를 만들지 않고 해당 지표를 '미측정'으로 돌려준다. */
+async function operationsView(supabase: SupabaseClient, organization: Organization, rawPeriod: string | null): Promise<OperationMetricsView> {
+  const days = parseOperationPeriod(rawPeriod)
+  const [reports, ready, frReady] = await Promise.all([liveReports(supabase), workflowReady(supabase), fieldRequestsReady(supabase)])
+  const rows = ready
+    ? await loadWorkflowRows(supabase, organization.id)
+    : { decisions: [], safetyReviews: [], actions: [], obligations: [], reportEvents: [] }
+  const actionIds = rows.actions.map((a) => a.id)
+  const [actionEvents, field] = await Promise.all([
+    ready ? loadActionEvents(supabase, actionIds) : Promise.resolve([]),
+    ready && frReady ? loadFieldRows(supabase, organization.id, actionIds) : Promise.resolve({ requests: [], responses: [], verifications: [] }),
+  ])
+  await logAudit('view_operation_metrics', organization.id, { period: days })
+  return buildOperationMetrics({
+    now: new Date(),
+    days,
+    workflowReady: ready,
+    fieldRequestsReady: frReady,
+    reports,
+    reportEvents: rows.reportEvents,
+    decisions: rows.decisions,
+    actions: rows.actions,
+    obligations: rows.obligations,
+    actionEvents,
+    requests: field.requests,
+    responses: field.responses,
+    verifications: field.verifications,
   })
 }
 

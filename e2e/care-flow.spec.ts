@@ -63,7 +63,7 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
 
     const adminPage = await context.newPage()
     await loginAdmin(adminPage)
-    await adminPage.getByRole('button', { name: '보고 목록' }).click()
+    await adminPage.getByRole('button', { name: '돌봄기록' }).click()
     // C07이 실제로 배정된 수급자(데모 데이터 기준)로 정확히 연결돼 보이는지 확인한다
     // — 코드가 비슷하다고 다른 참여자/수급자로 표시되면 안 된다.
     await expect(adminPage.getByText('C07', { exact: false }).first()).toBeVisible()

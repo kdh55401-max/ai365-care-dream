@@ -16,13 +16,14 @@ import { adminUrl, parseAdminPath, type AdminRoute } from './adminRoutes'
 import { RecipientDetailPanel, RecipientsPanel } from './RecipientHub'
 import { ActionsPanel, CombinedWorkList, WorkCardListPanel, WorkCards } from './WorkBoardPanels'
 import { ActionDetailPanel, ReportWorkflowSection } from './WorkflowPanels'
+import { FieldBurdenPanel, OperationMetricsPanel, SystemStatusStrip } from './OperationPanels'
 import type { WorkCard } from './adminFormat'
 import { DEPLOYMENT_ORGANIZATION, type Organization } from '../../../shared/organization'
 import { parseTimelinePeriod } from '../../../shared/recipientHub'
 import type { WorkBoard } from '../../../shared/workBoard'
 import { parseActionFilter } from '../../../shared/workflowViews'
 
-type Tab = 'dashboard' | 'recipients' | 'actions' | 'reports' | 'participants'
+type Tab = 'dashboard' | 'recipients' | 'actions' | 'reports' | 'quality' | 'participants'
 const PARTICIPANT_CODES = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09']
 const INSTITUTION_NAME = '가드림365재가복지센터'
 const TARGET_PARTICIPANTS = 9
@@ -243,8 +244,13 @@ function PriorityCareStrip({ board, boardError, onOpenCard, onOpen, onOpenAction
   )
 }
 
-function Dashboard({ demo, data, reports, board, boardError, onOpenCard, onOpen, onOpenAction, onOpenRecipient }: {
+function Dashboard({ demo, section, repo, orgId, lastRefreshed, data, reports, board, boardError, onOpenCard, onOpen, onOpenAction, onOpenRecipient }: {
   demo: boolean
+  /** 'today' = 오늘의 돌봄(업무), 'quality' = 실증과 품질(운영 지표 + 기존 연구 지표). 책임이 다른 화면이라 나눠 그린다. */
+  section: 'today' | 'quality'
+  repo: AdminRepo
+  orgId: string
+  lastRefreshed: string
   data: StatsResponse | null
   reports: ReportListItem[]
   board: WorkBoard | null
@@ -254,6 +260,19 @@ function Dashboard({ demo, data, reports, board, boardError, onOpenCard, onOpen,
   onOpenAction: (id: string) => void
   onOpenRecipient: (code: string) => void
 }) {
+  if (section === 'today') {
+    return (
+      <div className="flex flex-col gap-6">
+        {demo && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 text-amber-700 text-sm font-bold text-center">
+            DEMO DATA · 실제 실증 결과가 아닙니다
+          </div>
+        )}
+        <PriorityCareStrip board={board} boardError={boardError} onOpenCard={onOpenCard} onOpen={onOpen} onOpenAction={onOpenAction} onOpenRecipient={onOpenRecipient} />
+        <SystemStatusStrip board={board} boardError={boardError} stats={data} lastRefreshed={lastRefreshed} />
+      </div>
+    )
+  }
   if (!data) {
     return (
       <div className="flex justify-center py-16">
@@ -288,8 +307,9 @@ function Dashboard({ demo, data, reports, board, boardError, onOpenCard, onOpen,
         </div>
       )}
 
-      {/* 기관 첫 화면은 "지금 할 일과 이유"가 먼저다 — 실증 대시보드 요약은 그 아래. */}
-      <PriorityCareStrip board={board} boardError={boardError} onOpenCard={onOpenCard} onOpen={onOpen} onOpenAction={onOpenAction} onOpenRecipient={onOpenRecipient} />
+      {/* 운영 지표(업무 이벤트)와 연구용 실증 지표는 분모·기간·의미가 달라 섹션을 나눈다. */}
+      <OperationMetricsPanel repo={repo} orgId={orgId} />
+      <FieldBurdenPanel stats={data} />
 
       <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-5">
         <div className="flex flex-wrap justify-between items-start gap-3">
@@ -1439,7 +1459,9 @@ function AdminApp() {
           ? 'actions'
           : route.kind === 'participants'
             ? 'participants'
-            : 'dashboard'
+            : route.kind === 'quality'
+              ? 'quality'
+              : 'dashboard'
 
   const [phase, setPhase] = useState<'loading' | 'login' | 'app'>('loading')
   const [organization, setOrganization] = useState<Organization | null>(null)
@@ -1447,6 +1469,8 @@ function AdminApp() {
   const [liveReports, setLiveReports] = useState<ReportListItem[]>([])
   const [board, setBoard] = useState<WorkBoard | null>(null)
   const [boardError, setBoardError] = useState<string | null>(null)
+  // '마지막 갱신 시각'은 서버 기준시각(board.asOf)과 다르다 — 시스템 상태에서 둘 다 보인다.
+  const [lastRefreshed, setLastRefreshed] = useState<string>('-')
   const [presentationStatus, setPresentationStatus] = useState<'in_progress' | 'final'>('in_progress')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // 업무 카드는 서버가 전체 범위로 계산하므로 비용이 있다 — 그 카드가 보이는 화면에서만 갱신한다.
@@ -1485,6 +1509,7 @@ function AdminApp() {
       .then((res) => {
         setBoard(res.board)
         setBoardError(null)
+        setLastRefreshed(new Date().toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit', second: '2-digit' }))
       })
       .catch((e) => setBoardError(e instanceof Error ? e.message : '업무 목록을 불러오지 못했습니다.'))
   }
@@ -1618,10 +1643,11 @@ function AdminApp() {
         <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
           {(
             [
-              ['dashboard', '대시보드', { kind: 'dashboard' }],
-              ['recipients', '수급자', { kind: 'recipients', orgId }],
-              ['actions', '조치', { kind: 'actions' }],
-              ['reports', '보고 목록', { kind: 'reports' }],
+              ['dashboard', '오늘의 돌봄', { kind: 'dashboard' }],
+              ['recipients', '수급자 변화', { kind: 'recipients', orgId }],
+              ['actions', '요청과 후속조치', { kind: 'actions' }],
+              ['reports', '돌봄기록', { kind: 'reports' }],
+              ['quality', '실증과 품질', { kind: 'quality' }],
               ['participants', '참여자 관리', { kind: 'participants' }],
             ] as const
           ).map(([id, label, target]) => (
@@ -1637,14 +1663,18 @@ function AdminApp() {
 
         {/* Dashboard 탭에는 이미 자체 DEMO 배너가 있다 — 여기서는 그 배너가 없는
             나머지 탭(보고 목록/상세, 참여자 관리)에서만 데모 출처를 남긴다(DEP-03). */}
-        {demo && tab !== 'dashboard' && (
+        {demo && tab !== 'dashboard' && tab !== 'quality' && (
           <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2 text-amber-700 text-sm font-bold text-center">
             DEMO DATA · 실제 실증 결과가 아닙니다
           </div>
         )}
-        {route.kind === 'dashboard' && (
+        {(route.kind === 'dashboard' || route.kind === 'quality') && (
           <Dashboard
             demo={demo}
+            section={route.kind === 'quality' ? 'quality' : 'today'}
+            repo={repo}
+            orgId={orgId}
+            lastRefreshed={lastRefreshed}
             data={stats}
             reports={liveReports}
             board={board}

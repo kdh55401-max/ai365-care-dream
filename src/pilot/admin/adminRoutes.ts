@@ -3,7 +3,8 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
 /** /admin 화면 주소 규칙. 새로고침·직접 주소 입력·뒤로가기가 같은 화면으로 돌아오도록
  * 화면 상태를 주소(pathname)에 담는다. 라우팅 라이브러리는 쓰지 않는다(main.tsx와 동일).
  *
- * /admin                                  기관 첫 화면(검토할 보고 + 기존 대시보드)
+ * /admin                                  오늘의 돌봄(업무 카드 + 통합 목록 + 시스템 상태)
+ * /admin/quality                           실증과 품질(운영 지표 + 기존 연구용 실증 대시보드)
  * /admin/org/:orgId/recipients            수급자 목록
  * /admin/org/:orgId/recipients/:code      수급자 상세(보고 타임라인)
  * /admin/reports                          전체 보고 목록(기존)
@@ -18,6 +19,7 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
  * 코드를 잘못 열지 않게 하기 위함이다. 권한 판단은 서버가 세션 기관으로 한다. */
 export type AdminRoute =
   | { kind: 'dashboard' }
+  | { kind: 'quality' }
   | { kind: 'recipients'; orgId: string }
   | { kind: 'recipient'; orgId: string; code: string }
   | { kind: 'reports' }
@@ -33,6 +35,7 @@ export function parseAdminPath(pathname: string): AdminRoute {
   if (parts[0] !== 'admin') return { kind: 'dashboard' }
   const [, section, a, b, c] = parts
   if (section === 'presentation') return { kind: 'presentation' }
+  if (section === 'quality') return { kind: 'quality' }
   if (section === 'participants') return { kind: 'participants' }
   if (section === 'reports') return a ? { kind: 'report', id: a } : { kind: 'reports' }
   if (section === 'actions') return a ? { kind: 'action', id: a } : { kind: 'actions' }
@@ -47,6 +50,8 @@ export function adminPath(route: AdminRoute): string {
   switch (route.kind) {
     case 'dashboard':
       return '/admin'
+    case 'quality':
+      return '/admin/quality'
     case 'recipients':
       return `/admin/org/${encodeURIComponent(route.orgId)}/recipients`
     case 'recipient':

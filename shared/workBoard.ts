@@ -126,7 +126,9 @@ export interface WorkBoard {
   workflowReady: boolean
   cards: {
     safety: { ready: boolean; signals: number; recipients: number; draftSignals: number; legacyUnclear: number }
-    reports: { reports: number; recipients: number }
+    /** 새 보고 미확인(보고 수·수급자 수). '일반 미확인'이 계속 밀리지 않도록 변화·확인 필요와
+     *  일반을 나눠 세고, 각각 가장 오래 기다린 보고의 제출 시각을 함께 낸다. */
+    reports: { reports: number; recipients: number; attention: number; general: number; oldestSince: string | null; oldestGeneralSince: string | null }
     overdue: { ready: boolean; actions: number; obligations: number }
     today: { ready: boolean; actions: number; obligations: number }
     /** 3단계: 게시돼 응답을 기다리는 요청(요청 수). */
@@ -195,6 +197,11 @@ function cut(t: string | null | undefined, max = 80): string | null {
 }
 
 const byTimeAsc = (a: string | null, b: string | null) => (timeOf(a) ?? Infinity) - (timeOf(b) ?? Infinity)
+
+/** 가장 오래 기다린 보고의 제출 시각(없으면 null) — 화면이 '최장 대기시간'을 기준 시각으로 계산한다. */
+function oldestOf(rows: Array<{ submittedAt: string | null }>): string | null {
+  return rows.reduce<string | null>((acc, r) => (acc === null || byTimeAsc(r.submittedAt, acc) < 0 ? r.submittedAt : acc), null)
+}
 
 export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
   const asOf = input.now.toISOString()
@@ -436,7 +443,14 @@ export function buildWorkBoard(input: WorkBoardInput): WorkBoard {
         draftSignals: safetyDrafts.length,
         legacyUnclear: safetyLegacy.length,
       },
-      reports: { reports: reportQueue.length, recipients: new Set(reportQueue.map((q) => q.recipientCode)).size },
+      reports: {
+        reports: reportQueue.length,
+        recipients: new Set(reportQueue.map((q) => q.recipientCode)).size,
+        attention: attention.length,
+        general: general.length,
+        oldestSince: oldestOf(reportQueue),
+        oldestGeneralSince: oldestOf(general),
+      },
       overdue: { ready: input.workflowReady, actions: overdue.length, obligations: overdue.reduce((n, a) => n + a.overdue.length, 0) },
       today: { ready: input.workflowReady, actions: dueToday.length, obligations: dueToday.reduce((n, a) => n + a.dueToday.length, 0) },
       requests: {

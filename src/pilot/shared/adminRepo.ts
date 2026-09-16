@@ -18,6 +18,7 @@ import type {
 } from '../../../shared/baseline'
 import type { CandidateReviewInput } from '../../../shared/changeCandidates'
 import type { RecipientObservationsView } from '../../../shared/observationViews'
+import type { OperationMetricsView, OperationPeriod } from '../../../shared/operationMetrics'
 
 export interface ParticipationCell {
   date: string
@@ -172,6 +173,8 @@ export interface AdminRepo {
   getRecipientObservations(orgId: string, recipientCode: string, window: 7 | 30): Promise<RecipientObservationsView>
   /** 5단계: 후보에 대한 관리자 판단(서버가 후보를 다시 계산해 열쇠를 확인한다). */
   reviewCandidate(orgId: string, input: CandidateReviewInput & { recipientCode: string; window: 7 | 30 }): Promise<RecipientObservationsView>
+  /** 6단계: 운영 지표(2·3단계 이벤트 기반). 연구용 실증 지표(getStats)와 분모·기간이 다르다. */
+  getOperationMetrics(orgId: string, period: OperationPeriod): Promise<OperationMetricsView>
   getStats(): Promise<StatsResponse>
   listReports(source?: 'live' | 'scenario' | 'all'): Promise<ReportListItem[]>
   getReport(id: string): Promise<ReportDetail>
@@ -305,6 +308,9 @@ export const realAdminRepo: AdminRepo = {
   },
   async reviewCandidate(orgId, input) {
     return workflowPost<RecipientObservationsView>(orgId, { ...input, window: String(input.window), op: 'candidate_review' })
+  },
+  async getOperationMetrics(orgId, period) {
+    return api.get<OperationMetricsView>(`${workflowUrl(orgId)}&view=operations&period=${period}`)
   },
   async getStats() {
     return api.get<StatsResponse>('/api/admin/stats')

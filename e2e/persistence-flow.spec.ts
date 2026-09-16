@@ -42,7 +42,7 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
 
     const adminPage = await context.newPage()
     await loginAdmin(adminPage)
-    await adminPage.getByRole('button', { name: '보고 목록' }).click()
+    await adminPage.getByRole('button', { name: '돌봄기록' }).click()
     await adminPage.getByText('A01').first().click()
     await adminPage.getByText('원문만으로 바로 판단 가능한가').locator('..').getByRole('button', { name: '예' }).click()
     await adminPage.getByText('추가 질문이 필요한가').first().locator('..').getByRole('button', { name: '아니오' }).click()
@@ -52,7 +52,7 @@ test.describe('persistence-flow: 새로고침 후에도 제출·평가 데이터
     // 보고 상세 화면은 URL이 아니라 React 상태이므로, 새로고침 후에는 목록에서
     // 같은 보고를 다시 열어 "데이터가 서버(데모 스토어)에 남아있는지"를 확인한다.
     await adminPage.reload()
-    await adminPage.getByRole('button', { name: '보고 목록' }).click()
+    await adminPage.getByRole('button', { name: '돌봄기록' }).click()
     await adminPage.getByText('A01').first().click()
     await expect(adminPage.getByText(/저장됨/)).toBeVisible()
     await expect(adminPage.getByRole('button', { name: '원문 평가 다시 저장' })).toBeVisible()

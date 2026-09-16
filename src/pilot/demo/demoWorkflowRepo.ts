@@ -1,6 +1,7 @@
 import type { ActionListResponse, CreateActionRequest, DecisionRequest, MutateActionRequest, SafetyReviewRequest } from '../shared/adminRepo'
 import { WorkflowRequestError } from '../shared/adminRepo'
 import { buildWorkBoard, type WorkBoard } from '../../../shared/workBoard'
+import { buildOperationMetrics, type OperationMetricsView, type OperationPeriod } from '../../../shared/operationMetrics'
 import {
   FIELD_REQUEST_OPS,
   isRequestVisibleTo,
@@ -111,6 +112,29 @@ export function demoWorkBoard(): WorkBoard {
     candidateReviews: ready && !['stage2', 'stage3', 'stage4'].includes(flag() ?? '') ? (wf.candidateReviews ?? []) : [],
     candidateReviewsReady: ready && !['stage2', 'stage3', 'stage4'].includes(flag() ?? ''),
     now: new Date(),
+  })
+}
+
+/** 6단계 운영 지표 — 실서버와 같은 계산(shared/operationMetrics.ts). 데모 저장소가 '준비 전'이면
+ * 같은 규칙으로 해당 지표가 '미측정'으로 나온다(가짜 0을 만들지 않는다). */
+export function demoOperationMetrics(period: OperationPeriod): OperationMetricsView {
+  const ready = demoWorkflowReady()
+  const frReady = demoFieldRequestsReady()
+  const wf = demoReadWorkflow()
+  return buildOperationMetrics({
+    now: new Date(),
+    days: period,
+    workflowReady: ready,
+    fieldRequestsReady: frReady,
+    reports: demoAllReports().filter((r) => !r.deleted && (r.report_source ?? 'live') === 'live'),
+    reportEvents: ready ? wf.reportEvents : [],
+    decisions: ready ? wf.decisions : [],
+    actions: ready ? wf.actions : [],
+    obligations: ready ? wf.obligations : [],
+    actionEvents: ready ? wf.actionEvents : [],
+    requests: frReady ? wf.fieldRequests : [],
+    responses: frReady ? wf.fieldResponses : [],
+    verifications: frReady ? wf.verifications : [],
   })
 }
 

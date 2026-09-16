@@ -40,7 +40,7 @@ test('provided avatar persists and moves from home into conversation; reduced vi
   await page.getByRole('button', { name: '센터에 보고하기', exact: true }).click()
   await expect(page.getByText(DEMO_SUBMITTED_TEXT)).toBeVisible()
   const admin = await page.context().newPage(); await loginAdmin(admin)
-  await admin.getByRole('button', { name: '보고 목록', exact: true }).click()
+  await admin.getByRole('button', { name: '돌봄기록', exact: true }).click()
   await admin.getByRole('button', { name: /C01 → A01/ }).click()
   await expect(admin.getByRole('heading', { name: /C01 · A01 · 기본/ })).toBeVisible()
   await expect(admin.locator('div.whitespace-pre-wrap').filter({ hasText: /^물을 적게 드셨어요$/ })).toBeVisible()

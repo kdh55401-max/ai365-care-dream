@@ -76,7 +76,7 @@ test.describe('특이사항 없음 대응 흐름 · 표준상황 연습 분리 �
 
     const admin = await page.context().newPage()
     await loginAdmin(admin)
-    await admin.getByRole('button', { name: '보고 목록' }).click()
+    await admin.getByRole('button', { name: '돌봄기록' }).click()
     await expect(admin.getByText('무정보', { exact: true })).toBeVisible()
   })
 
