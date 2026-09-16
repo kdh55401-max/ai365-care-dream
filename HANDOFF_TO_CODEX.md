@@ -21,7 +21,18 @@
   `e2e/helpers.ts`와 기존 spec의 탭 이름 갱신
 - 문서: `docs/CONTINUITY_STAGES.md`(§9), `CHANGE_LOG.md`, `MASTER_CONTEXT.md`
 
-VERIFY_PLACEHOLDER
+검증(6단계 커밋 bf0384a 기준):
+- 타입 검사 오류 0 · oxlint 경고 4(기존과 같음) · vite build 성공 · Vercel 함수 12개(새 API 파일 없음).
+- vitest 245/245 통과(새 `shared/operationMetrics.test.ts` 19건 — 한국시간 자정 경계·최초 기한·취소·미게시·다음 방문·중복 판단·분모 0).
+- 데모 e2e 122건 중 118 통과. 실패 4건은 1~5단계에서도 같은 오류로 실패하던 기존 결함
+  (`companion-redesign.spec.ts:12`, `multi-recipient-flow.spec.ts:13`, 두 뷰포트). 새 `e2e/operation-dashboard.spec.ts` 5건은 두 뷰포트 모두 통과.
+- 1440px 확인: `/admin`과 `/admin/quality`를 브라우저에서 직접 열어 카드 단위·합산 금지 문구·시스템 상태·지표 7종·원천 상태별 건수·현장 부담을 확인했다.
+  지표 상태는 색이 아니라 글자(측정됨/미측정/해당 없음/오류)로도 구분되고, 펼치기 단추는 키보드 포커스를 받는다.
+- 배포 후 확인(운영 https://ai365-care-dream.vercel.app): 새 번들 `index-CS9XBH3E.js`에 6단계 문구 포함, `/admin`·`/admin/quality`·
+  `/admin/work/reports`·`/admin/actions`·`/care` 200. 로그인 없이 또는 위조 쿠키로 `view=operations`(다른 기관 포함)·`view=board`·`/api/admin/stats`를 부르면 모두 401.
+  데모 모드로 로그인해 두 화면을 직접 확인했다.
+- **운영 주소 자동 e2e는 일부만 돌았다**: 26건 중 16건 통과, 10건은 Vercel 봇 보호(Security Checkpoint "Failed to verify your browser, Code 21")가
+  자동 브라우저를 막아서 난 실패이며 앱 오류가 아니다(실패 스냅샷이 모두 체크포인트 화면). 그래서 운영 확인은 위의 수동 확인으로 대신했다.
 
 확인할 화면(데모): `/admin?demo=1`(오늘의 돌봄 — 카드 단위·합산 금지 문구·일반 최장 대기·시스템 상태) →
 `/admin/quality?demo=1`(운영 지표 7종, 기간 7·30·90·전체, "정의·분모·제외 보기"). `?demo_workflow=off`는 앞 단계 DB 미적용 상태.
