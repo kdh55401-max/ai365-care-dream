@@ -35,10 +35,10 @@ test.describe('operation-dashboard: 책임을 나눈 업무 화면과 운영 지
     await resetDemo(page)
   })
 
-  test('오늘의 돌봄이 기본 진입이고 다섯 책임이 나뉘며 기존 경로도 그대로 열린다', async ({ page }) => {
+  test('오늘의 돌봄(/admin/today)에서 다섯 책임이 나뉘며 기존 경로도 그대로 열린다', async ({ page }) => {
     await loginAdmin(page)
-    // 기본 진입 = 오늘의 돌봄(업무). 연구용 실증 대시보드는 여기 있지 않다.
-    await expect(page).toHaveURL(/\/admin\?demo=1/)
+    // 오늘의 돌봄(업무)은 /admin/today. 연구용 실증 대시보드는 여기 있지 않다. (로그인 직후 첫 화면은 수급자 목록 — recipient-admin.spec)
+    await expect(page).toHaveURL(/\/admin\/today\?demo=1/)
     await expect(page.getByRole('heading', { name: '센터가 확인할 돌봄' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'AI365 CARE DREAM 현장 실증 대시보드' })).toHaveCount(0)
 

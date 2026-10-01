@@ -279,6 +279,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
               <span className="text-sm font-bold text-slate-700">이름</span>
               <input
                 value={form.profile.fullName}
+                aria-label="이름"
                 onChange={(e) => patchProfile({ fullName: e.target.value })}
                 maxLength={DISPLAY_NAME_MAX + 10}
                 autoComplete="off"
@@ -459,7 +460,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
                       {r.profile.ltcNumber || <span className="text-slate-300">미입력</span>}
                       <span className="text-slate-300"> · </span>
                       <span className="text-slate-400">유효 </span>
-                      {r.profile.ltcValidFrom && r.profile.ltcValidTo ? `${r.profile.ltcValidFrom} ~ ${r.profile.ltcValidTo}` : <span className="text-slate-300">미입력</span>}
+                      {r.profile.ltcValidFrom && r.profile.ltcValidTo ? <span className="whitespace-nowrap">{`${r.profile.ltcValidFrom} ~ ${r.profile.ltcValidTo}`}</span> : <span className="text-slate-300">미입력</span>}
                       {validity === 'expiring' && <span className="ml-1 font-bold text-amber-700">· 갱신 시기</span>}
                       {validity === 'expired' && <span className="ml-1 font-bold text-red-700">· 만료</span>}
                     </p>

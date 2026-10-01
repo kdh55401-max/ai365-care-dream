@@ -48,7 +48,7 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
 
     await page.getByRole('link', { name: '관리자 화면으로' }).click()
     await expect(page).toHaveURL(/\/admin\?demo=1/)
-    await expect(page.getByText('관리자 검증 화면')).toBeVisible()
+    await expect(page.getByText('관리자 업무 화면')).toBeVisible()
 
     // 데모 리포지토리(demoAdminRepo)는 실제 서버로 /api/care 또는 /api/admin
     // 요청을 보내지 않는다 — 데모 데이터/운영 데이터가 섞이지 않는다는 최소 확인.

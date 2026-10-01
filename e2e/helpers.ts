@@ -31,7 +31,7 @@ export async function loginAdmin(page: Page, password = 'demo1234') {
   await page.goto('/admin?demo=1')
   await page.getByPlaceholder('비밀번호').fill(password)
   await page.getByRole('button', { name: '로그인' }).click()
-  await expect(page.getByText('관리자 검증 화면')).toBeVisible()
+  await expect(page.getByText('관리자 업무 화면')).toBeVisible()
   // ERP 전환(2026-10-03)으로 로그인 직후 첫 화면은 '수급자' 목록이다. 기존 스펙 대부분은 '오늘의 돌봄' 업무 화면에서 시작하므로 여기서 옮겨 준다.
   await page.getByRole('button', { name: '오늘의 돌봄' }).click()
   await expect(page).toHaveURL(/\/admin\/today/)

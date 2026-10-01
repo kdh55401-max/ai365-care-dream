@@ -1620,12 +1620,12 @@ function AdminApp() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center px-4 py-6">
       <div className="w-full max-w-5xl flex-1 flex flex-col gap-4">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2">
           <div>
             <p className="text-teal-600 font-semibold text-sm">AI365 CARE DREAM</p>
-            <h1 className="text-xl font-bold text-slate-900">관리자 검증 화면</h1>
+            <h1 className="text-xl font-bold text-slate-900 whitespace-nowrap">관리자 업무 화면</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 whitespace-nowrap">
             {demo && (
               <button onClick={handleResetDemo} className="text-amber-600 text-xs font-bold underline">
                 데모 초기화

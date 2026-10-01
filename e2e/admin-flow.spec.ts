@@ -18,7 +18,7 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
   test('비로그인 상태에서는 /admin 접근이 차단된다 (로그인 화면만 노출)', async ({ page }) => {
     await page.goto('/admin?demo=1')
     await expect(page.getByText('관리자 로그인')).toBeVisible()
-    await expect(page.getByText('관리자 검증 화면')).not.toBeVisible()
+    await expect(page.getByText('관리자 업무 화면')).not.toBeVisible()
   })
 
   test('잘못된 비밀번호는 거부되고, 정상 비밀번호로만 로그인된다', async ({ page }) => {
@@ -26,11 +26,11 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await page.getByPlaceholder('비밀번호').fill('wrong-password')
     await page.getByRole('button', { name: '로그인' }).click()
     await expect(page.getByText('비밀번호가 올바르지 않습니다.')).toBeVisible()
-    await expect(page.getByText('관리자 검증 화면')).not.toBeVisible()
+    await expect(page.getByText('관리자 업무 화면')).not.toBeVisible()
 
     await page.getByPlaceholder('비밀번호').fill('demo1234')
     await page.getByRole('button', { name: '로그인' }).click()
-    await expect(page.getByText('관리자 검증 화면')).toBeVisible()
+    await expect(page.getByText('관리자 업무 화면')).toBeVisible()
   })
 
   test('처음에는 실제 참여자 0명·누적 보고 0건이다', async ({ page }) => {

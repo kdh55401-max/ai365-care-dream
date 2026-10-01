@@ -13,6 +13,8 @@
 - 개인정보: 인적사항은 서버(Service Role)만 읽고 쓴다. 요양보호사 화면에는 이름만 표시, 기록 대화 AI에는 전달하지 않는다(기존 규칙 유지). **실제 서류·수급자 정보는 저장소에 넣지 않는다**(데모·테스트는 가상 값).
 - 테스트: `shared/recipientProfile.test.ts`(4), `api/_lib/recipientProfileMigration.test.ts`(6, PGlite), `api/_lib/recipientProfileFlow.test.ts`(5, 실제 핸들러+PGlite) — 날짜가 ISO 시각으로 오는 경우를 테스트가 찾아 서버에서 정규화.
   e2e `recipient-admin.spec.ts`에 첫 화면·입력·검색·중복 차단 시나리오 추가, 기존 스펙은 `loginAdmin`이 '오늘의 돌봄'으로 이동하도록 조정.
+- 검증: tsc 0 · vitest 301/301 · e2e(mobile-390) 전체 70건 중 첫 실행 6건 실패 → 이름 입력칸 접근성 이름(안내 문구가 섞여 찾히지 않던 문제, `aria-label="이름"`)과 주소 의미 변경(`/admin/today`) 반영 뒤 관련 스펙 17/17 통과.
+  남은 실패 2건(`companion-redesign` reduced viewport, `multi-recipient-flow:13`)은 이전 인계에 적힌 기존 결함과 같음. 헤더 제목 '관리자 검증 화면' → '관리자 업무 화면'. 미실행: mobile-360 전체, 운영 환경.
 - 아직 안 한 것: 운영 DB에 2026-10-02·2026-10-03 마이그레이션 적용(사용자 조치), 서류 업로드·AI 추출(3단계), 요양보호사 화면의 이름 사용 확인(4단계).
 
 ## 2026-10-01 — 전면 교체 1단계: 진입을 요양보호사/관리자 두 모드로, 생활지원사 비활성화
