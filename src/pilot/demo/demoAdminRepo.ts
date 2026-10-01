@@ -31,11 +31,12 @@ import {
   demoUnlinkActionBaseline,
   demoUploadDocument,
 } from './demoBaselineRepo'
+import { demoRecipientAdminView, demoRegisterRecipient, demoUpdateRecipient } from './demoRecipientRepo'
 import { demoGetRecipientObservations, demoReviewCandidate } from './demoCandidateRepo'
 import {
   demoAssignmentMap,
   DEMO_PIN,
-  DEMO_RECIPIENT_CODES,
+  demoRecipients,
   demoAdminLogin,
   demoAdminLogout,
   demoAdminSession,
@@ -70,7 +71,7 @@ function demoOrganization(orgId: string): Organization {
 }
 
 function demoRecipientRows() {
-  return DEMO_RECIPIENT_CODES.map((code) => ({ code, active: true }))
+  return demoRecipients().map((r) => ({ code: r.code, active: r.active }))
 }
 
 function demoAssignmentRows() {
@@ -296,6 +297,18 @@ export const demoAdminRepo: AdminRepo = {
       updatedAt: '',
       recipientCodes: demoAssignedRecipients(p.code),
     }))
+  },
+  async getRecipientAdminView() {
+    demoOrganization(DEPLOYMENT_ORGANIZATION.id)
+    return demoRecipientAdminView()
+  },
+  async registerRecipient(input) {
+    demoOrganization(DEPLOYMENT_ORGANIZATION.id)
+    return demoRegisterRecipient(input)
+  },
+  async updateRecipient(input) {
+    demoOrganization(DEPLOYMENT_ORGANIZATION.id)
+    return demoUpdateRecipient(input)
   },
   async resetPin(code) {
     const pin = randomPin()

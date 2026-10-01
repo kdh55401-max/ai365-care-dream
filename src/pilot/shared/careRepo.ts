@@ -22,6 +22,8 @@ export interface CareRepo {
     today: string
     dailyReportToday: { id: string; status: string } | null
     recipientCodes: string[]
+    /** 배정된 수급자의 별칭(표시용). 서버가 아직 별칭을 지원하지 않으면 없다. */
+    recipients?: Array<{ code: string; displayName: string | null }>
   }>
   listReports(): Promise<CareReportListItem[]>
   getReport(id: string): Promise<CareReportDetail>

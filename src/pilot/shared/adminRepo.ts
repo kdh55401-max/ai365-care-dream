@@ -18,6 +18,7 @@ import type {
 } from '../../../shared/baseline'
 import type { CandidateReviewInput } from '../../../shared/changeCandidates'
 import type { RecipientObservationsView } from '../../../shared/observationViews'
+import type { RecipientAdminView, RecipientSaveResult, RegisterRecipientInput, UpdateRecipientInput } from '../../../shared/recipientAdmin'
 import type { OperationMetricsView, OperationPeriod } from '../../../shared/operationMetrics'
 
 export interface ParticipationCell {
@@ -184,6 +185,12 @@ export interface AdminRepo {
   reviewReport(input: ReviewReportInput): Promise<ReportDetail>
   deleteReport(id: string, reason: string): Promise<void>
   listParticipants(): Promise<Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>>
+  /** 수급자 관리: 목록(코드·표시명·담당자·활성)과 배정 가능한 요양보호사. DB 준비 전이면 ready:false. */
+  getRecipientAdminView(): Promise<RecipientAdminView>
+  /** 수급자 등록 + 담당 요양보호사 배정(서버에서 한 번에, 코드 자동 번호). 같은 requestId는 한 번만 저장된다. */
+  registerRecipient(input: RegisterRecipientInput): Promise<RecipientSaveResult>
+  /** 표시명·활성 상태·담당 요양보호사 변경(삭제 없음, 과거 기록 연결 불변). */
+  updateRecipient(input: UpdateRecipientInput): Promise<RecipientSaveResult>
   resetPin(code: string): Promise<{ code: string; pin: string }>
   exportCsv(type: 'summary' | 'full'): Promise<void>
 }
@@ -360,6 +367,15 @@ export const realAdminRepo: AdminRepo = {
       participants: Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>
     }>('/api/admin/participants')
     return res.participants
+  },
+  async getRecipientAdminView() {
+    return api.get<RecipientAdminView>('/api/admin/participants?view=recipients')
+  },
+  async registerRecipient(input) {
+    return api.post<RecipientSaveResult>('/api/admin/participants', { op: 'recipient_register', ...input })
+  },
+  async updateRecipient(input) {
+    return api.post<RecipientSaveResult>('/api/admin/participants', { op: 'recipient_update', ...input })
   },
   async resetPin(code) {
     return api.post<{ code: string; pin: string }>('/api/admin/participants', { code })

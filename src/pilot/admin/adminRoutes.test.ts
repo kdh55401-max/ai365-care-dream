@@ -10,6 +10,8 @@ describe('admin routes', () => {
     expect(parseAdminPath('/admin/reports/abc-1')).toEqual({ kind: 'report', id: 'abc-1' })
     expect(parseAdminPath('/admin/reports')).toEqual({ kind: 'reports' })
     expect(parseAdminPath('/admin/participants')).toEqual({ kind: 'participants' })
+    expect(parseAdminPath('/admin/recipient-admin')).toEqual({ kind: 'recipientAdmin' })
+    expect(adminUrl({ kind: 'recipientAdmin' }, '?demo=1')).toBe('/admin/recipient-admin?demo=1')
     expect(parseAdminPath('/admin/presentation')).toEqual({ kind: 'presentation' })
     expect(parseAdminPath('/admin/quality')).toEqual({ kind: 'quality' })
     expect(adminUrl({ kind: 'quality' }, '?demo=1')).toBe('/admin/quality?demo=1')

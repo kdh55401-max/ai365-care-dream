@@ -25,16 +25,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       .eq('active', true)
     const assignedCodes = (assignments ?? []).map((a: { recipient_code: string }) => a.recipient_code)
 
-    let recipientCodes: string[] = []
+    // 서버가 매번 "배정 + 활성"을 다시 확인한다 — 배정 해제·비활성화는 다음 조회부터 바로 반영된다.
+    // display_name은 수급자 등록 마이그레이션(2026-10-02)이 적용된 뒤에만 있다 — 없으면 코드만 돌려준다(기존 동작).
+    let recipients: Array<{ code: string; displayName: string | null }> = []
     if (assignedCodes.length > 0) {
-      const { data: recipients } = await supabase
-        .from('recipients')
-        .select('code')
-        .in('code', assignedCodes)
-        .eq('active', true)
-        .order('code', { ascending: true })
-      recipientCodes = (recipients ?? []).map((r: { code: string }) => r.code)
+      const withName = await supabase.from('recipients').select('code, display_name').in('code', assignedCodes).eq('active', true).order('code', { ascending: true })
+      if (!withName.error) {
+        recipients = (withName.data ?? []).map((r: { code: string; display_name: string | null }) => ({ code: r.code, displayName: r.display_name ?? null }))
+      } else {
+        const { data } = await supabase.from('recipients').select('code').in('code', assignedCodes).eq('active', true).order('code', { ascending: true })
+        recipients = (data ?? []).map((r: { code: string }) => ({ code: r.code, displayName: null }))
+      }
     }
+    const recipientCodes = recipients.map((r) => r.code)
 
     const { data: dailyToday } = await supabase
       .from('reports')
@@ -51,6 +54,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       today,
       dailyReportToday: dailyToday ?? null,
       recipientCodes,
+      recipients,
     })
   })
 }

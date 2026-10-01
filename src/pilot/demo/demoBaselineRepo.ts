@@ -20,7 +20,7 @@ import {
 } from '../../../shared/baseline'
 import { ADMIN_ACTOR_SCOPE, WorkflowError, type ActionEvent, type WorkflowContext } from '../../../shared/workflow'
 import { DEPLOYMENT_ORGANIZATION } from '../../../shared/organization'
-import { DEMO_FILES_KEY, DEMO_RECIPIENT_CODES, demoReadWorkflow, demoWriteWorkflow, newDemoId, type DemoBaseline } from './demoStore'
+import { DEMO_FILES_KEY, demoRecipientCodes, demoReadWorkflow, demoWriteWorkflow, newDemoId, type DemoBaseline } from './demoStore'
 
 /** 데모 모드의 4단계(기준문서·기준정보). 실서버와 같은 규칙(shared/baseline.ts)을 쓰고, DB 함수가 하는 확인
  * (중복 요청·버전 대조·같은 수급자·철회 문서 금지)을 같은 계약으로 흉내 낸다. 원본 파일은 이 브라우저
@@ -83,7 +83,7 @@ function readFiles(): Record<string, string> {
 }
 
 function requireRecipient(code: string) {
-  if (!DEMO_RECIPIENT_CODES.includes(code)) fail(404, '이 기관에서 해당 수급자를 찾을 수 없습니다.')
+  if (!demoRecipientCodes().includes(code)) fail(404, '이 기관에서 해당 수급자를 찾을 수 없습니다.')
 }
 
 export function demoGetRecipientBaseline(code: string): RecipientBaselineView {

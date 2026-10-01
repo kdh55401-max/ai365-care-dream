@@ -14,6 +14,7 @@ import { FIELD_LABELS, formatKoreanDateTime } from './adminFormat'
 import { FallbackBadge, SpinnerIcon } from './adminBadges'
 import { adminUrl, parseAdminPath, type AdminRoute } from './adminRoutes'
 import { RecipientDetailPanel, RecipientsPanel } from './RecipientHub'
+import { RecipientAdminPanel } from './RecipientAdminPanel'
 import { ActionsPanel, CombinedWorkList, WorkCardListPanel, WorkCards } from './WorkBoardPanels'
 import { ActionDetailPanel, ReportWorkflowSection } from './WorkflowPanels'
 import { FieldBurdenPanel, OperationMetricsPanel, SystemStatusStrip } from './OperationPanels'
@@ -23,7 +24,7 @@ import { parseTimelinePeriod } from '../../../shared/recipientHub'
 import type { WorkBoard } from '../../../shared/workBoard'
 import { parseActionFilter } from '../../../shared/workflowViews'
 
-type Tab = 'dashboard' | 'recipients' | 'actions' | 'reports' | 'quality' | 'participants'
+type Tab = 'dashboard' | 'recipients' | 'recipientAdmin' | 'actions' | 'reports' | 'quality' | 'participants'
 const PARTICIPANT_CODES = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09']
 const INSTITUTION_NAME = '가드림365재가복지센터'
 const TARGET_PARTICIPANTS = 9
@@ -1457,6 +1458,8 @@ function AdminApp() {
         ? 'reports'
         : route.kind === 'actions' || route.kind === 'action'
           ? 'actions'
+          : route.kind === 'recipientAdmin'
+            ? 'recipientAdmin'
           : route.kind === 'participants'
             ? 'participants'
             : route.kind === 'quality'
@@ -1645,6 +1648,7 @@ function AdminApp() {
             [
               ['dashboard', '오늘의 돌봄', { kind: 'dashboard' }],
               ['recipients', '수급자 변화', { kind: 'recipients', orgId }],
+              ['recipientAdmin', '수급자 관리', { kind: 'recipientAdmin' }],
               ['actions', '요청과 후속조치', { kind: 'actions' }],
               ['reports', '돌봄기록', { kind: 'reports' }],
               ['quality', '실증과 품질', { kind: 'quality' }],
@@ -1752,6 +1756,7 @@ function AdminApp() {
           />
         )}
         {route.kind === 'reports' && <ReportsPanel repo={repo} onOpen={openReport} />}
+        {route.kind === 'recipientAdmin' && <RecipientAdminPanel repo={repo} onOpenRecipient={openRecipient} />}
         {route.kind === 'participants' && <ParticipantsPanel repo={repo} />}
       </div>
       <div className="w-full max-w-5xl">

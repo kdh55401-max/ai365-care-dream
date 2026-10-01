@@ -255,12 +255,15 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
 function CurrentRecipientCard({
   recipientCode,
   recipientCodes,
+  recipientNames,
   showPicker,
   onTogglePicker,
   onSelect,
 }: {
   recipientCode: string
   recipientCodes: string[]
+  /** 관리자가 등록한 별칭(없으면 코드만 보인다). 표시용일 뿐 AI에는 전달하지 않는다. */
+  recipientNames: Record<string, string | null>
   showPicker: boolean
   onTogglePicker: () => void
   onSelect: (code: string) => void
@@ -269,7 +272,7 @@ function CurrentRecipientCard({
     return (
       <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
         <p className="font-bold text-amber-800">배정된 수급자가 없습니다.</p>
-        <p className="text-amber-700 text-sm mt-1">관리자에게 문의해 주세요.</p>
+        <p className="text-amber-700 text-sm mt-1">관리자가 수급자를 배정해야 기록할 수 있어요. 센터 관리자에게 배정을 요청해 주세요.</p>
       </div>
     )
   }
@@ -279,7 +282,7 @@ function CurrentRecipientCard({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-slate-400 text-xs font-bold">오늘 돌봄 대상</p>
-          <p className="text-slate-900 text-2xl font-bold mt-0.5">{recipientCode} 어르신</p>
+          <p className="text-slate-900 text-2xl font-bold mt-0.5">{recipientNames[recipientCode] ? `${recipientCode} · ${recipientNames[recipientCode]} 어르신` : `${recipientCode} 어르신`}</p>
           <p className="text-teal-700 text-sm font-bold mt-1">배정된 돌봄 대상</p>
         </div>
         {recipientCodes.length > 1 && (
@@ -301,7 +304,7 @@ function CurrentRecipientCard({
                   : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
               }`}
             >
-              {c}
+              {recipientNames[c] ? `${c} · ${recipientNames[c]}` : c}
             </button>
           ))}
         </div>
@@ -320,6 +323,7 @@ function CareApp() {
   const [today, setToday] = useState('')
   const [dailySubmitted, setDailySubmitted] = useState(false)
   const [recipientCodes, setRecipientCodes] = useState<string[]>([])
+  const [recipientNames, setRecipientNames] = useState<Record<string, string | null>>({})
   const [recentReports, setRecentReports] = useState<CareReportListItem[]>([])
   const [historyDetail, setHistoryDetail] = useState<CareReportDetail | null>(null)
 
@@ -445,6 +449,7 @@ function CareApp() {
     // 그대로 둔다(다른 요양보호사의 수급자로 대체하지 않는다).
     const assigned = session.recipientCodes
     setRecipientCodes(assigned)
+    setRecipientNames(Object.fromEntries((session.recipients ?? []).map((r) => [r.code, r.displayName])))
     let activeRecipient = ''
     if (assigned.length > 0) {
       const key = currentRecipientKey(demo, code)
@@ -719,11 +724,20 @@ function CareApp() {
         cancelSpeech()
         voice.start()
       }
-    } catch {
-      // createReport는 daily/additional 모두 "최근 빈 draft 재사용"으로 재시도-안전하다
-      // (같은 요청을 다시 보내도 새 보고가 중복 생성되지 않는다).
-      setError(CONNECTION_ERROR_MESSAGE)
-      setRetryAction(() => () => void startReport(type, voiceAutoStart))
+    } catch (e) {
+      // 새 기록을 시작할 때 서버가 배정·활성 상태를 다시 확인한다. 관리자가 그 사이 배정을 해제하거나
+      // 수급자를 비활성화했다면 403/400이 오므로, 재시도 대신 안내하고 목록을 서버 기준으로 새로 읽는다.
+      const status = (e as { status?: number }).status
+      if ((status === 403 || status === 400) && participantCode) {
+        setError('이 수급자는 더 이상 내게 배정되어 있지 않아 기록을 시작할 수 없어요. 관리자에게 확인해 주세요.')
+        setRetryAction(null)
+        await loadHome(participantCode, false).catch(() => undefined)
+      } else {
+        // createReport는 daily/additional 모두 "최근 빈 draft 재사용"으로 재시도-안전하다
+        // (같은 요청을 다시 보내도 새 보고가 중복 생성되지 않는다).
+        setError(CONNECTION_ERROR_MESSAGE)
+        setRetryAction(() => () => void startReport(type, voiceAutoStart))
+      }
     } finally {
       requestBusy.current = false
       setLoading(false)
@@ -1258,7 +1272,7 @@ function CareApp() {
       <div className="care-context">
         {screen === 'home' && <>
           <div className="care-account"><span>{participantCode}</span><span>{today}</span></div>
-          <CurrentRecipientCard recipientCode={recipientCode} recipientCodes={recipientCodes}
+          <CurrentRecipientCard recipientCode={recipientCode} recipientCodes={recipientCodes} recipientNames={recipientNames}
             showPicker={showRecipientPicker} onTogglePicker={() => setShowRecipientPicker((v) => !v)} onSelect={selectRecipient} />
         </>}
       </div>
@@ -1307,6 +1321,7 @@ function CareApp() {
           <CurrentRecipientCard
             recipientCode={recipientCode}
             recipientCodes={recipientCodes}
+            recipientNames={recipientNames}
             showPicker={showRecipientPicker}
             onTogglePicker={() => setShowRecipientPicker((v) => !v)}
             onSelect={selectRecipient}

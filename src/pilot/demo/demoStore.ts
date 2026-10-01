@@ -42,7 +42,8 @@ export const DEMO_ASSIGNMENTS: Record<string, string[]> = {
  * 배정 관계가 아예 없는(오타 등) 코드는 빈 배열 — 다른 요양보호사의 수급자로
  * 폴백하지 않는다. */
 export function demoAssignedRecipients(caregiverCode: string): string[] {
-  return demoAssignmentMap()[caregiverCode] ?? []
+  const active = new Set(demoRecipients().filter((r) => r.active).map((r) => r.code))
+  return (demoAssignmentMap()[caregiverCode] ?? []).filter((c) => active.has(c)).sort()
 }
 export const DEMO_ADMIN_PASSWORD = 'demo1234'
 
@@ -104,6 +105,32 @@ interface DemoDb {
   workflow: DemoWorkflow
   /** 배정 변경을 시연·검증할 때만 쓰는 덮어쓰기(없으면 DEMO_ASSIGNMENTS). */
   assignments?: Record<string, string[]>
+  /** 관리자가 등록·수정한 수급자(없으면 DEMO_RECIPIENT_CODES 전부 활성·표시명 없음). 이 브라우저에만 저장된다. */
+  recipients?: DemoRecipient[]
+}
+
+export interface DemoRecipient {
+  code: string
+  displayName: string | null
+  active: boolean
+  updatedAt: string
+}
+
+/** 지금 유효한 데모 수급자 목록(코드 순). */
+export function demoRecipients(): DemoRecipient[] {
+  return readDb().recipients ?? DEMO_RECIPIENT_CODES.map((code) => ({ code, displayName: null, active: true, updatedAt: '' }))
+}
+
+export function demoRecipientCodes(): string[] {
+  return demoRecipients().map((r) => r.code)
+}
+
+/** 수급자 목록과 배정을 한 번에 저장한다(둘 중 하나만 저장돼 불완전해지지 않게 한 번의 쓰기로 처리). */
+export function demoSaveRecipients(recipients: DemoRecipient[], assignments: Record<string, string[]>) {
+  const db = readDb()
+  db.recipients = recipients
+  db.assignments = assignments
+  writeDb(db)
 }
 
 /** 지금 유효한 데모 배정(요양보호사 → 수급자). */

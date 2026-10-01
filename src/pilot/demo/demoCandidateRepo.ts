@@ -3,7 +3,7 @@ import { compareScaleValues, computeRepeatCandidates, planCandidateReview, type 
 import { buildRecipientObservations, type RecipientObservationsView } from '../../../shared/observationViews'
 import { WorkflowError, type WorkflowContext } from '../../../shared/workflow'
 import { DEPLOYMENT_ORGANIZATION } from '../../../shared/organization'
-import { DEMO_RECIPIENT_CODES, demoAllReports, demoReadWorkflow, demoWriteWorkflow, newDemoId } from './demoStore'
+import { demoRecipientCodes, demoAllReports, demoReadWorkflow, demoWriteWorkflow, newDemoId } from './demoStore'
 import { demoBaselineReady } from './demoBaselineRepo'
 import { demoWorkflowReady } from './demoWorkflowRepo'
 
@@ -36,7 +36,7 @@ function reviews(): CandidateReview[] {
 
 export function demoGetRecipientObservations(code: string, window: 7 | 30): RecipientObservationsView {
   const c = code.trim().toUpperCase()
-  if (!DEMO_RECIPIENT_CODES.includes(c)) throw new WorkflowRequestError(404, '이 기관에서 해당 수급자를 찾을 수 없습니다.')
+  if (!demoRecipientCodes().includes(c)) throw new WorkflowRequestError(404, '이 기관에서 해당 수급자를 찾을 수 없습니다.')
   const wf = demoReadWorkflow()
   return buildRecipientObservations({
     recipientCode: c,

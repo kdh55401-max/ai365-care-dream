@@ -12,6 +12,7 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
  * /admin/work/:card                       업무 카드 전체 목록(safety|reports|overdue|today)
  * /admin/actions?filter=&recipient=       조치 목록
  * /admin/actions/:id                      조치 상세
+ * /admin/recipient-admin                  수급자 관리(등록·수정·담당 요양보호사 배정·활성 전환)
  * /admin/participants                     참여자 관리(기존)
  * /admin/presentation                     피칭 화면(기존)
  *
@@ -28,6 +29,7 @@ export type AdminRoute =
   | { kind: 'actions' }
   | { kind: 'action'; id: string }
   | { kind: 'participants' }
+  | { kind: 'recipientAdmin' }
   | { kind: 'presentation' }
 
 export function parseAdminPath(pathname: string): AdminRoute {
@@ -37,6 +39,7 @@ export function parseAdminPath(pathname: string): AdminRoute {
   if (section === 'presentation') return { kind: 'presentation' }
   if (section === 'quality') return { kind: 'quality' }
   if (section === 'participants') return { kind: 'participants' }
+  if (section === 'recipient-admin') return { kind: 'recipientAdmin' }
   if (section === 'reports') return a ? { kind: 'report', id: a } : { kind: 'reports' }
   if (section === 'actions') return a ? { kind: 'action', id: a } : { kind: 'actions' }
   if (section === 'work' && a && (WORK_CARDS as string[]).includes(a)) return { kind: 'work', card: a as WorkCard }
@@ -68,6 +71,8 @@ export function adminPath(route: AdminRoute): string {
       return `/admin/actions/${encodeURIComponent(route.id)}`
     case 'participants':
       return '/admin/participants'
+    case 'recipientAdmin':
+      return '/admin/recipient-admin'
     case 'presentation':
       return '/admin/presentation'
   }

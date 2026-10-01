@@ -4,6 +4,7 @@ import type { CareReportRecord } from '../../../shared/careTypes'
 import {
   demoAllReports,
   demoAssignedRecipients,
+  demoRecipients,
   demoCareLogin,
   demoCareLogout,
   demoCareSession,
@@ -167,6 +168,7 @@ export const demoCareRepo: CareRepo = {
       // 로그인한 요양보호사에게 배정된 수급자만 돌려준다 — 다른 요양보호사의
       // 수급자로 폴백하지 않는다(배정이 없으면 빈 배열 그대로).
       recipientCodes: demoAssignedRecipients(code),
+      recipients: demoAssignedRecipients(code).map((c) => ({ code: c, displayName: demoRecipients().find((r) => r.code === c)?.displayName ?? null })),
     }
   },
   async listReports() {

@@ -19,6 +19,13 @@ DB: 새 마이그레이션 없음 — 기존 4단계 `baseline_entries`(scale_re
 '점(문항평균)' 단위로 총점과 섞이지 않는지, (4) 출처 메모 형식이 기존 '관리자 입력' 표시와 혼동되지 않는지, (5) 변화 문구에 판정 표현이 없는지.
 남은 불확실성: GDSSF-K 절단점(척도집에 없음), K-IADL '해본 적 없음' 처리 규칙(원저 확인 필요 — 지금은 실시하지 말라고 안내), 문항 원문 사용 허락.
 
+## 2026-10-02 — 관리자 수급자 등록 · 담당 요양보호사 배정
+
+목적: 관리자가 수급자를 등록하고 담당 요양보호사를 배정하면 그 요양보호사 화면에 나타나 기존 AI 돌봄기록을 쓸 수 있고, 관리자가 수급자별로 확인한다.
+기준: master 0d545b8 → 브랜치 `claude/pensive-einstein-f1f6cf`. **미배포, 마이그레이션 `2026-10-02-recipient-registration.sql` 운영 미적용.**
+수정 파일·검증·미검증은 CHANGE_LOG.md 2026-10-02. 새 파일: `shared/recipientAdmin.ts`, `api/_lib/recipientAdminStore.ts`, `api/_lib/testSupport/pgliteSupabase.ts`(테스트 전용), `RecipientAdminPanel.tsx`, `demoRecipientRepo.ts`, 마이그레이션, 테스트 4종.
+검토 요청: (1) `recipient_update`의 배정 집합 의미(빠진 사람 해제, 사용 중지된 기존 담당자는 유지 가능) (2) 코드 자동 번호가 advisory lock 아래에서 동시 요청에 안전한지 (3) 별칭 컬럼 없는 DB에서 care/session fallback (4) 진행 중 초안 제출을 배정 해제 뒤에도 허용한 판단 (5) 로그에 표시명이 남지 않는지(감사·이력은 코드·변경 항목만).
+
 ## 2026-09-16 — 돌봄 연속성 6단계: 책임을 나눈 업무 화면 · 2·3단계 이벤트로 계산하는 운영 지표
 
 목적·기대 동작: 관리자가 첫 화면(오늘의 돌봄)에서 오늘 할 일과 이유를 보고, 실증과 품질 화면에서 "업무가 실제로 이어지는가"를

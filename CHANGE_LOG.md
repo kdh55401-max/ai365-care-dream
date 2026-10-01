@@ -25,6 +25,23 @@
   `e2e/baseline-docs.spec.ts` 5/5 통과(mobile-390). 전체 e2e(mobile-390) 63건 중 61 통과 — 실패 2건은 6단계 인계에 적힌 기존 결함과 같음(`companion-redesign.spec.ts` reduced viewport, `multi-recipient-flow.spec.ts:13`).
 - 미검증: 운영 Supabase(4단계 마이그레이션 운영 미적용 → 운영에서는 '준비 중'), 실제 API 경로, 배포. 커밋·배포 안 함.
 
+## 2026-10-02 — 관리자 수급자 등록 · 담당 요양보호사 배정
+
+- 화면: `/admin/recipient-admin`(탭 '수급자 관리', `RecipientAdminPanel.tsx`). 목록(코드·표시명·담당·활성, 담당 없으면 '담당자 미배정'), 수급자 추가, 수정, 담당 다중 선택/해제, 활성 전환,
+  저장 중 중복 클릭 방지, 실패 시 입력 유지·오류 표시, 수정 충돌(409) 시 '최신 내용으로 다시 열기'. 삭제 없음. '기록 보기'는 기존 수급자 상세로 연결.
+- 서버: 새 API 파일 없음(Vercel 함수 12개 유지) — `api/admin/participants.ts`에 `GET ?view=recipients`와 POST `op=recipient_register|recipient_update`. 관리자 세션·기관 범위는 기존 `requireAdminOrganization`.
+  저장소 `api/_lib/recipientAdminStore.ts`, 공통 규칙 `shared/recipientAdmin.ts`(표시명 1~30자·식별번호처럼 보이는 숫자 거부).
+- DB(`2026-10-02-recipient-registration.sql`): `recipients.display_name/updated_at`, `caregiver_assignments.updated_at`, `recipient_requests`(재전송 중복 방지), `recipient_admin_log`(수정·삭제 불가),
+  `recipient_register`(advisory lock으로 A 코드 자동 번호 + 수급자·배정 한 트랜잭션)·`recipient_update`(행 잠금·updated_at 충돌 검사, 배정은 삭제 없이 active=false). 앱은 마이그레이션 전에도 기존대로 동작하고 관리자 화면만 '준비 중'.
+- 요양보호사: `api/care/session.ts`가 매 조회마다 배정+활성을 다시 확인해 `recipients[{code,displayName}]`를 추가로 준다(별칭 컬럼이 없으면 코드만). 화면은 'A10 · 별칭 어르신', 미배정 안내 강화.
+  새 기록 시작 시 서버(`api/care/reports.ts`, 기존 배정·활성 검사)가 403/400을 주면 안내하고 목록을 새로 읽는다. 별칭은 AI에 전달하지 않는다. 진행 중이던 초안의 제출은 막지 않았다(자료 손실 방지) — 필요하면 별도 결정.
+- 데모(`?demo=1`): `demoRecipientRepo.ts`가 같은 규칙으로 localStorage에만 저장(운영 집계와 분리).
+- 검증(이 환경): tsc 0 오류 · vitest 286/286(신규: 마이그레이션 PGlite 13, 실제 핸들러+실제 SQL 흐름 12 — 인증 401·타 기관 403·등록→담당만 표시→미배정 403→기록 제출→관리자 목록 연결·해제/변경/비활성화 차단·충돌 409·중복 재전송·마이그레이션 전 호환,
+  규칙 4, 라우트) · oxlint 새 경고 없음(기존 4) · vite build 성공 · e2e mobile-390 64/66 통과(실패 2건은 기존 결함: companion-redesign:12, multi-recipient-flow:13) · 신규 e2e `recipient-admin.spec.ts` 두 뷰포트 6/6.
+- **미검증**: 실제 Supabase/운영 URL에서의 등록·배정(자격증명·네트워크 없음), 실제 운영 DB 마이그레이션 적용, Vercel 배포, 실기기.
+- 적용 순서(사용자): ① Supabase 백업 확인 → SQL Editor에 마이그레이션 실행 → 파일 상단 확인 쿼리 3개 true ② 이 브랜치를 운영(master)에 병합·배포 ③ 운영에서 관리자 로그인 → 수급자 관리 → 추가 → C코드 선택 → 저장, 담당 요양보호사로 로그인해 표시·기록 제출 확인.
+  되돌리기: Vercel 이전 배포 Promote(새 컬럼·표는 이전 앱에 무해). 잘못 만든 수급자는 삭제하지 말고 비활성화.
+
 ## 2026-09-16 — 돌봄 연속성 6단계: 책임을 나눈 업무 화면 · 2·3단계 이벤트로 계산하는 운영 지표
 
 사용자 승인으로 6단계만 진행. 기준: v2 계획 6단계 + `AI365_Dashboard_Integration_Stages2to6_v3.md`의 공통 규칙·6단계 프롬프트·지표 정의.
