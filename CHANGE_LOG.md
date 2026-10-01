@@ -23,6 +23,7 @@
   결측 거부·기존 `planSaveEntry` 통과·출처 메모 500자 이내·응답 왕복) · oxlint 새 경고 없음 · `vite build` 성공.
 - 새 `e2e/scales.spec.ts` 2건 × 두 뷰포트 = 4/4 통과(데모: 부양부담 사전 36 → 사후 27 저장·이력·기준정보 표시, 문항 원문 비노출).
   `e2e/baseline-docs.spec.ts` 5/5 통과(mobile-390). 전체 e2e(mobile-390) 63건 중 61 통과 — 실패 2건은 6단계 인계에 적힌 기존 결함과 같음(`companion-redesign.spec.ts` reduced viewport, `multi-recipient-flow.spec.ts:13`).
+배포·DB(2026-10-01): 커밋 0d545b8 → origin/master fast-forward(a1416fe..0d545b8) → Vercel 운영 반영. 사용자 로그인 세션(앱 내 브라우저)에서 Supabase SQL Editor로 2→3→4→5단계 마이그레이션을 순서대로 적용(각 파일은 GitHub 0d545b8 원본과 SHA-256 대조 후 실행, 모두 Success). 사후 확인 쿼리 10개 값 모두 true, 기존 reports 45건 그대로. 운영 관리자 로그인 후 /admin/org/gadream365/recipients/A01에서 '표준화 척도' 섹션이 '준비 중' 없이 활성, 입력 폼 열림 확인(저장은 하지 않음 — 시험용 수급자가 없어 실제 수급자 기록에 시험값을 남기지 않았다). 미확인: 운영에서 실제 척도 저장·확인 흐름.
 - 미검증: 운영 Supabase(4단계 마이그레이션 운영 미적용 → 운영에서는 '준비 중'), 실제 API 경로, 배포. 커밋·배포 안 함.
 
 ## 2026-09-16 — 돌봄 연속성 6단계: 책임을 나눈 업무 화면 · 2·3단계 이벤트로 계산하는 운영 지표
