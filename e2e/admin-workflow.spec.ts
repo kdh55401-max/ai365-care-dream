@@ -196,7 +196,7 @@ test.describe('admin-workflow: 관리자 판단·조치·안전 검토', () => {
   test('DB 적용 전 상태에서는 가짜 0 대신 "준비 중"을 보이고 저장하지 않는다', async ({ page }) => {
     await seedFlaggedReport(page)
     await loginAdmin(page)
-    await page.goto('/admin?demo=1&demo_workflow=off')
+    await page.goto('/admin/today?demo=1&demo_workflow=off')
     await expect(card(page, '기한 지난 조치')).toContainText('준비 중')
     await expect(card(page, '오늘 재확인')).toContainText('준비 중')
     await expect(card(page, '안전 신호 미검토')).toContainText('검토 여부 미확인')

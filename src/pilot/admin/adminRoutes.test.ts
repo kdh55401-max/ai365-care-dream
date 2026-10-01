@@ -3,15 +3,17 @@ import { adminUrl, parseAdminPath } from './adminRoutes'
 
 describe('admin routes', () => {
   it('새로고침·직접 주소로 같은 화면을 복원한다', () => {
-    expect(parseAdminPath('/admin')).toEqual({ kind: 'dashboard' })
-    expect(parseAdminPath('/admin/')).toEqual({ kind: 'dashboard' })
+    expect(parseAdminPath('/admin')).toEqual({ kind: 'recipientAdmin' })
+    expect(parseAdminPath('/admin/')).toEqual({ kind: 'recipientAdmin' })
+    expect(parseAdminPath('/admin/today')).toEqual({ kind: 'dashboard' })
+    expect(adminUrl({ kind: 'dashboard' }, '?demo=1')).toBe('/admin/today?demo=1')
     expect(parseAdminPath('/admin/org/gadream365/recipients')).toEqual({ kind: 'recipients', orgId: 'gadream365' })
     expect(parseAdminPath('/admin/org/gadream365/recipients/A01')).toEqual({ kind: 'recipient', orgId: 'gadream365', code: 'A01' })
     expect(parseAdminPath('/admin/reports/abc-1')).toEqual({ kind: 'report', id: 'abc-1' })
     expect(parseAdminPath('/admin/reports')).toEqual({ kind: 'reports' })
     expect(parseAdminPath('/admin/participants')).toEqual({ kind: 'participants' })
     expect(parseAdminPath('/admin/recipient-admin')).toEqual({ kind: 'recipientAdmin' })
-    expect(adminUrl({ kind: 'recipientAdmin' }, '?demo=1')).toBe('/admin/recipient-admin?demo=1')
+    expect(adminUrl({ kind: 'recipientAdmin' }, '?demo=1')).toBe('/admin?demo=1')
     expect(parseAdminPath('/admin/presentation')).toEqual({ kind: 'presentation' })
     expect(parseAdminPath('/admin/quality')).toEqual({ kind: 'quality' })
     expect(adminUrl({ kind: 'quality' }, '?demo=1')).toBe('/admin/quality?demo=1')

@@ -1,16 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AdminRepo } from '../shared/adminRepo'
-import { DISPLAY_NAME_MAX, validateDisplayName, validateRecipientCode, type RecipientAdminRow, type RecipientAdminView } from '../../../shared/recipientAdmin'
+import {
+  DISPLAY_NAME_MAX,
+  EMPTY_PROFILE,
+  LTC_GRADES,
+  cleanProfile,
+  ltcValidity,
+  validateDisplayName,
+  validateProfile,
+  validateRecipientCode,
+  type RecipientAdminRow,
+  type RecipientAdminView,
+  type RecipientProfile,
+} from '../../../shared/recipientAdmin'
 import { SpinnerIcon } from './adminBadges'
 
-/** 관리자 "수급자 관리" — 수급자 목록·등록·정보 수정·담당 요양보호사 배정·활성 전환.
+/** 관리자 "수급자" — 이지케어식 수급자 목록(이름·장기요양인정번호·등급·인정 유효기간·담당 요양보호사·상태를 한 줄에)과
+ * 등록·정보 수정·담당 배정·활성 전환. 이 앱의 관리자 첫 화면이다.
  * 저장은 서버(DB 함수)가 한 번에 처리하고, 이 화면은 입력을 모으고 결과를 보여준다.
  * 실패하면 입력값을 지우지 않고 그 자리에 오류를 보인다. 삭제는 없다(비활성화·배정 해제만). */
 
 interface FormState {
   mode: 'create' | 'edit'
   code: string
-  displayName: string
+  profile: RecipientProfile
   customCode: string
   active: boolean
   caregivers: string[]
@@ -23,14 +36,15 @@ interface FormState {
 const newRequestId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
 function emptyForm(): FormState {
-  return { mode: 'create', code: '', displayName: '', customCode: '', active: true, caregivers: [], expectedUpdatedAt: '', requestId: newRequestId() }
+  return { mode: 'create', code: '', profile: { ...EMPTY_PROFILE }, customCode: '', active: true, caregivers: [], expectedUpdatedAt: '', requestId: newRequestId() }
 }
 
 function formFor(row: RecipientAdminRow): FormState {
   return {
     mode: 'edit',
     code: row.code,
-    displayName: row.displayName ?? '',
+    // 인적사항 이름이 아직 없으면 예전에 입력한 별칭을 이름 칸에 미리 채워 준다(저장하면 이름으로 확정).
+    profile: { ...row.profile, fullName: row.profile.fullName || (row.displayName ?? '') },
     customCode: '',
     active: row.active,
     caregivers: [...row.caregivers],
@@ -45,6 +59,11 @@ function messageOf(e: unknown, fallback: string): string {
 
 function statusOf(e: unknown): number | null {
   return e && typeof e === 'object' && 'status' in e && typeof (e as { status: unknown }).status === 'number' ? (e as { status: number }).status : null
+}
+
+/** 목록에 보일 이름: 인적사항 이름, 없으면 예전 별칭. */
+function nameOf(r: RecipientAdminRow): string {
+  return r.profile.fullName || r.displayName || ''
 }
 
 function CaregiverChips({ codes }: { codes: string[] }) {
@@ -69,6 +88,8 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<{ message: string; conflict: boolean } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<'all' | 'active' | 'unassigned' | 'expiring'>('all')
   const savingRef = useRef(false)
 
   const load = async () => {
@@ -87,6 +108,9 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
 
   const patch = (changes: Partial<FormState>, keepRequest = true) =>
     setForm((f) => (f ? { ...f, ...changes, requestId: keepRequest || f.mode === 'create' ? f.requestId : newRequestId() } : f))
+
+  const patchProfile = (changes: Partial<RecipientProfile>) =>
+    setForm((f) => (f ? { ...f, profile: { ...f.profile, ...changes }, requestId: f.mode === 'create' ? f.requestId : newRequestId() } : f))
 
   const toggleCaregiver = (code: string) =>
     setForm((f) => {
@@ -113,7 +137,8 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
 
   const submit = async () => {
     if (!form || savingRef.current) return
-    const nameError = validateDisplayName(form.displayName)
+    const profile = cleanProfile(form.profile)
+    const nameError = view?.profileReady ? validateProfile(profile, true) : validateDisplayName(profile.fullName)
     const codeError = form.mode === 'create' ? validateRecipientCode(form.customCode) : null
     if (nameError || codeError) {
       setFormError({ message: nameError ?? codeError ?? '', conflict: false })
@@ -125,9 +150,10 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
     try {
       if (form.mode === 'create') {
         const res = await repo.registerRecipient({
-          displayName: form.displayName.trim(),
+          displayName: profile.fullName,
           caregiverCodes: form.caregivers,
           active: form.active,
+          ...(view?.profileReady ? { profile } : {}),
           code: form.customCode.trim() ? form.customCode.trim().toUpperCase() : undefined,
           requestId: form.requestId,
         })
@@ -135,9 +161,10 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
       } else {
         const res = await repo.updateRecipient({
           code: form.code,
-          displayName: form.displayName.trim(),
+          displayName: profile.fullName,
           active: form.active,
           caregiverCodes: form.caregivers,
+          ...(view?.profileReady ? { profile } : {}),
           expectedUpdatedAt: form.expectedUpdatedAt || undefined,
           requestId: form.requestId,
         })
@@ -197,19 +224,33 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
 
   const assignable = view.caregivers.filter((c) => c.active || form?.caregivers.includes(c.code))
   const unassigned = view.recipients.filter((r) => r.active && r.caregivers.length === 0).length
+  const today = new Date().toISOString().slice(0, 10)
+  const q = query.trim().toLowerCase().replace(/\s+/g, '')
+  const shown = view.recipients.filter((r) => {
+    if (filter === 'active' && !r.active) return false
+    if (filter === 'unassigned' && !(r.active && r.caregivers.length === 0)) return false
+    if (filter === 'expiring' && !['expiring', 'expired'].includes(ltcValidity(r.profile.ltcValidTo, today))) return false
+    if (!q) return true
+    return [r.code, nameOf(r), r.profile.ltcNumber].some((v) => v.toLowerCase().replace(/\s+/g, '').includes(q))
+  })
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">수급자 관리 · {view.recipients.length}명</h2>
-          <p className="text-slate-400 text-xs mt-0.5">별칭(표시명)으로 등록합니다. 삭제는 없고, 사용하지 않는 수급자는 비활성화합니다.</p>
+          <h2 className="text-lg font-bold text-slate-900">수급자 · {view.recipients.length}명</h2>
+          <p className="text-slate-400 text-xs mt-0.5">이름·장기요양인정번호·등급·유효기간을 한눈에 봅니다. 삭제는 없고, 사용하지 않는 수급자는 비활성화합니다.</p>
         </div>
         <button onClick={openCreate} disabled={form?.mode === 'create'} className="shrink-0 min-h-[44px] px-4 rounded-full bg-teal-600 text-white font-bold text-sm disabled:opacity-40">
           수급자 추가
         </button>
       </div>
 
+      {!view.profileReady && (
+        <p className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-amber-900 text-xs">
+          <b>인적사항(장기요양인정번호·등급·유효기간 등) 저장 준비 중</b> — DB 마이그레이션(db/migrations/2026-10-03-erp-recipient-profile.sql)을 적용하면 입력·표시됩니다. 지금은 이름만 저장됩니다.
+        </p>
+      )}
       {notice && (
         <p role="status" className="rounded-2xl bg-teal-50 border border-teal-200 px-4 py-3 text-teal-800 text-sm font-bold">
           {notice}
@@ -232,18 +273,69 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
         >
           <h3 className="font-bold text-slate-900">{form.mode === 'create' ? '수급자 추가' : `수급자 ${form.code} 수정`}</h3>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-bold text-slate-700">표시명(별칭)</span>
-            <input
-              value={form.displayName}
-              onChange={(e) => patch({ displayName: e.target.value }, false)}
-              maxLength={DISPLAY_NAME_MAX + 10}
-              disabled={saving}
-              placeholder="예: 햇살 어르신"
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base"
-            />
-            <span className="text-xs text-slate-400">실명·주민등록번호·전화번호는 넣지 마세요. 앱 안에서 구분하기 위한 별칭입니다. 이 값은 AI에 전달되지 않습니다.</span>
-          </label>
+          <fieldset className="flex flex-col gap-3" disabled={saving}>
+            <legend className="text-sm font-bold text-slate-700 mb-1">인적사항</legend>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-bold text-slate-700">이름</span>
+              <input
+                value={form.profile.fullName}
+                onChange={(e) => patchProfile({ fullName: e.target.value })}
+                maxLength={DISPLAY_NAME_MAX + 10}
+                autoComplete="off"
+                className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base"
+              />
+              <span className="text-xs text-slate-400">요양보호사 화면에도 이 이름이 표시됩니다. 기록 대화에서 AI에는 이름이 전달되지 않습니다.</span>
+            </label>
+            {view.profileReady && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm font-bold text-slate-700">장기요양인정번호</span>
+                  <input
+                    value={form.profile.ltcNumber}
+                    onChange={(e) => patchProfile({ ltcNumber: e.target.value })}
+                    placeholder="L0011097739-103"
+                    autoComplete="off"
+                    className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base uppercase"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700">장기요양등급</span>
+                    <select value={form.profile.ltcGrade} onChange={(e) => patchProfile({ ltcGrade: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base bg-white">
+                      <option value="">선택 안 함</option>
+                      {LTC_GRADES.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700">생년월일</span>
+                    <input type="date" value={form.profile.birthDate} onChange={(e) => patchProfile({ birthDate: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base" />
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700">인정 유효기간 시작</span>
+                    <input type="date" value={form.profile.ltcValidFrom} onChange={(e) => patchProfile({ ltcValidFrom: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-slate-700">인정 유효기간 종료</span>
+                    <input type="date" value={form.profile.ltcValidTo} onChange={(e) => patchProfile({ ltcValidTo: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base" />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm font-bold text-slate-700">주소</span>
+                  <input value={form.profile.address} onChange={(e) => patchProfile({ address: e.target.value })} autoComplete="off" className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm font-bold text-slate-700">전화번호</span>
+                  <input value={form.profile.phone} onChange={(e) => patchProfile({ phone: e.target.value })} inputMode="tel" autoComplete="off" className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base" />
+                </label>
+              </>
+            )}
+          </fieldset>
 
           <div className="flex flex-col gap-1">
             <span className="text-sm font-bold text-slate-700">수급자 코드</span>
@@ -315,33 +407,80 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
         </form>
       )}
 
+      <div className="flex flex-col gap-2">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="이름 · 장기요양인정번호 · 코드로 찾기"
+          aria-label="수급자 찾기"
+          className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base bg-white"
+        />
+        <div className="flex gap-2 overflow-x-auto" role="group" aria-label="수급자 보기 조건">
+          {(
+            [
+              ['all', '전체'],
+              ['active', '활성'],
+              ['unassigned', '담당 미배정'],
+              ['expiring', '유효기간 임박·만료'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFilter(id)}
+              aria-pressed={filter === id}
+              className={`shrink-0 min-h-[36px] px-3 rounded-full text-xs font-bold border ${filter === id ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-600'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {view.recipients.length === 0 && <p className="text-slate-400 text-center py-10">등록된 수급자가 없습니다. &lsquo;수급자 추가&rsquo;로 시작하세요.</p>}
+      {view.recipients.length > 0 && shown.length === 0 && <p className="text-slate-400 text-center py-8">조건에 맞는 수급자가 없습니다.</p>}
       <ul className="flex flex-col gap-2" aria-label="수급자 목록">
-        {view.recipients.map((r) => (
-          <li key={r.code} data-recipient-code={r.code} className={`rounded-2xl border shadow-sm p-4 ${r.active ? 'bg-white border-slate-100' : 'bg-slate-50 border-slate-200'}`}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-900">{r.code}</span>
-                  <span className={`text-base ${r.displayName ? 'text-slate-900' : 'text-slate-400'}`}>{r.displayName ?? '표시명 없음'}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.active ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'}`}>{r.active ? '활성' : '비활성'}</span>
+        {shown.map((r) => {
+          const validity = ltcValidity(r.profile.ltcValidTo, today)
+          return (
+            <li key={r.code} data-recipient-code={r.code} className={`rounded-2xl border shadow-sm p-4 ${r.active ? 'bg-white border-slate-100' : 'bg-slate-50 border-slate-200'}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-slate-900">{r.code}</span>
+                    <span className={`text-base font-bold ${nameOf(r) ? 'text-slate-900' : 'text-slate-400'}`}>{nameOf(r) || '이름 없음'}</span>
+                    {r.profile.ltcGrade && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-100">{r.profile.ltcGrade}</span>}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.active ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'}`}>{r.active ? '활성' : '비활성'}</span>
+                  </div>
+                  {view.profileReady && (
+                    <p className="mt-1 text-xs text-slate-500 break-all">
+                      <span className="text-slate-400">인정번호 </span>
+                      {r.profile.ltcNumber || <span className="text-slate-300">미입력</span>}
+                      <span className="text-slate-300"> · </span>
+                      <span className="text-slate-400">유효 </span>
+                      {r.profile.ltcValidFrom && r.profile.ltcValidTo ? `${r.profile.ltcValidFrom} ~ ${r.profile.ltcValidTo}` : <span className="text-slate-300">미입력</span>}
+                      {validity === 'expiring' && <span className="ml-1 font-bold text-amber-700">· 갱신 시기</span>}
+                      {validity === 'expired' && <span className="ml-1 font-bold text-red-700">· 만료</span>}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className="text-xs text-slate-500">담당</span>
+                    <CaregiverChips codes={r.caregivers} />
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                  <span className="text-xs text-slate-500">담당</span>
-                  <CaregiverChips codes={r.caregivers} />
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <button onClick={() => openEdit(r)} className="min-h-[40px] px-4 rounded-full border-2 border-slate-900 text-slate-900 font-bold text-sm hover:bg-slate-50">
+                    수정
+                  </button>
+                  <button onClick={() => onOpenRecipient(r.code)} className="min-h-[36px] px-3 rounded-full text-teal-700 font-bold text-xs underline">
+                    기록 보기
+                  </button>
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5 shrink-0">
-                <button onClick={() => openEdit(r)} className="min-h-[40px] px-4 rounded-full border-2 border-slate-900 text-slate-900 font-bold text-sm hover:bg-slate-50">
-                  수정
-                </button>
-                <button onClick={() => onOpenRecipient(r.code)} className="min-h-[36px] px-3 rounded-full text-teal-700 font-bold text-xs underline">
-                  기록 보기
-                </button>
-              </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

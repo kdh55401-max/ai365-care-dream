@@ -1646,9 +1646,9 @@ function AdminApp() {
         <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
           {(
             [
+              ['recipientAdmin', '수급자', { kind: 'recipientAdmin' }],
               ['dashboard', '오늘의 돌봄', { kind: 'dashboard' }],
               ['recipients', '수급자 변화', { kind: 'recipients', orgId }],
-              ['recipientAdmin', '수급자 관리', { kind: 'recipientAdmin' }],
               ['actions', '요청과 후속조치', { kind: 'actions' }],
               ['reports', '돌봄기록', { kind: 'reports' }],
               ['quality', '실증과 품질', { kind: 'quality' }],

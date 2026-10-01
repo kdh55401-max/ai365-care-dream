@@ -3,7 +3,8 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
 /** /admin 화면 주소 규칙. 새로고침·직접 주소 입력·뒤로가기가 같은 화면으로 돌아오도록
  * 화면 상태를 주소(pathname)에 담는다. 라우팅 라이브러리는 쓰지 않는다(main.tsx와 동일).
  *
- * /admin                                  오늘의 돌봄(업무 카드 + 통합 목록 + 시스템 상태)
+ * /admin                                  수급자 목록(ERP 첫 화면 — 이지케어식 목록·등록·담당 배정)
+ * /admin/today                            오늘의 돌봄(업무 카드 + 통합 목록 + 시스템 상태)
  * /admin/quality                           실증과 품질(운영 지표 + 기존 연구용 실증 대시보드)
  * /admin/org/:orgId/recipients            수급자 목록
  * /admin/org/:orgId/recipients/:code      수급자 상세(보고 타임라인)
@@ -12,7 +13,7 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
  * /admin/work/:card                       업무 카드 전체 목록(safety|reports|overdue|today)
  * /admin/actions?filter=&recipient=       조치 목록
  * /admin/actions/:id                      조치 상세
- * /admin/recipient-admin                  수급자 관리(등록·수정·담당 요양보호사 배정·활성 전환)
+ * /admin/recipient-admin                  /admin 과 같은 화면(예전 주소 호환)
  * /admin/participants                     참여자 관리(기존)
  * /admin/presentation                     피칭 화면(기존)
  *
@@ -36,6 +37,8 @@ export function parseAdminPath(pathname: string): AdminRoute {
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean).map(decodeURIComponent)
   if (parts[0] !== 'admin') return { kind: 'dashboard' }
   const [, section, a, b, c] = parts
+  if (!section) return { kind: 'recipientAdmin' }
+  if (section === 'today') return { kind: 'dashboard' }
   if (section === 'presentation') return { kind: 'presentation' }
   if (section === 'quality') return { kind: 'quality' }
   if (section === 'participants') return { kind: 'participants' }
@@ -52,7 +55,7 @@ export function parseAdminPath(pathname: string): AdminRoute {
 export function adminPath(route: AdminRoute): string {
   switch (route.kind) {
     case 'dashboard':
-      return '/admin'
+      return '/admin/today'
     case 'quality':
       return '/admin/quality'
     case 'recipients':
@@ -72,7 +75,7 @@ export function adminPath(route: AdminRoute): string {
     case 'participants':
       return '/admin/participants'
     case 'recipientAdmin':
-      return '/admin/recipient-admin'
+      return '/admin'
     case 'presentation':
       return '/admin/presentation'
   }

@@ -1,3 +1,11 @@
+## 2026-10-03 — 전면 교체 2단계: 관리자 첫 화면 수급자 목록(이지케어식) · 인적사항
+
+목적: ERP 전환(MASTER_CONTEXT 최상단). 관리자 로그인 직후 수급자 목록·인적사항·검색, `/admin`=목록, `/admin/today`=오늘의 돌봄.
+기준: 브랜치 `claude/ecstatic-hopper-05fyoy`. 새 마이그레이션 `db/migrations/2026-10-03-erp-recipient-profile.sql`(2026-10-02 선행, 둘 다 **운영 미적용**).
+주요 파일: `shared/recipientAdmin.ts`, `api/_lib/recipientAdminStore.ts`, `src/pilot/admin/RecipientAdminPanel.tsx`, `adminRoutes.ts`, `AdminApp.tsx`(탭), 데모 저장소, 테스트 3종, e2e.
+검토 요청(Codex): (1) `recipient_register_erp`의 예외 처리(unique_violation → duplicate_ltc, 그 외 profile_invalid 문구 파싱)가 다른 오류를 삼키지 않는지, (2) 인정번호 유일 인덱스와 `recipient_update_erp`
+재전송(duplicate) 동작, (3) 변경 이력에 값이 남지 않는지, (4) `/admin` 주소 의미 변경이 외부 링크·북마크에 미치는 영향.
+
 ## 2026-10-01 — 전면 교체 1단계: 요양보호사/관리자 두 모드 진입 (기관 내부 ERP 전환 시작)
 
 목적: 앱 방향이 "사업화 MVP"에서 "이지케어를 대체하는 기관 내부 ERP"로 바뀌었다(MASTER_CONTEXT.md 최상단에 사용자 지시 전문 정리). 첫 단계로 진입을 요양보호사/관리자 둘로 줄이고

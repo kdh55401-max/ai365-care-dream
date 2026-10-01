@@ -101,7 +101,7 @@ test.describe('operation-dashboard: 책임을 나눈 업무 화면과 운영 지
     await expect(page.getByText('열린 조치').locator('..')).toContainText('준비 중')
 
     // 시스템 상태는 수급자 안전 신호와 분리해서 보여주고, 저장하지 않는 것은 '미측정'이라고 말한다
-    await page.goto('/admin?demo=1&demo_workflow=off')
+    await page.goto('/admin/today?demo=1&demo_workflow=off')
     const system = page.getByRole('region', { name: '시스템 상태' })
     await expect(system).toContainText('전송 실패')
     await expect(system).toContainText('미측정')

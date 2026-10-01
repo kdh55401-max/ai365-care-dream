@@ -242,7 +242,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await submitFirstReport(care)
     const admin = await context.newPage()
     await loginAdmin(admin)
-    await admin.goto('/admin?demo=1&demo_workflow=stage2')
+    await admin.goto('/admin/today?demo=1&demo_workflow=stage2')
     await expect(card(admin, '현장 응답 대기 요청')).toContainText('준비 중')
     await expect(card(admin, '응답 도착 · 결과 확인 대기')).toContainText('준비 중')
     await card(admin, '새 보고 미확인').click()

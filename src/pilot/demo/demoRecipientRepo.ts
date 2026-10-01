@@ -1,9 +1,13 @@
 import {
+  EMPTY_PROFILE,
+  cleanProfile,
   nextRecipientCode,
   normalizeCaregiverCodes,
   validateDisplayName,
+  validateProfile,
   validateRecipientCode,
   type RecipientAdminView,
+  type RecipientProfile,
   type RecipientSaveResult,
   type RegisterRecipientInput,
   type UpdateRecipientInput,
@@ -19,6 +23,17 @@ function fail(status: number, message: string): never {
 
 const seenRequests = new Map<string, string>()
 
+function checkProfile(profile: Partial<RecipientProfile> | undefined, requireName: boolean, ownCode: string | null): RecipientProfile | undefined {
+  if (!profile) return undefined
+  const cleaned = cleanProfile(profile)
+  const error = validateProfile(cleaned, requireName)
+  if (error) fail(400, error)
+  if (cleaned.ltcNumber && demoRecipients().some((r) => r.code !== ownCode && r.profile?.ltcNumber === cleaned.ltcNumber)) {
+    fail(409, '이미 등록된 장기요양인정번호입니다.')
+  }
+  return cleaned
+}
+
 function validCaregivers(codes: string[]) {
   const active = new Set(demoListParticipants().filter((p) => p.active).map((p) => p.code))
   if (codes.some((c) => !active.has(c))) fail(400, '등록되지 않았거나 사용 중지된 요양보호사는 배정할 수 없습니다.')
@@ -28,12 +43,14 @@ export function demoRecipientAdminView(): RecipientAdminView {
   const map = demoAssignmentMap()
   return {
     ready: true,
+    profileReady: true,
     recipients: demoRecipients().map((r) => ({
       code: r.code,
       displayName: r.displayName,
       active: r.active,
       caregivers: Object.entries(map).filter(([, list]) => list.includes(r.code)).map(([c]) => c).sort(),
       updatedAt: r.updatedAt,
+      profile: r.profile ?? EMPTY_PROFILE,
     })),
     caregivers: demoListParticipants().map((p) => ({ code: p.code, active: p.active })),
   }
@@ -48,13 +65,14 @@ export function demoRegisterRecipient(input: RegisterRecipientInput): RecipientS
   if (codeError) fail(400, codeError)
   const caregivers = normalizeCaregiverCodes(input.caregiverCodes)
   validCaregivers(caregivers)
+  const profile = checkProfile(input.profile, false, null)
   const recipients = demoRecipients()
   const manual = (input.code ?? '').trim().toUpperCase()
   if (manual && recipients.some((r) => r.code === manual)) fail(409, '이미 사용 중인 수급자 코드입니다.')
   const code = manual || nextRecipientCode(recipients.map((r) => r.code))
   const map = { ...demoAssignmentMap() }
   for (const c of caregivers) map[c] = [...(map[c] ?? []), code]
-  const created: DemoRecipient = { code, displayName: input.displayName.trim(), active: input.active, updatedAt: new Date().toISOString() }
+  const created: DemoRecipient = { code, displayName: input.displayName.trim(), active: input.active, updatedAt: new Date().toISOString(), ...(profile ? { profile } : {}) }
   demoSaveRecipients([...recipients, created].sort((a, b) => a.code.localeCompare(b.code)), map)
   seenRequests.set(input.requestId, code)
   return { code, duplicate: false }
@@ -73,6 +91,7 @@ export function demoUpdateRecipient(input: UpdateRecipientInput): RecipientSaveR
     const nameError = validateDisplayName(input.displayName)
     if (nameError) fail(400, nameError)
   }
+  const profile = checkProfile(input.profile, false, input.code)
   const map = { ...demoAssignmentMap() }
   if (input.caregiverCodes !== undefined) {
     const next = normalizeCaregiverCodes(input.caregiverCodes)
@@ -83,7 +102,7 @@ export function demoUpdateRecipient(input: UpdateRecipientInput): RecipientSaveR
   }
   const updated = recipients.map((r) =>
     r.code === input.code
-      ? { ...r, displayName: input.displayName !== undefined ? input.displayName.trim() : r.displayName, active: input.active ?? r.active, updatedAt: new Date().toISOString() }
+      ? { ...r, displayName: input.displayName !== undefined ? input.displayName.trim() : r.displayName, active: input.active ?? r.active, updatedAt: new Date().toISOString(), ...(profile ? { profile: { ...(r.profile ?? EMPTY_PROFILE), ...profile } } : {}) }
       : r,
   )
   demoSaveRecipients(updated, map)

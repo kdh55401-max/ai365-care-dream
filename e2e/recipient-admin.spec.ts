@@ -5,8 +5,8 @@ import { completeDailyReport, loginAdmin, loginCare, resetDemo } from './helpers
  * 운영 DB·운영 집계와 섞이지 않는다. 실제 서버 권한·DB 저장은 api/_lib/recipientFlow.test.ts(실제 Postgres 엔진)가 검증한다. */
 
 async function openRecipientAdmin(page: Page) {
-  await page.getByRole('button', { name: '수급자 관리' }).click()
-  await expect(page.getByRole('heading', { name: /수급자 관리 · \d+명/ })).toBeVisible()
+  await page.getByRole('button', { name: '수급자', exact: true }).click()
+  await expect(page.getByRole('heading', { name: /수급자 · \d+명/ })).toBeVisible()
 }
 
 async function adminLogout(page: Page) {
@@ -28,11 +28,11 @@ test.describe('recipient-admin: 수급자 등록 → 담당 요양보호사 → 
     // 입력 오류: 표시명 없이 저장 → 오류가 나고 폼은 닫히지 않는다.
     await page.getByRole('button', { name: '수급자 추가' }).click()
     await page.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('표시명')
+    await expect(page.getByRole('alert')).toContainText('이름')
     await expect(page.getByRole('form', { name: '수급자 추가' })).toBeVisible()
 
     // 등록 — 표시명 + 담당 요양보호사 C08.
-    await page.getByLabel('표시명(별칭)').fill('햇살 어르신')
+    await page.getByLabel('이름', { exact: true }).fill('햇살 어르신')
     await page.getByLabel('C08').check()
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.getByRole('status')).toContainText('수급자 A10을(를) 등록했습니다')
@@ -48,13 +48,13 @@ test.describe('recipient-admin: 수급자 등록 → 담당 요양보호사 → 
 
     // 담당자 없이 등록하면 '담당자 미배정'이 명확히 보인다.
     await page.getByRole('button', { name: '수급자 추가' }).click()
-    await page.getByLabel('표시명(별칭)').fill('바람 어르신')
+    await page.getByLabel('이름', { exact: true }).fill('바람 어르신')
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.locator('[data-recipient-code="A11"]')).toContainText('담당자 미배정')
 
     // 수정 — 표시명 변경 + 담당자 추가(C09).
     await page.locator('[data-recipient-code="A10"]').getByRole('button', { name: '수정' }).click()
-    await page.getByLabel('표시명(별칭)').fill('햇살 할머니')
+    await page.getByLabel('이름', { exact: true }).fill('햇살 할머니')
     await page.getByLabel('C09').check()
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.locator('[data-recipient-code="A10"]')).toContainText('햇살 할머니')
@@ -88,7 +88,7 @@ test.describe('recipient-admin: 수급자 등록 → 담당 요양보호사 → 
     await loginAdmin(page)
     await openRecipientAdmin(page)
     await page.getByRole('button', { name: '수급자 추가' }).click()
-    await page.getByLabel('표시명(별칭)').fill('구름 어르신')
+    await page.getByLabel('이름', { exact: true }).fill('구름 어르신')
     await page.getByLabel('C08').check()
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.locator('[data-recipient-code="A10"]')).toContainText('C08')
@@ -126,5 +126,50 @@ test.describe('recipient-admin: 수급자 등록 → 담당 요양보호사 → 
     await page.getByRole('button', { name: '수급자 추가' }).click()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  // ERP 전환 2단계: 로그인 직후 첫 화면이 이지케어식 수급자 목록이고, 인적사항(가상 값)을 입력·검색·필터할 수 있다.
+  test('로그인하면 수급자 목록이 첫 화면이고, 인적사항 입력·검색·필터·중복 차단이 된다', async ({ page }) => {
+    test.setTimeout(90_000)
+    await page.goto('/admin?demo=1')
+    await page.getByPlaceholder('비밀번호').fill('demo1234')
+    await page.getByRole('button', { name: '로그인' }).click()
+    await expect(page.getByRole('heading', { name: /수급자 · \d+명/ })).toBeVisible()
+    await expect(page).toHaveURL(/\/admin\?demo=1$/)
+
+    await page.getByRole('button', { name: '수급자 추가' }).click()
+    await page.getByLabel('이름', { exact: true }).fill('가상 어르신')
+    await page.getByLabel('장기요양인정번호').fill('l0000000001001')
+    await page.getByLabel('장기요양등급').selectOption('4등급')
+    await page.getByLabel('인정 유효기간 시작').fill('2025-02-25')
+    await page.getByLabel('인정 유효기간 종료').fill('2029-02-24')
+    await page.getByLabel('C08').check()
+    await page.getByRole('button', { name: '저장', exact: true }).click()
+    const row = page.locator('[data-recipient-code="A10"]')
+    await expect(row).toContainText('가상 어르신')
+    await expect(row).toContainText('L0000000001-001')
+    await expect(row).toContainText('4등급')
+    await expect(row).toContainText('2025-02-25 ~ 2029-02-24')
+
+    // 같은 인정번호는 다시 등록할 수 없다 — 사유가 보이고 입력은 남는다.
+    await page.getByRole('button', { name: '수급자 추가' }).click()
+    await page.getByLabel('이름', { exact: true }).fill('다른 어르신')
+    await page.getByLabel('장기요양인정번호').fill('L0000000001-001')
+    await page.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('이미 등록된 장기요양인정번호')
+    await expect(page.getByLabel('이름', { exact: true })).toHaveValue('다른 어르신')
+    await page.getByRole('button', { name: '취소' }).click()
+
+    // 검색(이름·인정번호·코드)과 보기 조건.
+    await page.getByLabel('수급자 찾기').fill('0000000001')
+    await expect(page.locator('[data-recipient-code]')).toHaveCount(1)
+    await page.getByLabel('수급자 찾기').fill('')
+    await page.getByRole('button', { name: '담당 미배정' }).click()
+    await expect(page.locator('[data-recipient-code="A10"]')).toHaveCount(0)
+    await page.getByRole('button', { name: '전체' }).click()
+
+    // 새로고침해도 남아 있다.
+    await page.reload()
+    await expect(page.locator('[data-recipient-code="A10"]')).toContainText('L0000000001-001')
   })
 })

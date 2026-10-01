@@ -2,6 +2,7 @@ import { normalizeReportRecord, type CareReportRecord } from '../../../shared/ca
 import type { ActionEvent, ActionObligation, ActionVerification, AdminDecision, CareAction, FieldRequest, FieldResponse, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
 import type { ActionBaselineLink, BaselineEntry, ReferenceChoice, SourceDocument } from '../../../shared/baseline.js'
 import type { CandidateReview } from '../../../shared/changeCandidates.js'
+import type { RecipientProfile } from '../../../shared/recipientAdmin.js'
 
 /** 데모 모드 전용 저장소. Supabase/Gemini 없이도 /care?demo=1, /admin?demo=1 화면
  * 전체 흐름을 즉시 시연할 수 있도록 브라우저 localStorage에만 저장한다.
@@ -114,6 +115,8 @@ export interface DemoRecipient {
   displayName: string | null
   active: boolean
   updatedAt: string
+  /** 인적사항(ERP). 데모에서도 실제 정보를 넣지 않는다 — 화면에서 직접 입력한 가상 값만 이 브라우저에 남는다. */
+  profile?: RecipientProfile
 }
 
 /** 지금 유효한 데모 수급자 목록(코드 순). */
