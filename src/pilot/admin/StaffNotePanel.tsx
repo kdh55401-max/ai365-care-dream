@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AdminRepo } from '../shared/adminRepo'
 import {
+  CONSENT_CHOICES,
+  CONSENT_LABEL,
   COUNSEL_METHODS,
   COUNSEL_METHOD_LABEL,
   CONTENT_MAX,
+  MEMO_MAX,
+  OTHER_REASON_LABEL,
+  RELATION_CHOICES,
   RELATION_MAX,
+  REASON_CHOICES,
   REASON_MAX,
   STAFF_NOTE_DEADLINE_DAYS,
   changeFactSentence,
@@ -12,8 +18,11 @@ import {
   kstDateOf,
   noteState,
   pendingCount,
+  validateDraftInput,
   validateStaffNote,
+  type ConsentChoice,
   type CounselMethod,
+  type StaffNoteDraftResult,
   type StaffNoteItem,
   type StaffNoteView,
 } from '../../../shared/staffChangeNote'
@@ -28,8 +37,17 @@ interface EditorState {
   changedOn: string
   reason: string
   counselMethod: CounselMethod | null
+  consent: ConsentChoice | null
   counseleeRelation: string
   content: string
+  /** 초안 만들기 입력(저장되지 않는다 — 결과 문장만 저장된다). */
+  reasonChoice: string
+  reasonMemo: string
+  opinionMemo: string
+  /** true면 상담 대상자를 목록이 아니라 직접 입력 중. */
+  relationCustom: boolean
+  /** 마지막으로 만든 초안(출처 표시와 "직접 고친 내용 덮어쓰기" 확인용). */
+  generated: (StaffNoteDraftResult & { at: number }) | null
   /** 일지가 이미 있을 때만 — 읽은 시점의 서버 값(충돌 검사). */
   expectedUpdatedAt: string
 }
@@ -47,10 +65,36 @@ function editorFor(item: StaffNoteItem): EditorState {
     changedOn: n?.changedOn ?? item.defaultChangedOn,
     reason: n?.reason ?? '',
     counselMethod: n?.counselMethod ?? null,
+    consent: n?.consent ?? null,
     counseleeRelation: n?.counseleeRelation ?? '',
     content: n?.content ?? '',
+    reasonChoice: '',
+    reasonMemo: '',
+    opinionMemo: '',
+    relationCustom: Boolean(n?.counseleeRelation) && !(RELATION_CHOICES as readonly string[]).includes(n?.counseleeRelation ?? ''),
+    generated: null,
     expectedUpdatedAt: n?.updatedAt ?? '',
   }
+}
+
+const SOURCE_NOTE: Record<string, string> = {
+  ai: 'AI가 선택한 내용을 기록문으로 정리했습니다. 사실과 맞는지 꼭 확인해 주세요.',
+  demo: '기본 문장 초안입니다(데모에서는 AI를 호출하지 않습니다).',
+  not_configured: '기본 문장 초안입니다(AI가 아직 연결되지 않았습니다).',
+  failed: 'AI 연결에 실패해 기본 문장으로 만들었습니다.',
+  rejected: 'AI 결과가 선택한 내용과 어긋나 기본 문장으로 바꿨습니다.',
+}
+
+/** 라디오 칩 한 개. 접근성을 위해 실제 radio 입력을 쓰고 선택 상태를 색으로도 보인다. */
+function Chip({ name, label, checked, disabled, onSelect }: { name: string; label: string; checked: boolean; disabled?: boolean; onSelect: () => void }) {
+  return (
+    <label
+      className={`flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-xl border-2 font-bold text-sm cursor-pointer ${checked ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600'} ${disabled ? 'opacity-60' : ''}`}
+    >
+      <input type="radio" name={name} checked={checked} onChange={onSelect} disabled={disabled} className="w-4 h-4" />
+      {label}
+    </label>
+  )
 }
 
 function DueChip({ item, today }: { item: StaffNoteItem; today: string }) {
@@ -78,6 +122,9 @@ export function StaffNotePanel({ repo, reloadKey }: { repo: AdminRepo; reloadKey
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<{ message: string; conflict: boolean } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  /** 직접 고친 문장이 있을 때 새 초안으로 바꿀지 묻는 중. */
+  const [askOverwrite, setAskOverwrite] = useState(false)
   const savingRef = useRef(false)
 
   const load = async () => {
@@ -127,7 +174,43 @@ export function StaffNotePanel({ repo, reloadKey }: { repo: AdminRepo; reloadKey
 
   const patch = (changes: Partial<EditorState>) => {
     setConfirming(false)
+    setAskOverwrite(false)
     setEditor((e) => (e ? { ...e, ...changes } : e))
+  }
+
+  const generate = async (force = false) => {
+    if (!editor || generating || locked) return
+    const input = {
+      reasonLabel: editor.reasonChoice,
+      reasonMemo: editor.reasonMemo.trim(),
+      counselMethod: editor.counselMethod as CounselMethod,
+      relation: editor.counseleeRelation.trim(),
+      consent: editor.consent as ConsentChoice,
+      opinionMemo: editor.opinionMemo.trim(),
+    }
+    const problem = !editor.counselMethod || !editor.consent ? '상담 방법과 의견·동의 여부를 선택해 주세요.' : validateDraftInput(input)
+    if (problem) {
+      setError({ message: problem, conflict: false })
+      return
+    }
+    // 사람이 직접 고친(또는 이미 쓴) 문장이 있으면 덮어쓰기 전에 한 번 묻는다.
+    const hasText = editor.reason.trim() !== '' || editor.content.trim() !== ''
+    const untouched = editor.generated && editor.reason === editor.generated.reason && editor.content === editor.generated.content
+    if (!force && hasText && !untouched) {
+      setAskOverwrite(true)
+      return
+    }
+    setGenerating(true)
+    setError(null)
+    setAskOverwrite(false)
+    try {
+      const draft = await repo.draftStaffNoteText(input)
+      setEditor((e) => (e ? { ...e, reason: draft.reason, content: draft.content, generated: { ...draft, at: Date.now() } } : e))
+    } catch (e) {
+      setError({ message: messageOf(e, '초안을 만들지 못했습니다. 선택한 내용은 그대로 두었습니다.'), conflict: false })
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const open = (i: StaffNoteItem) => {
@@ -161,6 +244,7 @@ export function StaffNotePanel({ repo, reloadKey }: { repo: AdminRepo; reloadKey
         changedOn: editor.changedOn,
         reason: editor.reason.trim(),
         counselMethod: editor.counselMethod,
+        consent: editor.consent,
         counseleeRelation: editor.counseleeRelation.trim(),
         content: editor.content.trim(),
         confirm,
@@ -250,62 +334,148 @@ export function StaffNotePanel({ repo, reloadKey }: { repo: AdminRepo; reloadKey
             <span className="text-xs text-slate-400">실제로 담당이 바뀐 날입니다. 기한은 이 날짜 + {STAFF_NOTE_DEADLINE_DAYS}일입니다.</span>
           </label>
 
+          {!locked && (
+            <div className="rounded-2xl bg-teal-50/60 border border-teal-100 p-3 flex flex-col gap-4">
+              <div>
+                <p className="text-sm font-bold text-teal-900">빠른 선택 — 고르고 &lsquo;초안 만들기&rsquo;를 누르세요</p>
+                <p className="text-xs text-teal-800/70 mt-0.5">고른 내용만으로 사유와 상담 내용 문장을 만듭니다. 고르지 않은 내용은 지어내지 않습니다.</p>
+              </div>
+
+              <fieldset className="flex flex-col gap-2" disabled={saving}>
+                <legend className="text-sm font-bold text-slate-700">사유 선택</legend>
+                <div className="flex flex-wrap gap-2">
+                  {REASON_CHOICES.map((r) => (
+                    <Chip key={r.id} name="reason-choice" label={r.label} checked={editor.reasonChoice === r.label} onSelect={() => patch({ reasonChoice: r.label })} />
+                  ))}
+                </div>
+                {editor.reasonChoice !== '' && (
+                  <input
+                    aria-label="사유 추가 설명"
+                    value={editor.reasonMemo}
+                    onChange={(e) => patch({ reasonMemo: e.target.value })}
+                    maxLength={MEMO_MAX + 20}
+                    placeholder={editor.reasonChoice === OTHER_REASON_LABEL ? '사유를 직접 적어 주세요(필수)' : '덧붙일 설명이 있으면 적어 주세요(선택)'}
+                    className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base bg-white"
+                  />
+                )}
+              </fieldset>
+
+              <fieldset className="flex flex-col gap-2" disabled={saving}>
+                <legend className="text-sm font-bold text-slate-700">상담 방법</legend>
+                <div className="flex flex-wrap gap-2">
+                  {COUNSEL_METHODS.map((m) => (
+                    <Chip key={m} name="counsel-method" label={COUNSEL_METHOD_LABEL[m]} checked={editor.counselMethod === m} onSelect={() => patch({ counselMethod: m })} />
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="flex flex-col gap-2" disabled={saving}>
+                <legend className="text-sm font-bold text-slate-700">상담 대상자(관계)</legend>
+                <div className="flex flex-wrap gap-2">
+                  {RELATION_CHOICES.map((r) => (
+                    <Chip
+                      key={r}
+                      name="relation-choice"
+                      label={r}
+                      checked={!editor.relationCustom && editor.counseleeRelation === r}
+                      onSelect={() => patch({ counseleeRelation: r, relationCustom: false })}
+                    />
+                  ))}
+                  <Chip name="relation-choice" label="직접 입력" checked={editor.relationCustom} onSelect={() => patch({ relationCustom: true, counseleeRelation: '' })} />
+                </div>
+                {editor.relationCustom && (
+                  <input
+                    aria-label="상담 대상자 직접 입력"
+                    value={editor.counseleeRelation}
+                    onChange={(e) => patch({ counseleeRelation: e.target.value })}
+                    maxLength={RELATION_MAX + 10}
+                    placeholder="관계만 적어 주세요(예: 요양보호사 가족) — 실명·전화번호는 쓰지 마세요"
+                    className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base bg-white"
+                  />
+                )}
+              </fieldset>
+
+              <fieldset className="flex flex-col gap-2" disabled={saving}>
+                <legend className="text-sm font-bold text-slate-700">수급자(보호자)의 의견·동의 여부</legend>
+                <div className="flex flex-wrap gap-2">
+                  {CONSENT_CHOICES.map((c) => (
+                    <Chip key={c} name="consent-choice" label={CONSENT_LABEL[c]} checked={editor.consent === c} onSelect={() => patch({ consent: c })} />
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">동의 여부는 AI가 정하지 않습니다. 실제로 확인한 것만 고르세요.</p>
+                {(editor.consent === 'agreed_with_opinion' || editor.consent === 'not_agreed') && (
+                  <input
+                    aria-label="의견 내용"
+                    value={editor.opinionMemo}
+                    onChange={(e) => patch({ opinionMemo: e.target.value })}
+                    maxLength={MEMO_MAX + 20}
+                    placeholder={editor.consent === 'agreed_with_opinion' ? '어떤 의견이었는지 적어 주세요(필수)' : '반대 이유나 의견이 있으면 적어 주세요(선택)'}
+                    className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base bg-white"
+                  />
+                )}
+              </fieldset>
+
+              <button
+                type="button"
+                onClick={() => void generate()}
+                disabled={saving || generating}
+                className="min-h-[48px] rounded-full bg-slate-900 text-white font-bold disabled:opacity-50"
+              >
+                {generating ? '초안 만드는 중…' : editor.generated ? '초안 다시 만들기' : '초안 만들기'}
+              </button>
+              {askOverwrite && (
+                <div role="alertdialog" aria-label="초안 덮어쓰기 확인" className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-900 text-sm">
+                  <p className="font-bold">이미 적은(또는 직접 고친) 문장이 있습니다. 새 초안으로 바꿀까요?</p>
+                  <div className="mt-2 flex gap-2">
+                    <button type="button" onClick={() => void generate(true)} className="min-h-[44px] px-5 rounded-full bg-slate-900 text-white font-bold text-sm">
+                      새 초안으로 바꾸기
+                    </button>
+                    <button type="button" onClick={() => setAskOverwrite(false)} className="min-h-[44px] px-5 rounded-full border-2 border-slate-300 text-slate-600 font-bold text-sm">
+                      그대로 두기
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {editor.generated && !locked && (
+            <p role="status" data-testid="staff-note-source" className={`rounded-xl px-3 py-2 text-sm font-bold ${editor.generated.source === 'ai' ? 'bg-violet-50 text-violet-800' : 'bg-slate-100 text-slate-700'}`}>
+              {editor.generated.source === 'ai' ? 'AI 초안 · ' : '기본 문장 초안 · '}
+              {SOURCE_NOTE[editor.generated.source === 'ai' ? 'ai' : (editor.generated.fallbackReason ?? 'not_configured')]}
+              {(editor.reason !== editor.generated.reason || editor.content !== editor.generated.content) && ' (직접 고친 내용이 있습니다)'}
+            </p>
+          )}
+
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-bold text-slate-700">변경 사유</span>
+            <span className="text-sm font-bold text-slate-700">변경 사유 문장{!locked && ' (초안 · 수정 가능)'}</span>
             <textarea
               value={editor.reason}
               onChange={(e) => patch({ reason: e.target.value })}
               maxLength={REASON_MAX}
               rows={2}
               disabled={saving || locked}
-              placeholder="예: 근무시간 조정, 개인 사정, 기관 사정 등 실제 사유"
+              placeholder="위에서 고르고 초안을 만들면 여기에 채워집니다. 직접 적어도 됩니다."
               className="rounded-xl border border-slate-300 px-3 py-2 text-base"
             />
           </label>
 
-          <fieldset className="flex flex-col gap-1" disabled={saving || locked}>
-            <legend className="text-sm font-bold text-slate-700">상담 방법</legend>
-            <div className="flex gap-2">
-              {COUNSEL_METHODS.map((m) => {
-                const checked = editor.counselMethod === m
-                return (
-                  <label
-                    key={m}
-                    className={`flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-xl border-2 font-bold text-sm cursor-pointer ${checked ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600'}`}
-                  >
-                    <input type="radio" name="counsel-method" checked={checked} onChange={() => patch({ counselMethod: m })} className="w-4 h-4" />
-                    {COUNSEL_METHOD_LABEL[m]}
-                  </label>
-                )
-              })}
-            </div>
-          </fieldset>
-
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-bold text-slate-700">상담 대상자(관계)</span>
-            <input
-              value={editor.counseleeRelation}
-              onChange={(e) => patch({ counseleeRelation: e.target.value })}
-              maxLength={RELATION_MAX + 10}
-              disabled={saving || locked}
-              placeholder="예: 보호자(자녀), 본인"
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base"
-            />
-            <span className="text-xs text-slate-400">실명·전화번호는 적지 말고 관계만 적습니다.</span>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-bold text-slate-700">안내한 내용과 수급자(보호자)의 의견·동의 여부</span>
+            <span className="text-sm font-bold text-slate-700">안내한 내용과 의견·동의 문장{!locked && ' (초안 · 수정 가능)'}</span>
             <textarea
               value={editor.content}
               onChange={(e) => patch({ content: e.target.value })}
               maxLength={CONTENT_MAX}
               rows={5}
               disabled={saving || locked}
-              placeholder="변경 사실을 어떻게 안내했는지, 수급자(보호자)가 뭐라고 했는지, 동의했는지를 실제로 확인한 대로 적어 주세요."
+              placeholder="초안을 만들면 [안내]와 [의견·동의] 두 줄이 채워집니다. 사실과 다르면 고쳐 주세요."
               className="rounded-xl border border-slate-300 px-3 py-2 text-base"
             />
-            <span className="text-xs text-slate-400">변경 사실만 적지 말고 안내와 동의 과정이 드러나게 적어야 평가 때 쓸 수 있습니다. 동의받지 않았다면 받지 않았다고 적습니다.</span>
+            {locked && (
+              <span className="text-xs text-slate-500">
+                의견·동의 여부: <b>{editor.consent ? CONSENT_LABEL[editor.consent] : '-'}</b> · 상담 방법: <b>{editor.counselMethod ? COUNSEL_METHOD_LABEL[editor.counselMethod] : '-'}</b> · 대상자: <b>{editor.counseleeRelation || '-'}</b>
+              </span>
+            )}
           </label>
 
           {error && (

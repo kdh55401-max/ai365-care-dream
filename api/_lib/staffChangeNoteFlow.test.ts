@@ -3,7 +3,7 @@
  * 이 환경에는 Supabase 자격증명이 없어 실제 운영 DB·네트워크 경로는 검증하지 않는다. */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PGlite } from '@electric-sql/pglite'
 import { fakeRequest, fakeResponse, newTestDb, pgliteSupabase } from './testSupport/pgliteSupabase.js'
 
@@ -42,13 +42,14 @@ interface NoteItem {
   recipientCode: string
   fromCaregivers: string[]
   toCaregivers: string[]
-  note: null | { status: string; reason: string; content: string; counselMethod: string | null; changedOn: string; updatedAt: string; confirmedAt: string | null }
+  note: null | { status: string; reason: string; content: string; counselMethod: string | null; consent: string | null; changedOn: string; updatedAt: string; confirmedAt: string | null }
 }
 const items = async () => ((await notes()).json as { ready: boolean; items: NoteItem[] }).items
 
 const full = {
   reason: '근무시간 조정',
   counselMethod: 'phone',
+  consent: 'agreed',
   counseleeRelation: '보호자(자녀)',
   content: '전화로 담당 변경을 안내했고 보호자가 동의한다고 답했습니다.',
 }
@@ -151,7 +152,7 @@ describe('초안 → 확정', () => {
     expect(first.status).toBe(200)
     expect(first.json).toMatchObject({ changeLogId: id, status: 'draft' })
     const [draft] = await items()
-    expect(draft.note).toMatchObject({ status: 'draft', reason: '', content: '', counselMethod: null, changedOn: '2026-10-01', confirmedAt: null })
+    expect(draft.note).toMatchObject({ status: 'draft', reason: '', content: '', counselMethod: null, consent: null, changedOn: '2026-10-01', confirmedAt: null })
     expect(draft.note!.updatedAt).toBeTruthy()
 
     const second = await save(id, { ...full, expectedUpdatedAt: draft.note!.updatedAt })
@@ -173,7 +174,7 @@ describe('초안 → 확정', () => {
 
   it('확정은 필수 항목이 비어 있으면 400이고 초안 상태가 유지된다', async () => {
     const id = await makeChange()
-    for (const missing of ['reason', 'counselMethod', 'counseleeRelation', 'content'] as const) {
+    for (const missing of ['reason', 'counselMethod', 'consent', 'counseleeRelation', 'content'] as const) {
       const r = await save(id, { ...full, [missing]: '', confirm: true })
       expect(r.status).toBe(400)
     }
@@ -187,7 +188,7 @@ describe('초안 → 확정', () => {
     expect(done.status).toBe(200)
     expect(done.json).toMatchObject({ status: 'confirmed' })
     const [row] = await items()
-    expect(row.note).toMatchObject({ status: 'confirmed', reason: full.reason, content: full.content })
+    expect(row.note).toMatchObject({ status: 'confirmed', reason: full.reason, content: full.content, consent: 'agreed' })
     expect(row.note!.confirmedAt).toBeTruthy()
 
     expect((await save(id, { ...full, reason: '바꾸기', expectedUpdatedAt: row.note!.updatedAt })).status).toBe(409)
@@ -211,10 +212,123 @@ describe('입력 검사(서버)', () => {
     expect((await save(id, { changedOn: '2999-01-01' })).status).toBe(400)
     expect((await save(id, { changedOn: '2026-13-40' })).status).toBe(400)
     expect((await save(id, { counselMethod: 'fax' })).status).toBe(400)
+    expect((await save(id, { consent: 'yes' })).status).toBe(400)
     expect((await save(id, { counseleeRelation: '010-1234-5678' })).status).toBe(400)
     expect((await save(id, { content: 'ㄱ'.repeat(2100) })).status).toBe(400)
     expect((await save(0)).status).toBe(400)
     expect((await db.query(`select 1 from staff_change_notes`)).rows).toHaveLength(0)
+  })
+})
+
+describe('의견·동의 여부(선택값)', () => {
+  it('고른 값이 그대로 저장되고 다시 불러와도 같다(동의하지 않음도 확정할 수 있다)', async () => {
+    const id = await makeChange()
+    const r = await save(id, { ...full, consent: 'not_agreed', content: '[안내] 전화로 보호자(자녀)에게 안내함.\n[의견·동의] 변경에 동의하지 않음.', confirm: true })
+    expect(r.status).toBe(200)
+    expect((await items())[0].note).toMatchObject({ status: 'confirmed', consent: 'not_agreed' })
+    await expect(db.query(`select consent from staff_change_notes where consent = 'not_agreed'`)).resolves.toMatchObject({ rows: [{ consent: 'not_agreed' }] })
+  })
+
+  it('DB도 동의 여부 없는 확정·알 수 없는 값을 거부한다(앱을 거치지 않아도)', async () => {
+    const id = await makeChange()
+    await save(id)
+    await expect(db.query(`update staff_change_notes set consent = 'maybe' where change_log_id = $1`, [id])).rejects.toThrow()
+    await expect(
+      db.query(
+        `update staff_change_notes set status = 'confirmed', confirmed_at = now(), reason = 'r', counsel_method = 'phone', counselee_relation = '본인', content = 'c' where change_log_id = $1`,
+        [id],
+      ),
+    ).rejects.toThrow()
+  })
+})
+
+describe('초안 만들기(AI → 기본 문장 대체)', () => {
+  const pick = { reasonLabel: '근무시간 조정', reasonMemo: '', counselMethod: 'phone', relation: '보호자(자녀)', consent: 'agreed', opinionMemo: '' }
+  const draft = (extra: Record<string, unknown> = {}, cookie = adminCookie) => post({ op: 'staff_note_draft', ...pick, ...extra }, cookie)
+  const goodAi = { reason: '근무시간 조정으로 담당 요양보호사가 변경됨.', content: '[안내] 전화로 보호자(자녀)에게 변경 사실을 안내하였음.\n[의견·동의] 보호자가 변경에 동의함.' }
+  const modelReply = (obj: unknown) => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] }) })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete process.env.GEMINI_API_KEY
+  })
+
+  it('로그인 없이는 401, 요양보호사 세션도 401이며 AI를 호출하지 않는다', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect((await draft({}, '')).status).toBe(401)
+    expect((await draft({}, careCookie)).status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('필수 선택이 빠졌거나 잘못된 값이면 400이고 AI를 호출하지 않는다', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect((await draft({ consent: '' })).status).toBe(400)
+    expect((await draft({ consent: 'yes' })).status).toBe(400)
+    expect((await draft({ counselMethod: 'fax' })).status).toBe(400)
+    expect((await draft({ reasonLabel: '' })).status).toBe(400)
+    expect((await draft({ relation: '' })).status).toBe(400)
+    expect((await draft({ consent: 'agreed_with_opinion' })).status).toBe(400) // 의견 내용 없음
+    expect((await draft({ opinionMemo: '010-1234-5678', consent: 'not_agreed' })).status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('AI가 연결되어 있지 않으면 기본 문장을 돌려준다(저장은 하지 않는다)', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await draft()
+    expect(r.status).toBe(200)
+    expect(r.json).toMatchObject({ source: 'template', fallbackReason: 'not_configured' })
+    expect(String(r.json.content)).toContain('[의견·동의] 변경에 동의함.')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect((await db.query(`select 1 from staff_change_notes`)).rows).toHaveLength(0)
+  })
+
+  it('AI 결과가 선택과 맞으면 그대로 쓰고, 모델에는 수급자·담당자 식별 정보가 전달되지 않는다', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    const fetchMock = vi.fn(async () => modelReply(goodAi))
+    vi.stubGlobal('fetch', fetchMock)
+    await makeChange() // 수급자 A10·담당자 C02/C03이 DB에 있어도
+    const r = await draft({ reasonMemo: '오전 일정 겹침' })
+    expect(r.json).toMatchObject({ source: 'ai', reason: goodAi.reason, content: goodAi.content })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const body = String((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)
+    expect(body).toContain('오전 일정 겹침')
+    expect(body).not.toMatch(/A\d{2}|C0\d|햇살/)
+  })
+
+  it('AI가 고른 동의 여부와 어긋나게 쓰면 버리고 기본 문장으로 대체한다', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    vi.stubGlobal('fetch', vi.fn(async () => modelReply(goodAi))) // 동의했다고 씀
+    const r = await draft({ consent: 'not_agreed' })
+    expect(r.json).toMatchObject({ source: 'template', fallbackReason: 'rejected' })
+    expect(String(r.json.content)).toContain('변경에 동의하지 않음.')
+    expect(String(r.json.content)).not.toContain('동의함')
+  })
+
+  it('AI가 입력에 없던 숫자를 만들면 대체한다', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    vi.stubGlobal('fetch', vi.fn(async () => modelReply({ ...goodAi, content: goodAi.content.replace('안내하였음', '3월 5일 안내하였음') })))
+    expect((await draft()).json).toMatchObject({ source: 'template', fallbackReason: 'rejected' })
+  })
+
+  it('AI 호출이 실패(오류 응답·예외·형식 오류)해도 기본 문장으로 동작한다', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })))
+    expect((await draft()).json).toMatchObject({ source: 'template', fallbackReason: 'failed' })
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network') }))
+    expect((await draft()).json).toMatchObject({ source: 'template', fallbackReason: 'failed' })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] }) })))
+    expect((await draft()).json).toMatchObject({ source: 'template', fallbackReason: 'failed' })
+  })
+
+  it('감사 기록에는 만든 방식만 남고 입력·결과 문장은 남지 않는다', async () => {
+    await draft({ reasonMemo: '비밀스러운 설명' })
+    const rows = (await db.query<{ action: string; target: string | null; detail: unknown }>(`select action, target, detail from admin_audit_log where action = 'staff_note_ai_text'`)).rows
+    expect(rows).toEqual([{ action: 'staff_note_ai_text', target: 'template', detail: null }])
   })
 })
 

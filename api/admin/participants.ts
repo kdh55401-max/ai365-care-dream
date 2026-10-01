@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import { loadRecipientAdminView, registerRecipient, updateRecipient } from '../_lib/recipientAdminStore.js'
 import { loadStaffNoteView, saveStaffNote } from '../_lib/staffChangeNoteStore.js'
+import { draftStaffNoteText, parseDraftInput } from '../_lib/staffNoteAi.js'
 import { todayKstDateString } from '../_lib/date.js'
 
 const CODE_PATTERN = /^C0[1-9]$/
@@ -63,6 +64,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const result = body.op === 'recipient_register' ? await registerRecipient(supabase, body) : await updateRecipient(supabase, body)
       // 표시명 등 내용은 감사 기록에 남기지 않는다 — 어떤 수급자에 무슨 작업을 했는지만.
       if (!result.duplicate) await logAudit(body.op, result.code)
+      sendJson(res, 200, result)
+      return
+    }
+
+    // 선택지 → 기록 문장 초안(저장하지 않음). 어떤 방식으로 만들어졌는지(AI/기본 문장)만 감사 기록에 남기고 내용은 남기지 않는다.
+    if (body.op === 'staff_note_draft') {
+      const result = await draftStaffNoteText(parseDraftInput(body))
+      await logAudit('staff_note_ai_text', result.source)
       sendJson(res, 200, result)
       return
     }

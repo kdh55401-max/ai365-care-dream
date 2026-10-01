@@ -1,10 +1,15 @@
 import {
+  buildTemplateDraft,
   kstDateOf,
   sortStaffNotes,
+  validateDraftInput,
   validateStaffNote,
+  type ConsentChoice,
   type CounselMethod,
   type SaveStaffNoteInput,
   type SaveStaffNoteResult,
+  type StaffNoteDraftInput,
+  type StaffNoteDraftResult,
   type StaffNoteItem,
   type StaffNoteView,
 } from '../../../shared/staffChangeNote'
@@ -45,6 +50,7 @@ export function demoSaveStaffNote(input: SaveStaffNoteInput): SaveStaffNoteResul
     changedOn: input.changedOn.trim(),
     reason: input.reason.trim(),
     counselMethod: (input.counselMethod || null) as CounselMethod | null,
+    consent: (input.consent || null) as ConsentChoice | null,
     counseleeRelation: input.counseleeRelation.trim(),
     content: input.content.trim(),
     confirm: input.confirm,
@@ -62,6 +68,7 @@ export function demoSaveStaffNote(input: SaveStaffNoteInput): SaveStaffNoteResul
     changedOn: fields.changedOn,
     reason: fields.reason,
     counselMethod: fields.counselMethod,
+    consent: fields.consent,
     counseleeRelation: fields.counseleeRelation,
     content: fields.content,
     status,
@@ -70,4 +77,11 @@ export function demoSaveStaffNote(input: SaveStaffNoteInput): SaveStaffNoteResul
   }
   demoSaveStaffChangeStore(store)
   return { changeLogId: input.changeLogId, status, updatedAt: now }
+}
+
+/** 데모에서는 AI를 호출하지 않는다(자격증명·외부 호출 없음) — 기본 문장 초안만 만든다. */
+export function demoDraftStaffNoteText(input: StaffNoteDraftInput): StaffNoteDraftResult {
+  const problem = validateDraftInput(input)
+  if (problem) fail(400, problem)
+  return { ...buildTemplateDraft(input), source: 'template', fallbackReason: 'demo' }
 }

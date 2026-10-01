@@ -3,7 +3,7 @@ import { ApiError } from './http.js'
 import { isLikelyOffTopic } from '../../shared/offTopicEngine.js'
 import { getVertexAccessToken } from './vertexAuth.js'
 
-const MODEL = 'gemini-3.6-flash'
+export const MODEL = 'gemini-3.6-flash'
 const REQUEST_TIMEOUT_MS = 18000
 const MAX_FOLLOWUPS = 3
 

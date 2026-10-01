@@ -2,10 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { ApiError } from './http.js'
 import { isMissingSchema } from './workflowStore.js'
 import {
+  CONSENT_CHOICES,
   COUNSEL_METHODS,
   kstDateOf,
   validateStaffNote,
   sortStaffNotes,
+  type ConsentChoice,
   type CounselMethod,
   type SaveStaffNoteResult,
   type StaffNoteItem,
@@ -27,6 +29,7 @@ interface NoteRow {
   changed_on: string
   reason: string
   counsel_method: CounselMethod | null
+  consent: ConsentChoice | null
   counselee_relation: string
   content: string
   status: 'draft' | 'confirmed'
@@ -58,7 +61,7 @@ export async function loadStaffNoteView(supabase: SupabaseClient, today: string)
       readAll<NoteRow>(() =>
         supabase
           .from('staff_change_notes')
-          .select('change_log_id, changed_on, reason, counsel_method, counselee_relation, content, status, confirmed_at, updated_at')
+          .select('change_log_id, changed_on, reason, counsel_method, consent, counselee_relation, content, status, confirmed_at, updated_at')
           .order('change_log_id', { ascending: true }),
       ),
       readAll<{ code: string; display_name: string | null }>(() => supabase.from('recipients').select('code, display_name').order('code', { ascending: true })),
@@ -84,6 +87,7 @@ export async function loadStaffNoteView(supabase: SupabaseClient, today: string)
               changedOn: asDate(n.changed_on),
               reason: n.reason,
               counselMethod: n.counsel_method,
+              consent: n.consent ?? null,
               counseleeRelation: n.counselee_relation,
               content: n.content,
               status: n.status,
@@ -121,10 +125,13 @@ export async function saveStaffNote(supabase: SupabaseClient, body: Record<strin
   if (!Number.isInteger(changeLogId) || changeLogId <= 0) throw new ApiError(400, '담당 변경 번호가 올바르지 않습니다.')
   const methodRaw = String(body.counselMethod ?? '').trim()
   if (methodRaw && !COUNSEL_METHODS.includes(methodRaw as CounselMethod)) throw new ApiError(400, '상담 방법이 올바르지 않습니다.')
+  const consentRaw = String(body.consent ?? '').trim()
+  if (consentRaw && !CONSENT_CHOICES.includes(consentRaw as ConsentChoice)) throw new ApiError(400, '의견·동의 여부 값이 올바르지 않습니다.')
   const fields = {
     changedOn: String(body.changedOn ?? '').trim(),
     reason: str(body.reason, 500),
     counselMethod: (methodRaw || null) as CounselMethod | null,
+    consent: (consentRaw || null) as ConsentChoice | null,
     counseleeRelation: str(body.counseleeRelation, 30),
     content: str(body.content, 2000),
     confirm: body.confirm === true,
@@ -137,6 +144,7 @@ export async function saveStaffNote(supabase: SupabaseClient, body: Record<strin
       changed_on: fields.changedOn,
       reason: fields.reason,
       counsel_method: fields.counselMethod,
+      consent: fields.consent,
       counselee_relation: fields.counseleeRelation,
       content: fields.content,
       confirm: fields.confirm,

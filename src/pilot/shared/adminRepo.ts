@@ -19,7 +19,7 @@ import type {
 import type { CandidateReviewInput } from '../../../shared/changeCandidates'
 import type { RecipientObservationsView } from '../../../shared/observationViews'
 import type { RecipientAdminView, RecipientSaveResult, RegisterRecipientInput, UpdateRecipientInput } from '../../../shared/recipientAdmin'
-import type { SaveStaffNoteInput, SaveStaffNoteResult, StaffNoteView } from '../../../shared/staffChangeNote'
+import type { SaveStaffNoteInput, SaveStaffNoteResult, StaffNoteDraftInput, StaffNoteDraftResult, StaffNoteView } from '../../../shared/staffChangeNote'
 import type { OperationMetricsView, OperationPeriod } from '../../../shared/operationMetrics'
 
 export interface ParticipationCell {
@@ -194,6 +194,8 @@ export interface AdminRepo {
   updateRecipient(input: UpdateRecipientInput): Promise<RecipientSaveResult>
   /** 직원(담당 요양보호사) 변경 상담일지: 담당이 해제된 변경마다 한 건(기한 포함). DB 준비 전이면 ready:false. */
   getStaffNotes(): Promise<StaffNoteView>
+  /** 고른 선택지(사유·상담 방법·대상자·동의 여부)로 사유·상담 내용 문장 초안을 만든다(저장하지 않음). AI가 꺼져 있거나 실패하면 기본 문장. */
+  draftStaffNoteText(input: StaffNoteDraftInput): Promise<StaffNoteDraftResult>
   /** 상담일지 초안 저장 또는 확정(확정 후에는 수정 불가). 일지가 이미 있으면 expectedUpdatedAt로 충돌을 검사한다. */
   saveStaffNote(input: SaveStaffNoteInput): Promise<SaveStaffNoteResult>
   resetPin(code: string): Promise<{ code: string; pin: string }>
@@ -384,6 +386,9 @@ export const realAdminRepo: AdminRepo = {
   },
   async getStaffNotes() {
     return api.get<StaffNoteView>('/api/admin/participants?view=staff_notes')
+  },
+  async draftStaffNoteText(input) {
+    return api.post<StaffNoteDraftResult>('/api/admin/participants', { op: 'staff_note_draft', ...input })
   },
   async saveStaffNote(input) {
     return api.post<SaveStaffNoteResult>('/api/admin/participants', { op: 'staff_note_save', ...input })

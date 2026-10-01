@@ -1,3 +1,14 @@
+## 2026-10-03 (2차) — 상담일지 '초안 만들기' (선택지 → AI/기본 문장)
+
+목적·기대 동작: 관리자가 사유·상담 방법·대상자(관계)·동의 여부를 버튼으로 고르고 '초안 만들기'를 누르면 사유 문장과 `[안내]`/`[의견·동의]` 두 줄이 채워진다. 동의 여부는 사람이 고른 선택값(`consent`)이며 AI가 정하지 않는다.
+AI가 꺼져 있거나 실패하거나 결과가 검증을 통과하지 못하면 기본 문장. 기준: 브랜치 `claude/focused-galileo-dc73cz`, 이전 인계(직원 변경 상담일지 초안, 5839fa8) 위. **미배포·운영 DB 미적용.**
+수정 파일: 신규 `api/_lib/staffNoteAi.ts`; 수정 `shared/staffChangeNote.ts`(+test), `api/_lib/staffChangeNoteStore.ts`, `api/_lib/careReportAi.ts`(MODEL export 한 단어), `api/admin/participants.ts`(op=staff_note_draft),
+`db/migrations/2026-10-03-staff-change-notes.sql`(consent 컬럼·제약·함수 — 같은 파일 수정, 재실행 안전), `StaffNotePanel.tsx`, `adminRepo.ts`·`demoAdminRepo.ts`·`demoStaffNoteRepo.ts`, `e2e/staff-note.spec.ts`, `staffChangeNoteFlow.test.ts`.
+검증: tsc 0 · vitest 334/334 · oxlint 새 경고 없음 · build 성공 · e2e staff-note·recipient-admin·admin-flow 22/22(두 뷰포트).
+확인할 화면(데모): `/admin?demo=1` → 수급자 관리 → A01 수정(표시명 입력, C01→C08) → 작성 → 사유·방법·대상자·동의 4번 선택 → 초안 만들기 → 동의하지 않음/아직 안내하지 못함으로 바꿔 다시 만들기(문장 변화) → 직접 고친 뒤 다시 만들기(덮어쓰기 확인) → 초안 저장 → 확정.
+검토 요청(Codex): (1) `checkAiDraft`의 동의 표현 검사(정규식)가 한국어 변형("동의하셨음", "반대하지 않음" 등)에서 오탐/미탐이 없는지 — 거부되면 기본 문장으로 안전하게 대체되므로 미탐(통과해서는 안 될 문장이 통과)이 중요, (2) AI 요청에 식별 정보가 실리지 않는지(`staffNoteAi.ts userMessage`), (3) 10-03 마이그레이션 재실행 안전성(`not valid` 제약, 함수 교체), (4) 확정 조건에 consent가 DB·함수·화면에서 같은 기준인지, (5) 실제 Gemini 응답 스키마/지연(15초 제한) 처리.
+남은 불확실성: 실제 AI 호출·문장 품질 미검증(키 없음), 14일 기한 근거는 이지케어 도움말, 표시명 없는 수급자는 담당 변경 전 표시명 필요(기존 규칙).
+
 ## 2026-10-03 — 직원(담당 요양보호사) 변경 상담일지 초안
 
 목적·기대 동작: 관리자가 수급자 관리에서 담당 요양보호사를 해제/교체하면 그 변경마다 상담일지 1건이 생기고(기한 변경일+14일), 변경일·전/후 담당은 자동, 사유·상담 방법·대상자(관계)·안내 및 동의 내용은 사람이 입력한다. 초안은 빈 칸 허용, 확정은 필수 4항목 + 확인창, 확정 후 수정·삭제 불가. AI 호출 없음.

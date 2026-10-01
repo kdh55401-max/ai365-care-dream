@@ -32,7 +32,7 @@ import {
   demoUploadDocument,
 } from './demoBaselineRepo'
 import { demoRecipientAdminView, demoRegisterRecipient, demoUpdateRecipient } from './demoRecipientRepo'
-import { demoSaveStaffNote, demoStaffNoteView } from './demoStaffNoteRepo'
+import { demoDraftStaffNoteText, demoSaveStaffNote, demoStaffNoteView } from './demoStaffNoteRepo'
 import { demoGetRecipientObservations, demoReviewCandidate } from './demoCandidateRepo'
 import {
   demoAssignmentMap,
@@ -314,6 +314,10 @@ export const demoAdminRepo: AdminRepo = {
   async getStaffNotes() {
     demoOrganization(DEPLOYMENT_ORGANIZATION.id)
     return demoStaffNoteView()
+  },
+  async draftStaffNoteText(input) {
+    demoOrganization(DEPLOYMENT_ORGANIZATION.id)
+    return demoDraftStaffNoteText(input)
   },
   async saveStaffNote(input) {
     demoOrganization(DEPLOYMENT_ORGANIZATION.id)

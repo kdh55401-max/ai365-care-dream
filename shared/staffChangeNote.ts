@@ -17,6 +17,30 @@ export type CounselMethod = 'visit' | 'phone' | 'other'
 export const COUNSEL_METHOD_LABEL: Record<CounselMethod, string> = { visit: '방문', phone: '전화', other: '기타' }
 export const COUNSEL_METHODS = Object.keys(COUNSEL_METHOD_LABEL) as CounselMethod[]
 
+/** 수급자(보호자)의 동의 여부. 글이 아니라 선택으로만 받는다 — AI가 동의했는지를 추측하지 않게 하는 핵심 장치다. */
+export type ConsentChoice = 'agreed' | 'agreed_with_opinion' | 'not_agreed' | 'not_reached'
+export const CONSENT_LABEL: Record<ConsentChoice, string> = {
+  agreed: '동의함',
+  agreed_with_opinion: '동의함(의견 있음)',
+  not_agreed: '동의하지 않음',
+  not_reached: '아직 안내하지 못함',
+}
+export const CONSENT_CHOICES = Object.keys(CONSENT_LABEL) as ConsentChoice[]
+
+export const REASON_CHOICES = [
+  { id: 'schedule', label: '근무시간 조정' },
+  { id: 'caregiver_personal', label: '요양보호사 개인 사정' },
+  { id: 'recipient_request', label: '수급자(보호자) 요청' },
+  { id: 'agency', label: '기관 사정' },
+  { id: 'other', label: '기타(직접 입력)' },
+] as const
+export type ReasonChoiceId = (typeof REASON_CHOICES)[number]['id']
+
+/** 상담 대상자(관계) 빠른 선택. 목록에 없으면 직접 입력한다. */
+export const RELATION_CHOICES = ['본인', '보호자(자녀)', '보호자(배우자)', '보호자(기타)'] as const
+
+export const MEMO_MAX = 200
+
 export type StaffNoteStatus = 'draft' | 'confirmed'
 /** missing = 아직 일지를 시작하지 않음 · draft = 작성 중 · confirmed = 관리자 확정(이후 수정 불가) */
 export type StaffNoteState = 'missing' | 'draft' | 'confirmed'
@@ -26,6 +50,8 @@ export interface StaffNoteFields {
   changedOn: string
   reason: string
   counselMethod: CounselMethod | null
+  /** 의견·동의 여부(선택). 확정하려면 반드시 골라야 한다. */
+  consent: ConsentChoice | null
   /** 상담 대상자와 수급자의 관계(예: 보호자·자녀, 본인). 실명은 적지 않는다. */
   counseleeRelation: string
   /** 안내한 내용과 수급자(보호자)의 의견·동의 여부. */
@@ -132,6 +158,7 @@ export function validateStaffNote(input: StaffNoteFields & { confirm: boolean },
   if (!input.reason.trim()) return '확정하려면 변경 사유를 입력해 주세요.'
   if (!input.counselMethod) return '확정하려면 상담 방법을 선택해 주세요.'
   if (!input.counseleeRelation.trim()) return '확정하려면 상담 대상자(관계)를 입력해 주세요.'
+  if (!input.consent) return '확정하려면 수급자(보호자)의 의견·동의 여부를 선택해 주세요.'
   if (!input.content.trim()) return '확정하려면 안내한 내용과 수급자(보호자)의 의견·동의 여부를 입력해 주세요.'
   return null
 }
@@ -151,4 +178,110 @@ export function sortStaffNotes<T extends StaffNoteItem>(items: T[], today: strin
 /** 아직 확정되지 않은 일지 수(관리자에게 "할 일"로 보이는 숫자). */
 export function pendingCount(items: StaffNoteItem[]): number {
   return items.filter((i) => i.note?.status !== 'confirmed').length
+}
+
+// ── 초안 만들기(선택지 → 기록 문장) ───────────────────────────────────────────────
+
+/** 초안 만들기 입력. 모두 사람이 고른 값이다. 수급자 코드·이름·담당자 코드는 포함하지 않는다(AI에도 전달하지 않는다). */
+export interface StaffNoteDraftInput {
+  reasonLabel: string
+  /** 사유 추가 설명. reasonLabel이 '기타(직접 입력)'이면 필수. */
+  reasonMemo: string
+  counselMethod: CounselMethod
+  relation: string
+  consent: ConsentChoice
+  /** 수급자(보호자)의 의견. '동의함(의견 있음)'이면 필수, '동의하지 않음'이면 선택. */
+  opinionMemo: string
+}
+
+export interface StaffNoteDraftResult {
+  reason: string
+  content: string
+  /** ai = AI가 다듬음 · template = 기본 문장(AI 미사용). */
+  source: 'ai' | 'template'
+  /** template인 이유. demo = 데모 모드 · not_configured = AI 미설정 · failed = AI 호출 실패 · rejected = AI 결과가 검증을 통과하지 못함. */
+  fallbackReason?: 'demo' | 'not_configured' | 'failed' | 'rejected'
+}
+
+export const OTHER_REASON_LABEL = REASON_CHOICES[REASON_CHOICES.length - 1].label
+
+const digitRuns = (text: string): string[] => text.match(/\d+/g) ?? []
+
+/** 초안 입력 검사. 문제가 없으면 null, 있으면 사용자에게 보일 문장. */
+export function validateDraftInput(input: StaffNoteDraftInput): string | null {
+  const reasonLabel = input.reasonLabel.trim()
+  if (!reasonLabel) return '변경 사유를 선택해 주세요.'
+  if (reasonLabel === OTHER_REASON_LABEL && !input.reasonMemo.trim()) return '기타 사유는 내용을 직접 적어 주세요.'
+  if (!COUNSEL_METHODS.includes(input.counselMethod)) return '상담 방법을 선택해 주세요.'
+  if (!input.relation.trim()) return '상담 대상자(관계)를 선택하거나 입력해 주세요.'
+  if (!CONSENT_CHOICES.includes(input.consent)) return '수급자(보호자)의 의견·동의 여부를 선택해 주세요.'
+  if (input.consent === 'agreed_with_opinion' && !input.opinionMemo.trim()) return '의견이 있다면 어떤 의견인지 적어 주세요.'
+  if (input.reasonLabel.length > 40 || input.reasonMemo.length > MEMO_MAX || input.opinionMemo.length > MEMO_MAX) {
+    return `추가 설명은 ${MEMO_MAX}자 이내로 적어 주세요.`
+  }
+  if (input.relation.length > RELATION_MAX) return `상담 대상자(관계)는 ${RELATION_MAX}자 이내로 입력해 주세요.`
+  for (const text of [input.reasonMemo, input.opinionMemo, input.relation]) {
+    if (/\d{6}-?[1-4]\d{6}/.test(text) || (text.match(/\d/g) ?? []).length >= 7) {
+      return '실명·전화번호·주민등록번호처럼 보이는 숫자는 넣을 수 없습니다. 관계나 상황만 적어 주세요.'
+    }
+  }
+  return null
+}
+
+const METHOD_DID: Record<CounselMethod, string> = { visit: '방문하여', phone: '전화로', other: '기타 방법으로' }
+const METHOD_TRIED: Record<CounselMethod, string> = {
+  visit: '방문했으나 만나지 못해',
+  phone: '전화로 연락을 시도했으나 연결되지 않아',
+  other: '연락을 시도했으나 닿지 않아',
+}
+
+function reasonShort(input: StaffNoteDraftInput): string {
+  const memo = input.reasonMemo.trim()
+  return input.reasonLabel.trim() === OTHER_REASON_LABEL ? memo : memo ? `${input.reasonLabel.trim()}, ${memo}` : input.reasonLabel.trim()
+}
+
+/** 선택한 내용만으로 만든 기본 문장 초안. AI를 쓰지 않으므로 선택에 없는 내용은 한 글자도 더하지 않는다.
+ * AI 호출이 꺼져 있거나 실패하거나 검증을 통과하지 못했을 때, 그리고 데모에서 이 문장이 그대로 쓰인다. */
+export function buildTemplateDraft(input: StaffNoteDraftInput): { reason: string; content: string } {
+  const relation = input.relation.trim()
+  const opinion = input.opinionMemo.trim()
+  const short = reasonShort(input)
+  const reason = input.reasonLabel.trim() === OTHER_REASON_LABEL ? short : `${short}에 따른 담당 요양보호사 변경`
+  const notice =
+    input.consent === 'not_reached'
+      ? `[안내] ${METHOD_TRIED[input.counselMethod]} ${relation}에게 담당 요양보호사 변경 사실을 아직 안내하지 못함.`
+      : `[안내] ${METHOD_DID[input.counselMethod]} ${relation}에게 담당 요양보호사 변경 사실과 사유(${short})를 안내함.`
+  const consentLine: Record<ConsentChoice, string> = {
+    agreed: '변경에 동의함.',
+    agreed_with_opinion: `변경에 동의함. 의견: ${opinion}`,
+    not_agreed: `변경에 동의하지 않음.${opinion ? ` 의견: ${opinion}` : ''}`,
+    not_reached: '동의 여부는 안내 후 다시 확인 필요.',
+  }
+  return { reason, content: `${notice}\n[의견·동의] ${consentLine[input.consent]}` }
+}
+
+const AGREE_WORDS = /동의함|동의하였|동의했|동의한다|동의합니다|동의하셨/
+const DISAGREE_WORDS = /동의하지|동의 못|동의를 하지|동의하지 않|거부|반대/
+
+/** AI가 만든 문장 검증. 통과하지 못하면 호출한 쪽이 기본 문장으로 대체한다.
+ * 막는 것: ① 고른 동의 여부와 어긋나는 표현 ② 입력에 없던 숫자(지어낸 날짜·전화번호·금액) ③ 필수 구조·관계 누락 ④ 길이 초과. */
+export function checkAiDraft(out: { reason?: unknown; content?: unknown }, input: StaffNoteDraftInput): out is { reason: string; content: string } {
+  if (typeof out.reason !== 'string' || typeof out.content !== 'string') return false
+  const reason = out.reason.trim()
+  const content = out.content.trim()
+  if (!reason || !content || reason.length > REASON_MAX || content.length > CONTENT_MAX) return false
+  if (!content.includes('[안내]') || !content.includes('[의견·동의]')) return false
+  if (!content.includes(input.relation.trim())) return false
+  const allowed = new Set([...digitRuns(input.reasonMemo), ...digitRuns(input.opinionMemo), ...digitRuns(input.relation)])
+  if ([...digitRuns(reason), ...digitRuns(content)].some((d) => !allowed.has(d))) return false
+  const consentPart = content.slice(content.indexOf('[의견·동의]'))
+  switch (input.consent) {
+    case 'agreed':
+    case 'agreed_with_opinion':
+      return AGREE_WORDS.test(consentPart) && !DISAGREE_WORDS.test(consentPart)
+    case 'not_agreed':
+      return DISAGREE_WORDS.test(consentPart) && !AGREE_WORDS.test(consentPart)
+    case 'not_reached':
+      return !AGREE_WORDS.test(content) && /못|않|확인 필요|확인이 필요/.test(content)
+  }
 }
