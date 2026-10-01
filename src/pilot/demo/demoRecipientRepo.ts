@@ -74,10 +74,14 @@ export function demoUpdateRecipient(input: UpdateRecipientInput): RecipientSaveR
     if (nameError) fail(400, nameError)
   }
   const map = { ...demoAssignmentMap() }
+  let change: { recipientCode: string; from: string[]; to: string[] } | undefined
   if (input.caregiverCodes !== undefined) {
     const next = normalizeCaregiverCodes(input.caregiverCodes)
     const already = Object.entries(map).filter(([, list]) => list.includes(input.code)).map(([c]) => c)
     validCaregivers(next.filter((c) => !already.includes(c)))
+    // 서버(DB 함수)와 같은 기준: 담당에서 빠진 사람이 있으면 직원 변경 상담일지 대상이 되는 변경 이력을 남긴다.
+    const removed = already.filter((c) => !next.includes(c)).sort()
+    if (removed.length > 0) change = { recipientCode: input.code, from: removed, to: next.filter((c) => !already.includes(c)).sort() }
     for (const caregiver of Object.keys(map)) map[caregiver] = map[caregiver].filter((c) => c !== input.code)
     for (const c of next) map[c] = [...(map[c] ?? []), input.code]
   }
@@ -86,7 +90,7 @@ export function demoUpdateRecipient(input: UpdateRecipientInput): RecipientSaveR
       ? { ...r, displayName: input.displayName !== undefined ? input.displayName.trim() : r.displayName, active: input.active ?? r.active, updatedAt: new Date().toISOString() }
       : r,
   )
-  demoSaveRecipients(updated, map)
+  demoSaveRecipients(updated, map, change)
   seenRequests.set(input.requestId, input.code)
   return { code: input.code, duplicate: false }
 }

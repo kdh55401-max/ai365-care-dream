@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AdminRepo } from '../shared/adminRepo'
 import { DISPLAY_NAME_MAX, validateDisplayName, validateRecipientCode, type RecipientAdminRow, type RecipientAdminView } from '../../../shared/recipientAdmin'
 import { SpinnerIcon } from './adminBadges'
+import { StaffNotePanel } from './StaffNotePanel'
 
 /** 관리자 "수급자 관리" — 수급자 목록·등록·정보 수정·담당 요양보호사 배정·활성 전환.
  * 저장은 서버(DB 함수)가 한 번에 처리하고, 이 화면은 입력을 모으고 결과를 보여준다.
@@ -69,6 +70,8 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<{ message: string; conflict: boolean } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** 담당을 바꿔 저장하면 올라가서 상담일지 목록이 새로 읽힌다. */
+  const [notesKey, setNotesKey] = useState(0)
   const savingRef = useRef(false)
 
   const load = async () => {
@@ -144,6 +147,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
         setNotice(`수급자 ${res.code} 정보를 저장했습니다.`)
       }
       setForm(null)
+      setNotesKey((k) => k + 1)
       await load()
     } catch (e) {
       // 입력값은 그대로 둔다. 충돌이면 최신 내용으로 다시 열 수 있게 안내한다.
@@ -314,6 +318,8 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
           </div>
         </form>
       )}
+
+      <StaffNotePanel repo={repo} reloadKey={notesKey} />
 
       {view.recipients.length === 0 && <p className="text-slate-400 text-center py-10">등록된 수급자가 없습니다. &lsquo;수급자 추가&rsquo;로 시작하세요.</p>}
       <ul className="flex flex-col gap-2" aria-label="수급자 목록">

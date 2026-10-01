@@ -1,3 +1,14 @@
+## 2026-10-03 — 직원(담당 요양보호사) 변경 상담일지 초안
+
+목적·기대 동작: 관리자가 수급자 관리에서 담당 요양보호사를 해제/교체하면 그 변경마다 상담일지 1건이 생기고(기한 변경일+14일), 변경일·전/후 담당은 자동, 사유·상담 방법·대상자(관계)·안내 및 동의 내용은 사람이 입력한다. 초안은 빈 칸 허용, 확정은 필수 4항목 + 확인창, 확정 후 수정·삭제 불가. AI 호출 없음.
+기준: 브랜치 `claude/focused-galileo-dc73cz`(base 668a7cc 이후 d4dd0c7+). **미배포, 마이그레이션 `2026-10-03-staff-change-notes.sql` 운영 미적용(2026-10-02 마이그레이션도 운영 적용 대기 중).**
+수정 파일: 신규 `shared/staffChangeNote.ts`(+test), `api/_lib/staffChangeNoteStore.ts`, `api/_lib/staffChangeNoteFlow.test.ts`, `db/migrations/2026-10-03-staff-change-notes.sql`, `src/pilot/admin/StaffNotePanel.tsx`, `src/pilot/demo/demoStaffNoteRepo.ts`, `e2e/staff-note.spec.ts`, `docs/EZCARE_*.md`;
+수정 `api/admin/participants.ts`(view=staff_notes · op=staff_note_save), `RecipientAdminPanel.tsx`(패널 삽입·저장 후 갱신), `adminRepo.ts`·`demoAdminRepo.ts`(2개 메서드), `demoStore.ts`·`demoRecipientRepo.ts`(담당 변경 이력).
+검증: tsc 0 · vitest 311/311 · oxlint 새 경고 없음 · build 성공 · e2e staff-note 4/4(두 뷰포트), recipient-admin·admin-flow 8/8(mobile-390). 전체 e2e는 재실행하지 않음.
+확인할 화면(데모): `/admin?demo=1` → 수급자 관리 → A01 수정(표시명 입력, C01 해제 + C08 선택) 저장 → '직원 변경 상담일지'에 미작성 1건·14일 남음 → 작성 → 빈 칸 확정 시도(거부) → 초안 저장 → 새로고침 → 이어쓰기 → 모두 채워 확정(확인창) → 보기(입력 잠김).
+검토 요청(Codex): (1) 대상 판정이 '담당 해제가 있는 updated 이벤트'뿐인지(SQL `staff_change_note_save`와 `loadStaffNoteView`가 같은 기준인지), (2) `updated_at` 충돌 검사의 시각 문자열 왕복이 실제 PostgREST(마이크로초·`+00:00` 표기)에서도 맞는지 — 테스트용 엔진(PGlite)에서만 확인함, (3) 확정 잠금 트리거와 저장 함수의 locked 처리가 경쟁 상황에서 일관적인지, (4) 한 변경에 일지 1건(변경 번호 advisory lock) 보장, (5) 일지 내용이 감사 기록·로그에 남지 않는지.
+남은 불확실성: 14일 기한은 이지케어 도움말 기준이며 공식 고시 문구는 확인하지 못함. 표시명 없는 수급자는 담당 변경 전에 표시명 입력이 필요(기존 규칙). 상담직원명·급여종류는 넣지 않음.
+
 ## 2026-10-01 — 표준화 척도 실시·채점 (공동모금회 척도집 2017)
 
 목적·기대 동작: 관리자가 수급자 상세에서 표준화 척도(13종)의 문항별 응답 번호를 입력하면 척도집 규칙대로만 채점해 '정식 척도 결과'로 저장하고,

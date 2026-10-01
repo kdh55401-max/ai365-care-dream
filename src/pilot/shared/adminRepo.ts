@@ -19,6 +19,7 @@ import type {
 import type { CandidateReviewInput } from '../../../shared/changeCandidates'
 import type { RecipientObservationsView } from '../../../shared/observationViews'
 import type { RecipientAdminView, RecipientSaveResult, RegisterRecipientInput, UpdateRecipientInput } from '../../../shared/recipientAdmin'
+import type { SaveStaffNoteInput, SaveStaffNoteResult, StaffNoteView } from '../../../shared/staffChangeNote'
 import type { OperationMetricsView, OperationPeriod } from '../../../shared/operationMetrics'
 
 export interface ParticipationCell {
@@ -191,6 +192,10 @@ export interface AdminRepo {
   registerRecipient(input: RegisterRecipientInput): Promise<RecipientSaveResult>
   /** 표시명·활성 상태·담당 요양보호사 변경(삭제 없음, 과거 기록 연결 불변). */
   updateRecipient(input: UpdateRecipientInput): Promise<RecipientSaveResult>
+  /** 직원(담당 요양보호사) 변경 상담일지: 담당이 해제된 변경마다 한 건(기한 포함). DB 준비 전이면 ready:false. */
+  getStaffNotes(): Promise<StaffNoteView>
+  /** 상담일지 초안 저장 또는 확정(확정 후에는 수정 불가). 일지가 이미 있으면 expectedUpdatedAt로 충돌을 검사한다. */
+  saveStaffNote(input: SaveStaffNoteInput): Promise<SaveStaffNoteResult>
   resetPin(code: string): Promise<{ code: string; pin: string }>
   exportCsv(type: 'summary' | 'full'): Promise<void>
 }
@@ -376,6 +381,12 @@ export const realAdminRepo: AdminRepo = {
   },
   async updateRecipient(input) {
     return api.post<RecipientSaveResult>('/api/admin/participants', { op: 'recipient_update', ...input })
+  },
+  async getStaffNotes() {
+    return api.get<StaffNoteView>('/api/admin/participants?view=staff_notes')
+  },
+  async saveStaffNote(input) {
+    return api.post<SaveStaffNoteResult>('/api/admin/participants', { op: 'staff_note_save', ...input })
   },
   async resetPin(code) {
     return api.post<{ code: string; pin: string }>('/api/admin/participants', { code })

@@ -2,6 +2,7 @@ import { normalizeReportRecord, type CareReportRecord } from '../../../shared/ca
 import type { ActionEvent, ActionObligation, ActionVerification, AdminDecision, CareAction, FieldRequest, FieldResponse, ReportEvent, SafetyReview } from '../../../shared/workflow.js'
 import type { ActionBaselineLink, BaselineEntry, ReferenceChoice, SourceDocument } from '../../../shared/baseline.js'
 import type { CandidateReview } from '../../../shared/changeCandidates.js'
+import type { StaffNoteRecord } from '../../../shared/staffChangeNote.js'
 
 /** 데모 모드 전용 저장소. Supabase/Gemini 없이도 /care?demo=1, /admin?demo=1 화면
  * 전체 흐름을 즉시 시연할 수 있도록 브라우저 localStorage에만 저장한다.
@@ -107,6 +108,21 @@ interface DemoDb {
   assignments?: Record<string, string[]>
   /** 관리자가 등록·수정한 수급자(없으면 DEMO_RECIPIENT_CODES 전부 활성·표시명 없음). 이 브라우저에만 저장된다. */
   recipients?: DemoRecipient[]
+  /** 담당이 바뀐 이력(서버의 recipient_admin_log 대응)과 직원변경 상담일지. 이 브라우저에만 저장된다. */
+  staffChanges?: DemoStaffChangeStore
+}
+
+export interface DemoStaffChange {
+  id: number
+  recipientCode: string
+  from: string[]
+  to: string[]
+  at: string
+}
+
+export interface DemoStaffChangeStore {
+  events: DemoStaffChange[]
+  notes: Record<string, StaffNoteRecord>
 }
 
 export interface DemoRecipient {
@@ -126,10 +142,29 @@ export function demoRecipientCodes(): string[] {
 }
 
 /** 수급자 목록과 배정을 한 번에 저장한다(둘 중 하나만 저장돼 불완전해지지 않게 한 번의 쓰기로 처리). */
-export function demoSaveRecipients(recipients: DemoRecipient[], assignments: Record<string, string[]>) {
+export function demoSaveRecipients(
+  recipients: DemoRecipient[],
+  assignments: Record<string, string[]>,
+  change?: { recipientCode: string; from: string[]; to: string[] },
+) {
   const db = readDb()
   db.recipients = recipients
   db.assignments = assignments
+  if (change) {
+    const store = db.staffChanges ?? { events: [], notes: {} }
+    const id = store.events.reduce((m, e) => Math.max(m, e.id), 0) + 1
+    db.staffChanges = { ...store, events: [...store.events, { id, recipientCode: change.recipientCode, from: change.from, to: change.to, at: new Date().toISOString() }] }
+  }
+  writeDb(db)
+}
+
+export function demoStaffChangeStore(): DemoStaffChangeStore {
+  return readDb().staffChanges ?? { events: [], notes: {} }
+}
+
+export function demoSaveStaffChangeStore(store: DemoStaffChangeStore) {
+  const db = readDb()
+  db.staffChanges = store
   writeDb(db)
 }
 

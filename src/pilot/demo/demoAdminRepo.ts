@@ -32,6 +32,7 @@ import {
   demoUploadDocument,
 } from './demoBaselineRepo'
 import { demoRecipientAdminView, demoRegisterRecipient, demoUpdateRecipient } from './demoRecipientRepo'
+import { demoSaveStaffNote, demoStaffNoteView } from './demoStaffNoteRepo'
 import { demoGetRecipientObservations, demoReviewCandidate } from './demoCandidateRepo'
 import {
   demoAssignmentMap,
@@ -309,6 +310,14 @@ export const demoAdminRepo: AdminRepo = {
   async updateRecipient(input) {
     demoOrganization(DEPLOYMENT_ORGANIZATION.id)
     return demoUpdateRecipient(input)
+  },
+  async getStaffNotes() {
+    demoOrganization(DEPLOYMENT_ORGANIZATION.id)
+    return demoStaffNoteView()
+  },
+  async saveStaffNote(input) {
+    demoOrganization(DEPLOYMENT_ORGANIZATION.id)
+    return demoSaveStaffNote(input)
   },
   async resetPin(code) {
     const pin = randomPin()
