@@ -9,6 +9,7 @@ import { DECISION_LABELS, SAFETY_OUTCOME_LABELS } from '../../../shared/workflow
 import type { RecipientWorkflowView } from '../../../shared/workflowViews'
 import type { RecipientBaselineView } from '../../../shared/baseline'
 import { RecipientBaselineSection } from './BaselinePanels'
+import { RecipientScaleSection } from './ScalePanels'
 import { RecipientObservationsSection } from './ObservationPanels'
 
 /** 관리자 수급자 허브 — 기관 → 수급자 목록 → 수급자 상세(보고 타임라인)와 기관 첫
@@ -531,6 +532,14 @@ export function RecipientDetailPanel({
       </section>
 
       <RecipientObservationsSection repo={repo} orgId={orgId} recipientCode={recipient.code} onOpenReport={onOpenReport} onOpenAction={onOpenAction} />
+
+      <RecipientScaleSection
+        repo={repo}
+        orgId={orgId}
+        recipientCode={recipient.code}
+        view={baseline?.key === baselineKey ? (baseline.view ?? null) : null}
+        onChanged={(view) => setBaseline({ key: baselineKey, view })}
+      />
 
       <RecipientBaselineSection
         repo={repo}

@@ -23,6 +23,7 @@ import {
 } from '../../../shared/baseline'
 import type { ActionDetailView } from '../../../shared/workflowViews'
 import { formatKoreanDateTime } from './adminFormat'
+import { parseScaleNote } from '../../../shared/scales'
 
 /** 4단계 화면 — 수급자 기준문서·기준정보(원본 → 입력 → 확인 → 상충 참고값)와 조치의 근거 연결.
  * 기준정보는 선택 사항이다: 없어도 조치·현장 요청은 그대로 쓴다. 저장은 모두 요청 식별자(재시도 한 번만)와
@@ -77,6 +78,16 @@ function formatBytes(n: number): string {
 
 /** 한 항목의 근거 표시 — 문서(쪽·발췌·원본 보기) 또는 관리자 입력(공식 평가 아님). */
 function SourceLine({ entry, documents, repo, orgId }: { entry: BaselineEntry; documents: SourceDocument[]; repo: AdminRepo; orgId: string }) {
+  const scaleNote = entry.kind === 'scale_result' ? parseScaleNote(entry.source_note) : null
+  if (scaleNote) {
+    return (
+      <p className="text-[11px] text-slate-500">
+        근거: <span className="font-semibold text-slate-600">기관이 실시한 표준화 척도 — 앱이 척도집 규칙대로 채점</span>
+        {scaleNote.respondent && ` · 응답자: ${scaleNote.respondent}`}
+        {scaleNote.memo && ` · 메모: ${scaleNote.memo}`}
+      </p>
+    )
+  }
   if (entry.source_type === 'admin_input') {
     return (
       <p className="text-[11px] text-slate-500">
@@ -290,7 +301,7 @@ function EntryForm({
           </label>
         ))}
         {kind === 'plan_goal' && <p className="text-[11px] text-amber-800">계획서의 목표·계획입니다 — 이미 관찰된 상태나 수행 완료로 보이지 않게 따로 표시합니다.</p>}
-        {scale && <p className="text-[11px] text-slate-600">정식 척도는 도구명·버전·측정값·단위·측정일·출처가 모두 있을 때만 기록합니다. 점수를 계산·환산하지 않고 문서의 값을 그대로 옮깁니다.</p>}
+        {scale && <p className="text-[11px] text-slate-600">정식 척도는 도구명·버전·측정값·단위·측정일·출처가 모두 있을 때만 기록합니다. 여기서는 점수를 계산·환산하지 않고 문서의 값을 그대로 옮깁니다(직접 실시한 척도는 위 '표준화 척도'에서 입력).</p>}
       </div>
       <label className="block">
         <span className={labelClass}>세부 영역</span>
@@ -658,7 +669,7 @@ export function RecipientBaselineSection({
       <div>
         {header}
         <p className="text-[11px] text-slate-500 mt-0.5">
-          관리자가 원본 문서를 보고 입력·확인한 값입니다. 일일 보고를 기준정보로 자동으로 올리지 않고, 계획·목표를 관찰된 상태로 쓰지 않으며, 점수를 계산하지 않습니다. 기준정보는 선택 사항입니다.
+          관리자가 원본 문서를 보고 입력·확인한 값입니다. 일일 보고를 기준정보로 자동으로 올리지 않고, 계획·목표를 관찰된 상태로 쓰지 않으며, 문서 값의 점수를 다시 계산하지 않습니다. 기준정보는 선택 사항입니다.
         </p>
       </div>
       {empty && (

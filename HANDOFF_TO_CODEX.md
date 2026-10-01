@@ -1,3 +1,24 @@
+## 2026-10-01 — 표준화 척도 실시·채점 (공동모금회 척도집 2017)
+
+목적·기대 동작: 관리자가 수급자 상세에서 표준화 척도(13종)의 문항별 응답 번호를 입력하면 척도집 규칙대로만 채점해 '정식 척도 결과'로 저장하고,
+같은 척도의 측정을 사전 → 사후로 나란히 보여준다. 좋아짐/나빠짐 판정·건강점수는 만들지 않는다. 문항 원문은 앱에 없다(저작권).
+
+기준: master a1416fe → 브랜치 `claude/welfare-scale-ai-integration-389f7e`(워크트리 `.claude/worktrees/business-plan-analysis-2caffb`). **미커밋·미배포.**
+DB: 새 마이그레이션 없음 — 기존 4단계 `baseline_entries`(scale_result)에 저장. 운영은 4단계 미적용이라 '준비 중'으로 보인다.
+
+수정 파일: `shared/scales.ts`(신규), `shared/scales.test.ts`(신규 12), `src/pilot/admin/ScalePanels.tsx`(신규), `src/pilot/admin/RecipientHub.tsx`(섹션 배치),
+`src/pilot/admin/BaselinePanels.tsx`(근거 표시·안내 문구), `shared/baseline.ts`(주석), `e2e/scales.spec.ts`(신규), 문서 3종.
+
+검증: tsc 0 · vitest 257/257 · oxlint 새 경고 없음 · build 성공 · e2e scales 4/4, baseline-docs 5/5(mobile-390), 전체 e2e(mobile-390) 63건 중 61 통과 — 실패 2건은 6단계 인계에 적힌 기존 결함과 같음(`companion-redesign.spec.ts` reduced viewport, `multi-recipient-flow.spec.ts:13`).
+
+확인할 화면(데모): `/admin?demo=1` 로그인 → `/admin/org/gadream365/recipients/A01?demo=1` → '척도 실시 결과 입력' → 부양부담 선택, 12문항 입력 →
+미리보기(총점·하위영역) → 저장하고 관리자 확인 → 측정일을 바꿔 한 번 더 → 이력 그래프·변화 문구, 아래 기준정보에 같은 값과 앱 채점 근거.
+
+검토 요청(Codex): (1) 13개 척도의 역문항·하위영역·보기 값이 척도집 원문(저장소 밖 `reference/scales/detail/*.md`)과 일치하는지,
+(2) BHS-K 채점 방향(예=0·아니오=1 후 부정문항 역산 → 무망감 방향 1점)과 K-IADL 6·7·9번 4단계 처리, (3) CSI-K 문항 평균 저장이 값 비교에서
+'점(문항평균)' 단위로 총점과 섞이지 않는지, (4) 출처 메모 형식이 기존 '관리자 입력' 표시와 혼동되지 않는지, (5) 변화 문구에 판정 표현이 없는지.
+남은 불확실성: GDSSF-K 절단점(척도집에 없음), K-IADL '해본 적 없음' 처리 규칙(원저 확인 필요 — 지금은 실시하지 말라고 안내), 문항 원문 사용 허락.
+
 ## 2026-09-16 — 돌봄 연속성 6단계: 책임을 나눈 업무 화면 · 2·3단계 이벤트로 계산하는 운영 지표
 
 목적·기대 동작: 관리자가 첫 화면(오늘의 돌봄)에서 오늘 할 일과 이유를 보고, 실증과 품질 화면에서 "업무가 실제로 이어지는가"를
