@@ -39,7 +39,7 @@
 - 데모(`?demo=1`): `demoRecipientRepo.ts`가 같은 규칙으로 localStorage에만 저장(운영 집계와 분리).
 - 검증(이 환경): tsc 0 오류 · vitest 286/286(신규: 마이그레이션 PGlite 13, 실제 핸들러+실제 SQL 흐름 12 — 인증 401·타 기관 403·등록→담당만 표시→미배정 403→기록 제출→관리자 목록 연결·해제/변경/비활성화 차단·충돌 409·중복 재전송·마이그레이션 전 호환,
   규칙 4, 라우트) · oxlint 새 경고 없음(기존 4) · vite build 성공 · e2e mobile-390 64/66 통과(실패 2건은 기존 결함: companion-redesign:12, multi-recipient-flow:13) · 신규 e2e `recipient-admin.spec.ts` 두 뷰포트 6/6.
-- **미검증**: 실제 Supabase/운영 URL에서의 등록·배정(자격증명·네트워크 없음), 실제 운영 DB 마이그레이션 적용, Vercel 배포, 실기기.
+- 배포: master 병합 5d17d27, Vercel Production 배포 success(GitHub deployments API로 확인). **미검증**: 운영 URL 직접 접근(프록시 차단), 운영 DB 마이그레이션 적용(자격증명 없음), 운영에서의 등록·배정, 실기기.
 - 적용 순서(사용자): ① Supabase 백업 확인 → SQL Editor에 마이그레이션 실행 → 파일 상단 확인 쿼리 3개 true ② 이 브랜치를 운영(master)에 병합·배포 ③ 운영에서 관리자 로그인 → 수급자 관리 → 추가 → C코드 선택 → 저장, 담당 요양보호사로 로그인해 표시·기록 제출 확인.
   되돌리기: Vercel 이전 배포 Promote(새 컬럼·표는 이전 앱에 무해). 잘못 만든 수급자는 삭제하지 말고 비활성화.
 
