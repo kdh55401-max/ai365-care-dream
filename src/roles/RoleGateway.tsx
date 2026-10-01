@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { navigate } from '../router'
 import logo from '../assets/logo.png'
 import RoleCard from './RoleCard'
-import { CareIcon, CommunityIcon, TeamIcon } from './icons'
+import { CareIcon, TeamIcon } from './icons'
 import { rememberRole, readLastRole, type RoleId } from './roleStorage'
 
 interface RoleDef {
@@ -24,7 +24,7 @@ function RoleGateway() {
       icon: <TeamIcon className="w-7 h-7" />,
       koreanName: '관리자',
       moduleName: 'TEAM',
-      description: '실증 현황·돌봄보고 확인',
+      description: '수급자 등록·관리와 기록 검토',
     },
     {
       id: 'care',
@@ -32,15 +32,7 @@ function RoleGateway() {
       icon: <CareIcon className="w-7 h-7" />,
       koreanName: '요양보호사',
       moduleName: 'CARE',
-      description: '오늘 돌봄보고 60초 작성',
-    },
-    {
-      id: 'community',
-      path: '/community',
-      icon: <CommunityIcon className="w-7 h-7" />,
-      koreanName: '생활지원사',
-      moduleName: 'COMMUNITY',
-      description: '대화형 생활안전 점검',
+      description: '말로 남기는 오늘의 급여 기록',
     },
   ]
 
@@ -64,13 +56,14 @@ function RoleGateway() {
                      -z-10 w-56 opacity-[0.06]"
         />
         <p className="text-base font-semibold tracking-wide text-teal-600">AI365 CARE DREAM</p>
+        <p className="text-slate-500 text-xs mt-1">방문요양 기관 업무 시스템</p>
       </header>
 
       <main className="w-full max-w-md flex flex-col gap-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-slate-900">어떤 업무를 시작할까요?</h1>
+          <h1 className="text-2xl font-bold text-slate-900">누가 사용하시나요?</h1>
           <p className="text-slate-500 text-base mt-2 leading-relaxed">
-            역할에 맞는 화면과 AI가 바로 연결됩니다.
+            맡은 업무에 맞는 화면으로 들어갑니다.
           </p>
         </div>
 
@@ -89,7 +82,7 @@ function RoleGateway() {
         </div>
 
         <p className="text-center text-slate-400 text-xs">
-          최초 선택 후 이 기기에서 역할을 기억합니다.
+          마지막에 사용한 역할이 이 기기에 표시됩니다.
         </p>
       </main>
     </div>

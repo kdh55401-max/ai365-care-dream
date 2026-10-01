@@ -1,4 +1,4 @@
-export type RoleId = 'team' | 'care' | 'community'
+export type RoleId = 'team' | 'care'
 
 const LAST_ROLE_KEY = 'ai365_last_role'
 
@@ -16,7 +16,7 @@ export function rememberRole(role: RoleId) {
 export function readLastRole(): RoleId | null {
   try {
     const value = localStorage.getItem(LAST_ROLE_KEY)
-    if (value === 'team' || value === 'care' || value === 'community') return value
+    if (value === 'team' || value === 'care') return value
     return null
   } catch {
     return null

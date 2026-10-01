@@ -63,7 +63,7 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
     page,
   }) => {
     await page.goto('/?demo=1')
-    await expect(page.getByRole('heading', { name: '어떤 업무를 시작할까요?' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '누가 사용하시나요?' })).toBeVisible()
 
     await page.getByRole('button', { name: /요양보호사/ }).click()
     await expect(page).toHaveURL(/\/care\?demo=1/)
@@ -80,12 +80,16 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
     await expect(page.getByPlaceholder('비밀번호')).toBeVisible()
   })
 
-  // /support: 생활지원사 공개 진입 별칭. 기존 /community와 같은 화면(App.tsx,
-  // '현장 대응 도우미')을 그대로 보여줘야 한다 — 새 로그인/데이터 계층을 만들지
-  // 않는다는 요청 범위를 지킨다.
-  test('/support는 /community와 같은 생활지원사 화면(현장 대응 도우미)을 보여준다', async ({ page }) => {
-    await page.goto('/support')
-    await expect(page.getByText('현장 대응 도우미')).toBeVisible()
-    await expect(page.getByText('COMMUNITY')).toBeVisible()
-  })
+  // 2026-10-01 전면 교체: 생활지원사·안전스캐너·구 관리자 경로는 닫혔고,
+  // 어느 경로로 들어와도 요양보호사/관리자 두 가지 진입 화면으로 돌아와야 한다.
+  for (const path of ['/support', '/community', '/team', '/safety-scanner']) {
+    test(`${path}는 닫혀 있고 시작 화면(요양보호사·관리자)으로 돌아온다`, async ({ page }) => {
+      await page.goto(path)
+      await expect(page).toHaveURL(/\/$/)
+      await expect(page.getByRole('heading', { name: '누가 사용하시나요?' })).toBeVisible()
+      await expect(page.getByRole('button', { name: /요양보호사/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: /관리자/ })).toBeVisible()
+      await expect(page.getByText('생활지원사')).toHaveCount(0)
+    })
+  }
 })
