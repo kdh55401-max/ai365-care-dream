@@ -3,7 +3,7 @@
 목적·기대 동작: 관리자가 수급자 상세에서 표준화 척도(13종)의 문항별 응답 번호를 입력하면 척도집 규칙대로만 채점해 '정식 척도 결과'로 저장하고,
 같은 척도의 측정을 사전 → 사후로 나란히 보여준다. 좋아짐/나빠짐 판정·건강점수는 만들지 않는다. 문항 원문은 앱에 없다(저작권).
 
-기준: master a1416fe → 브랜치 `claude/welfare-scale-ai-integration-389f7e`(워크트리 `.claude/worktrees/business-plan-analysis-2caffb`). **미커밋·미배포.**
+기준: master a1416fe → 브랜치 `claude/welfare-scale-ai-integration-389f7e`(워크트리 `.claude/worktrees/business-plan-analysis-2caffb`). **배포됨(0d545b8), 운영 DB 2~5단계 적용됨.**
 DB: 새 마이그레이션 없음 — 기존 4단계 `baseline_entries`(scale_result)에 저장. 운영은 4단계 미적용이라 '준비 중'으로 보인다.
 
 수정 파일: `shared/scales.ts`(신규), `shared/scales.test.ts`(신규 12), `src/pilot/admin/ScalePanels.tsx`(신규), `src/pilot/admin/RecipientHub.tsx`(섹션 배치),
@@ -11,6 +11,7 @@ DB: 새 마이그레이션 없음 — 기존 4단계 `baseline_entries`(scale_re
 
 검증: tsc 0 · vitest 257/257 · oxlint 새 경고 없음 · build 성공 · e2e scales 4/4, baseline-docs 5/5(mobile-390), 전체 e2e(mobile-390) 63건 중 61 통과 — 실패 2건은 6단계 인계에 적힌 기존 결함과 같음(`companion-redesign.spec.ts` reduced viewport, `multi-recipient-flow.spec.ts:13`).
 
+배포·DB(2026-10-01): 커밋 0d545b8 → origin/master fast-forward(a1416fe..0d545b8) → Vercel 운영 반영. 사용자 로그인 세션(앱 내 브라우저)에서 Supabase SQL Editor로 2→3→4→5단계 마이그레이션을 순서대로 적용(각 파일은 GitHub 0d545b8 원본과 SHA-256 대조 후 실행, 모두 Success). 사후 확인 쿼리 10개 값 모두 true, 기존 reports 45건 그대로. 운영 관리자 로그인 후 /admin/org/gadream365/recipients/A01에서 '표준화 척도' 섹션이 '준비 중' 없이 활성, 입력 폼 열림 확인(저장은 하지 않음 — 시험용 수급자가 없어 실제 수급자 기록에 시험값을 남기지 않았다). 미확인: 운영에서 실제 척도 저장·확인 흐름.
 확인할 화면(데모): `/admin?demo=1` 로그인 → `/admin/org/gadream365/recipients/A01?demo=1` → '척도 실시 결과 입력' → 부양부담 선택, 12문항 입력 →
 미리보기(총점·하위영역) → 저장하고 관리자 확인 → 측정일을 바꿔 한 번 더 → 이력 그래프·변화 문구, 아래 기준정보에 같은 값과 앱 채점 근거.
 
