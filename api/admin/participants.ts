@@ -4,6 +4,9 @@ import { requireAdminOrganization, generateRandomPin, hashPin } from '../_lib/au
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import { loadRecipientAdminView, registerRecipient, updateRecipient } from '../_lib/recipientAdminStore.js'
+import { readRawBody } from '../_lib/baselineStore.js'
+import { extractProfileFromDocument } from '../_lib/profileExtractionAi.js'
+import { detectDocumentMime } from '../../shared/baseline.js'
 
 const CODE_PATTERN = /^C0[1-9]$/
 
@@ -47,6 +50,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           recipientCodes: assignmentMap[p.code] ?? [],
         })),
       })
+      return
+    }
+
+    // 서류 한 장 읽기(ERP 3단계). 파일 본문을 그대로 받는다(요청 하나 = 서류 한 장 = AI 호출 한 번). 읽기만 하고 저장하지 않는다.
+    if (req.method === 'POST' && getQuery(req).get('op') === 'extract_profile') {
+      const bytes = await readRawBody(req)
+      const mime = detectDocumentMime(bytes)
+      if (!mime) throw new ApiError(400, '서류는 PDF·JPG·PNG 파일만 읽을 수 있습니다.')
+      const rawName = String(req.headers['x-file-name'] ? decodeURIComponent(String(req.headers['x-file-name'])) : '서류').slice(0, 120)
+      const result = await extractProfileFromDocument(bytes, mime, rawName)
+      // 서류 내용(이름·번호 등)은 감사 기록에 남기지 않는다 — 어떤 종류를 얼마나 읽었고 토큰을 얼마나 썼는지만.
+      await logAudit('extract_profile', undefined, { docKind: result.docKind, bytes: bytes.length, filled: Object.keys(result.fields).length, ...result.usage })
+      sendJson(res, 200, result)
       return
     }
 

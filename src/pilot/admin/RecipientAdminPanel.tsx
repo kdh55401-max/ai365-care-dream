@@ -14,6 +14,8 @@ import {
   type RecipientProfile,
 } from '../../../shared/recipientAdmin'
 import { SpinnerIcon } from './adminBadges'
+import { DocumentFillSection, type AttachedDoc, type FillReport } from './DocumentFillSection'
+import { DOC_KIND_LABELS, storedDocType, type ProfileField } from '../../../shared/profileExtraction'
 
 /** 관리자 "수급자" — 이지케어식 수급자 목록(이름·장기요양인정번호·등급·인정 유효기간·담당 요양보호사·상태를 한 줄에)과
  * 등록·정보 수정·담당 배정·활성 전환. 이 앱의 관리자 첫 화면이다.
@@ -66,6 +68,16 @@ function nameOf(r: RecipientAdminRow): string {
   return r.profile.fullName || r.displayName || ''
 }
 
+/** 칸 이름. AI가 채우고 아직 직접 확인하지 않은 칸에는 표시를 붙인다. */
+function FieldLabel({ text, ai }: { text: string; ai: boolean }) {
+  return (
+    <span className="flex items-center gap-2 text-sm font-bold text-slate-700">
+      {text}
+      {ai && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">AI가 채움 · 확인 필요</span>}
+    </span>
+  )
+}
+
 function CaregiverChips({ codes }: { codes: string[] }) {
   if (codes.length === 0) {
     return <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">담당자 미배정</span>
@@ -81,13 +93,19 @@ function CaregiverChips({ codes }: { codes: string[] }) {
   )
 }
 
-export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo; onOpenRecipient: (code: string) => void }) {
+export function RecipientAdminPanel({ repo, orgId, onOpenRecipient }: { repo: AdminRepo; orgId: string; onOpenRecipient: (code: string) => void }) {
   const [view, setView] = useState<RecipientAdminView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<{ message: string; conflict: boolean } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // ERP 3단계: 서류로 채우기 — 올린 서류, AI가 채운 칸(확인 전), 읽은 결과.
+  const [docs, setDocsState] = useState<AttachedDoc[]>([])
+  const [aiFilled, setAiFilled] = useState<ProfileField[]>([])
+  const [fillReport, setFillReport] = useState<FillReport | null>(null)
+  const formRef = useRef<FormState | null>(null)
+  const docsRef = useRef<AttachedDoc[]>([])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'active' | 'unassigned' | 'expiring'>('all')
   const savingRef = useRef(false)
@@ -106,11 +124,29 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo])
 
+  formRef.current = form
+  docsRef.current = docs
+  const setDocs = (update: (prev: AttachedDoc[]) => AttachedDoc[]) => setDocsState(update)
+  const resetFill = () => {
+    setDocsState([])
+    setAiFilled([])
+    setFillReport(null)
+  }
+
   const patch = (changes: Partial<FormState>, keepRequest = true) =>
     setForm((f) => (f ? { ...f, ...changes, requestId: keepRequest || f.mode === 'create' ? f.requestId : newRequestId() } : f))
 
-  const patchProfile = (changes: Partial<RecipientProfile>) =>
+  const aiCls = (f: ProfileField) => (aiFilled.includes(f) ? 'border-amber-400 bg-amber-50' : 'border-slate-300')
+  const patchProfile = (changes: Partial<RecipientProfile>) => {
+    // 관리자가 직접 고친 칸은 더 이상 "AI가 채움 · 확인 필요"가 아니다.
+    setAiFilled((prev) => prev.filter((f) => !(f in changes)))
     setForm((f) => (f ? { ...f, profile: { ...f.profile, ...changes }, requestId: f.mode === 'create' ? f.requestId : newRequestId() } : f))
+  }
+
+  const applyAi = (profile: RecipientProfile, filled: ProfileField[]) => {
+    setAiFilled((prev) => [...new Set([...prev, ...filled])])
+    setForm((f) => (f ? { ...f, profile, requestId: f.mode === 'create' ? f.requestId : newRequestId() } : f))
+  }
 
   const toggleCaregiver = (code: string) =>
     setForm((f) => {
@@ -120,11 +156,13 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
     })
 
   const openCreate = () => {
+    resetFill()
     setNotice(null)
     setFormError(null)
     setForm(emptyForm())
   }
   const openEdit = (row: RecipientAdminRow) => {
+    resetFill()
     setNotice(null)
     setFormError(null)
     setForm(formFor(row))
@@ -133,6 +171,35 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
     if (savingRef.current) return
     setForm(null)
     setFormError(null)
+    resetFill()
+  }
+
+  /** 올린 서류 원본을 그 수급자의 비공개 기준문서로 보관한다(4단계 저장소). 실패해도 이미 끝난 수급자 저장은 되돌리지 않고 안내만 한다. */
+  const storeOriginals = async (code: string): Promise<string> => {
+    const list = docsRef.current
+    if (list.length === 0) return ''
+    let saved = 0
+    let firstError = ''
+    for (const d of list) {
+      try {
+        await repo.uploadDocument(
+          orgId,
+          {
+            recipientCode: code,
+            docType: d.extraction ? storedDocType(d.extraction.docKind) : 'other',
+            title: d.extraction ? DOC_KIND_LABELS[d.extraction.docKind] : null,
+            sourceLabel: '수급자 등록 시 올린 서류',
+            requestId: d.id,
+          },
+          d.file,
+        )
+        saved += 1
+      } catch (e) {
+        firstError ||= messageOf(e, '서류 원본을 보관하지 못했습니다.')
+      }
+    }
+    if (saved === list.length) return ` 서류 원본 ${saved}건을 비공개로 보관했습니다.`
+    return ` 서류 원본은 ${saved}/${list.length}건만 보관했습니다 — ${firstError} 수급자 상세의 기준문서에서 다시 올릴 수 있습니다.`
   }
 
   const submit = async () => {
@@ -157,7 +224,8 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
           code: form.customCode.trim() ? form.customCode.trim().toUpperCase() : undefined,
           requestId: form.requestId,
         })
-        setNotice(`수급자 ${res.code}을(를) 등록했습니다.${form.caregivers.length === 0 ? ' 담당자가 아직 배정되지 않았습니다.' : ''}`)
+        const kept = await storeOriginals(res.code)
+        setNotice(`수급자 ${res.code}을(를) 등록했습니다.${form.caregivers.length === 0 ? ' 담당자가 아직 배정되지 않았습니다.' : ''}${kept}`)
       } else {
         const res = await repo.updateRecipient({
           code: form.code,
@@ -168,7 +236,8 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
           expectedUpdatedAt: form.expectedUpdatedAt || undefined,
           requestId: form.requestId,
         })
-        setNotice(`수급자 ${res.code} 정보를 저장했습니다.`)
+        const kept = await storeOriginals(res.code)
+        setNotice(`수급자 ${res.code} 정보를 저장했습니다.${kept}`)
       }
       setForm(null)
       await load()
@@ -273,36 +342,49 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
         >
           <h3 className="font-bold text-slate-900">{form.mode === 'create' ? '수급자 추가' : `수급자 ${form.code} 수정`}</h3>
 
+          {view.profileReady && (
+            <DocumentFillSection
+              repo={repo}
+              docs={docs}
+              setDocs={setDocs}
+              getProfile={() => formRef.current?.profile ?? EMPTY_PROFILE}
+              onApply={applyAi}
+              report={fillReport}
+              setReport={setFillReport}
+              disabled={saving}
+            />
+          )}
+
           <fieldset className="flex flex-col gap-3" disabled={saving}>
             <legend className="text-sm font-bold text-slate-700 mb-1">인적사항</legend>
             <label className="flex flex-col gap-1">
-              <span className="text-sm font-bold text-slate-700">이름</span>
+              <FieldLabel text="이름" ai={aiFilled.includes('fullName')} />
               <input
                 value={form.profile.fullName}
                 aria-label="이름"
                 onChange={(e) => patchProfile({ fullName: e.target.value })}
                 maxLength={DISPLAY_NAME_MAX + 10}
                 autoComplete="off"
-                className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base"
+                className={`min-h-[44px] rounded-xl border ${aiCls('fullName')} px-3 text-base`}
               />
               <span className="text-xs text-slate-400">요양보호사 화면에도 이 이름이 표시됩니다. 기록 대화에서 AI에는 이름이 전달되지 않습니다.</span>
             </label>
             {view.profileReady && (
               <>
                 <label className="flex flex-col gap-1">
-                  <span className="text-sm font-bold text-slate-700">장기요양인정번호</span>
+                  <FieldLabel text="장기요양인정번호" ai={aiFilled.includes('ltcNumber')} />
                   <input
                     value={form.profile.ltcNumber}
                     onChange={(e) => patchProfile({ ltcNumber: e.target.value })}
                     placeholder="L0011097739-103"
                     autoComplete="off"
-                    className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base uppercase"
+                    className={`min-h-[44px] rounded-xl border ${aiCls('ltcNumber')} px-3 text-base uppercase`}
                   />
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700">장기요양등급</span>
-                    <select value={form.profile.ltcGrade} onChange={(e) => patchProfile({ ltcGrade: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base bg-white">
+                    <FieldLabel text="장기요양등급" ai={aiFilled.includes('ltcGrade')} />
+                    <select value={form.profile.ltcGrade} onChange={(e) => patchProfile({ ltcGrade: e.target.value })} className={`min-h-[44px] rounded-xl border ${aiCls('ltcGrade')} px-2 text-base bg-white`}>
                       <option value="">선택 안 함</option>
                       {LTC_GRADES.map((g) => (
                         <option key={g} value={g}>
@@ -312,27 +394,27 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700">생년월일</span>
-                    <input type="date" value={form.profile.birthDate} onChange={(e) => patchProfile({ birthDate: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base" />
+                    <FieldLabel text="생년월일" ai={aiFilled.includes('birthDate')} />
+                    <input type="date" value={form.profile.birthDate} onChange={(e) => patchProfile({ birthDate: e.target.value })} className={`min-h-[44px] rounded-xl border ${aiCls('birthDate')} px-2 text-base`} />
                   </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700">인정 유효기간 시작</span>
-                    <input type="date" value={form.profile.ltcValidFrom} onChange={(e) => patchProfile({ ltcValidFrom: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base" />
+                    <FieldLabel text="인정 유효기간 시작" ai={aiFilled.includes('ltcValidFrom')} />
+                    <input type="date" value={form.profile.ltcValidFrom} onChange={(e) => patchProfile({ ltcValidFrom: e.target.value })} className={`min-h-[44px] rounded-xl border ${aiCls('ltcValidFrom')} px-2 text-base`} />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-slate-700">인정 유효기간 종료</span>
-                    <input type="date" value={form.profile.ltcValidTo} onChange={(e) => patchProfile({ ltcValidTo: e.target.value })} className="min-h-[44px] rounded-xl border border-slate-300 px-2 text-base" />
+                    <FieldLabel text="인정 유효기간 종료" ai={aiFilled.includes('ltcValidTo')} />
+                    <input type="date" value={form.profile.ltcValidTo} onChange={(e) => patchProfile({ ltcValidTo: e.target.value })} className={`min-h-[44px] rounded-xl border ${aiCls('ltcValidTo')} px-2 text-base`} />
                   </label>
                 </div>
                 <label className="flex flex-col gap-1">
-                  <span className="text-sm font-bold text-slate-700">주소</span>
-                  <input value={form.profile.address} onChange={(e) => patchProfile({ address: e.target.value })} autoComplete="off" className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base" />
+                  <FieldLabel text="주소" ai={aiFilled.includes('address')} />
+                  <input value={form.profile.address} onChange={(e) => patchProfile({ address: e.target.value })} autoComplete="off" className={`min-h-[44px] rounded-xl border ${aiCls('address')} px-3 text-base`} />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-sm font-bold text-slate-700">전화번호</span>
-                  <input value={form.profile.phone} onChange={(e) => patchProfile({ phone: e.target.value })} inputMode="tel" autoComplete="off" className="min-h-[44px] rounded-xl border border-slate-300 px-3 text-base" />
+                  <FieldLabel text="전화번호" ai={aiFilled.includes('phone')} />
+                  <input value={form.profile.phone} onChange={(e) => patchProfile({ phone: e.target.value })} inputMode="tel" autoComplete="off" className={`min-h-[44px] rounded-xl border ${aiCls('phone')} px-3 text-base`} />
                 </label>
               </>
             )}

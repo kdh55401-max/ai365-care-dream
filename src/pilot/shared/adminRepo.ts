@@ -18,6 +18,7 @@ import type {
 } from '../../../shared/baseline'
 import type { CandidateReviewInput } from '../../../shared/changeCandidates'
 import type { RecipientObservationsView } from '../../../shared/observationViews'
+import type { FileExtraction } from '../../../shared/profileExtraction'
 import type { RecipientAdminView, RecipientSaveResult, RegisterRecipientInput, UpdateRecipientInput } from '../../../shared/recipientAdmin'
 import type { OperationMetricsView, OperationPeriod } from '../../../shared/operationMetrics'
 
@@ -186,6 +187,8 @@ export interface AdminRepo {
   deleteReport(id: string, reason: string): Promise<void>
   listParticipants(): Promise<Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>>
   /** 수급자 관리: 목록(코드·표시명·담당자·활성)과 배정 가능한 요양보호사. DB 준비 전이면 ready:false. */
+  /** ERP 3단계: 서류 한 장을 AI가 읽어 인적사항을 제안한다(읽기만 — 저장 없음, 서류 한 장 = AI 호출 한 번). */
+  extractProfile(file: File): Promise<FileExtraction>
   getRecipientAdminView(): Promise<RecipientAdminView>
   /** 수급자 등록 + 담당 요양보호사 배정(서버에서 한 번에, 코드 자동 번호). 같은 requestId는 한 번만 저장된다. */
   registerRecipient(input: RegisterRecipientInput): Promise<RecipientSaveResult>
@@ -367,6 +370,25 @@ export const realAdminRepo: AdminRepo = {
       participants: Array<{ code: string; active: boolean; pinSet: boolean; updatedAt: string; recipientCodes: string[] }>
     }>('/api/admin/participants')
     return res.participants
+  },
+  async extractProfile(file) {
+    let res: Response
+    try {
+      res = await fetch('/api/admin/participants?op=extract_profile', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+        body: await file.arrayBuffer(),
+      })
+    } catch {
+      throw new WorkflowRequestError(0, '연결이 끊겨 서류를 읽지 못했습니다. 다시 시도해 주세요(아무것도 저장하지 않았습니다).')
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      const message = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : `서류를 읽지 못했습니다 (${res.status})`
+      throw new WorkflowRequestError(res.status, message)
+    }
+    return data as FileExtraction
   },
   async getRecipientAdminView() {
     return api.get<RecipientAdminView>('/api/admin/participants?view=recipients')

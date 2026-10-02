@@ -31,7 +31,7 @@ import {
   demoUnlinkActionBaseline,
   demoUploadDocument,
 } from './demoBaselineRepo'
-import { demoRecipientAdminView, demoRegisterRecipient, demoUpdateRecipient } from './demoRecipientRepo'
+import { demoExtractProfile, demoRecipientAdminView, demoRegisterRecipient, demoUpdateRecipient } from './demoRecipientRepo'
 import { demoGetRecipientObservations, demoReviewCandidate } from './demoCandidateRepo'
 import {
   demoAssignmentMap,
@@ -297,6 +297,9 @@ export const demoAdminRepo: AdminRepo = {
       updatedAt: '',
       recipientCodes: demoAssignedRecipients(p.code),
     }))
+  },
+  async extractProfile(file) {
+    return demoExtractProfile(file)
   },
   async getRecipientAdminView() {
     demoOrganization(DEPLOYMENT_ORGANIZATION.id)

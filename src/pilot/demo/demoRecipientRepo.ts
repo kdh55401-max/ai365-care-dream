@@ -1,3 +1,4 @@
+import { sanitizeExtraction, type FileExtraction } from '../../../shared/profileExtraction'
 import {
   EMPTY_PROFILE,
   cleanProfile,
@@ -108,4 +109,38 @@ export function demoUpdateRecipient(input: UpdateRecipientInput): RecipientSaveR
   demoSaveRecipients(updated, map)
   seenRequests.set(input.requestId, input.code)
   return { code: input.code, duplicate: false }
+}
+
+/** 데모의 서류 읽기: 실제 AI를 부르지 않는다. 파일 이름의 종류 단어(인정서·이용계획서·급여제공계획서·복지용구·안내문)에 따라
+ * 그 서류에 있을 법한 항목을 가상 인물("김가상")의 값으로 돌려준다 — 여러 서류를 올려 합치기·충돌 표시를 연습하는 용도다.
+ * 파일 이름에 '충돌'이 있으면 등급을 다르게 돌려 서류 간 불일치 표시를 보여 준다. */
+const DEMO_PERSON = { fullName: '김가상', birthDate: '1950-01-01', ltcNumber: 'L0000000099-001', ltcGrade: '4등급', ltcValidFrom: '2025-02-25', ltcValidTo: '2029-02-24', address: '가상시 가상구 가상로 1', phone: '' }
+
+export async function demoExtractProfile(file: File): Promise<FileExtraction> {
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  const name = file.name
+  const has = (w: string) => name.includes(w)
+  const raw: Record<string, string> = { docKind: 'other' }
+  const take = (...keys: Array<keyof typeof DEMO_PERSON>) => keys.forEach((k) => (raw[k] = DEMO_PERSON[k]))
+  if (has('복지용구')) {
+    raw.docKind = 'welfare_equipment'
+    take('fullName', 'birthDate', 'ltcNumber', 'ltcGrade', 'ltcValidFrom', 'ltcValidTo')
+  } else if (has('인정서')) {
+    raw.docKind = 'ltc_certificate'
+    take('fullName', 'birthDate', 'ltcNumber', 'ltcGrade', 'ltcValidFrom', 'ltcValidTo')
+  } else if (has('이용계획')) {
+    raw.docKind = 'ltc_use_plan'
+    take('fullName', 'birthDate', 'ltcGrade', 'ltcValidFrom', 'ltcValidTo')
+  } else if (has('급여제공계획')) {
+    raw.docKind = 'care_plan'
+    take('fullName')
+  } else if (has('안내')) {
+    raw.docKind = 'guidance'
+    take('ltcNumber', 'address')
+  } else if (has('욕구')) {
+    raw.docKind = 'needs_assessment'
+    take('fullName', 'birthDate')
+  }
+  if (has('충돌') && raw.ltcGrade) raw.ltcGrade = '3등급'
+  return { ...sanitizeExtraction(raw, name, null), simulated: true }
 }

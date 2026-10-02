@@ -1756,7 +1756,7 @@ function AdminApp() {
           />
         )}
         {route.kind === 'reports' && <ReportsPanel repo={repo} onOpen={openReport} />}
-        {route.kind === 'recipientAdmin' && <RecipientAdminPanel repo={repo} onOpenRecipient={openRecipient} />}
+        {route.kind === 'recipientAdmin' && <RecipientAdminPanel repo={repo} orgId={orgId} onOpenRecipient={openRecipient} />}
         {route.kind === 'participants' && <ParticipantsPanel repo={repo} />}
       </div>
       <div className="w-full max-w-5xl">
