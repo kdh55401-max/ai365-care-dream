@@ -1,3 +1,11 @@
+## 2026-10-02 — 전면 교체 3단계: 서류로 인적사항 채우기
+
+목적: 서류 → AI 읽기(제안) → 관리자 확인 → 저장 + 원본 비공개 보관. 상세는 CHANGE_LOG 2026-10-02.
+주요 파일: `shared/profileExtraction.ts`(+test), `api/_lib/profileExtractionAi.ts`, `api/admin/participants.ts`(op=extract_profile), `src/pilot/admin/DocumentFillSection.tsx`, `RecipientAdminPanel.tsx`, `adminRepo.ts`/데모, `e2e/profile-from-documents.spec.ts`, `e2e/fixtures/`(가상 서류).
+검증: tsc 0 · vitest 317/317 · e2e profile-from-documents 5/5. 실제 Gemini·실제 서류·운영 환경은 미검증.
+검토 요청(Codex): (1) 프롬프트(규칙 4·5·6)가 인정서의 관리지사 전화번호·연한도액 구간 같은 함정을 피하는지, (2) `sanitizeExtraction`이 AI의 형식 오류를 모두 걸러 저장 경로로 새지 않는지, (3) Vercel 함수 시간 한도와 25초 타임아웃,
+(4) 서류 원본 전송에 대한 개인정보 고지·Vertex 전환 시점.
+
 ## 2026-10-03 — 전면 교체 2단계: 관리자 첫 화면 수급자 목록(이지케어식) · 인적사항
 
 목적: ERP 전환(MASTER_CONTEXT 최상단). 관리자 로그인 직후 수급자 목록·인적사항·검색, `/admin`=목록, `/admin/today`=오늘의 돌봄.
