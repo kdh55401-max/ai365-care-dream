@@ -3,6 +3,7 @@ import { parseCookie, stringifySetCookie } from 'cookie'
 import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import { env } from './env.js'
+import { centerSession, canUseLegacyPilot } from './centerAuth.js'
 import { ApiError, getQuery } from './http.js'
 import { checkOrganizationAccess, DEPLOYMENT_ORGANIZATION, type Organization } from '../../shared/organization.js'
 
@@ -80,6 +81,11 @@ export function clearAdminSessionCookie(res: ServerResponse) {
 }
 
 export async function getCareSession(req: IncomingMessage): Promise<CareSession | null> {
+  if (readCookies(req).ai365_center_session) {
+    const member = await centerSession(req)
+    if (!member || member.role !== 'caregiver' || !member.participant_code || !canUseLegacyPilot(member)) return null
+    return { role: 'care', participantCode: member.participant_code }
+  }
   const token = readCookies(req)[CARE_COOKIE]
   if (!token) return null
   const payload = await verifySession(token)
@@ -88,6 +94,10 @@ export async function getCareSession(req: IncomingMessage): Promise<CareSession 
 }
 
 export async function getAdminSession(req: IncomingMessage): Promise<AdminSession | null> {
+  if (readCookies(req).ai365_center_session) {
+    const member = await centerSession(req)
+    return (member?.role === 'admin' || member?.role === 'master') && canUseLegacyPilot(member) ? { role: 'admin', organizationId: DEPLOYMENT_ORGANIZATION.id } : null
+  }
   const token = readCookies(req)[ADMIN_COOKIE]
   if (!token) return null
   const payload = await verifySession(token)

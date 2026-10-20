@@ -1,9 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { requireMethod, sendJson, withHandler } from '../_lib/http.js'
+import { handleCenterRequest } from '../_lib/centerRouter.js'
 import { getAdminSession } from '../_lib/auth.js'
 import { findOrganization } from '../../shared/organization.js'
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (new URL(req.url || '/', 'https://localhost').searchParams.has('centerAction')) return handleCenterRequest(req, res)
   await withHandler(res, async () => {
     requireMethod(req, 'GET')
     const session = await getAdminSession(req)

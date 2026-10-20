@@ -1,0 +1,13 @@
+import { useEffect, useState } from 'react'
+interface Applicant { id: string; name: string; email: string; requested_role: string; role: string; status: string }
+export default function MemberApprovals() {
+  const [members, setMembers] = useState<Applicant[]>([])
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [roles, setRoles] = useState<Record<string, string>>({})
+  const [codes, setCodes] = useState<Record<string, string>>({})
+  async function load() { setError(''); try { const res = await fetch('/api/center/members'); const body = await res.json(); if (!res.ok) throw new Error(body.error); setMembers(body.members) } catch (e) { setError(e instanceof Error ? e.message : '목록을 불러오지 못했습니다.') } }
+  useEffect(() => { void Promise.resolve().then(load) }, [])
+  async function decide(member: Applicant, status: string) { setBusy(true); setError(''); try { const res = await fetch('/api/center/members', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: member.id, role: roles[member.id] || member.requested_role, participantCode: codes[member.id], status }) }); const body = await res.json(); if (!res.ok) throw new Error(body.error); await load() } catch (e) { setError(e instanceof Error ? e.message : '승인하지 못했습니다.') } finally { setBusy(false) } }
+  return <section className="cd-card"><h2>기관 회원 승인</h2><p className="cd-muted">같은 기관의 가입 신청을 검토합니다. 신청 역할은 승인된 권한과 다릅니다.</p>{error && <p role="alert" className="cd-entry-error">{error}</p>}<button onClick={() => void load()} disabled={busy}>목록 새로고침</button><div className="cd-table-wrap"><table><thead><tr><th>이름</th><th>이메일</th><th>상태</th><th>승인 역할</th><th>돌봄보고 참여자코드</th><th>처리</th></tr></thead><tbody>{members.map(m => <tr key={m.id}><td>{m.name}</td><td>{m.email}</td><td>{m.status}</td><td>{m.status === 'pending' ? <select aria-label={`${m.name} 승인 역할`} value={roles[m.id] || m.requested_role} onChange={e => setRoles(old => ({ ...old, [m.id]: e.target.value }))}><option value="caregiver">요양보호사</option><option value="admin">기관 관리자</option></select> : m.role}</td><td>{m.status === 'pending' && (roles[m.id] || m.requested_role) === 'caregiver' && <input aria-label={`${m.name} 참여자코드`} placeholder="기존 참여자코드" value={codes[m.id] || ''} onChange={e => setCodes(old => ({ ...old, [m.id]: e.target.value }))} />}</td><td>{m.status === 'pending' && <><button disabled={busy} onClick={() => void decide(m, 'active')}>승인</button> <button disabled={busy} onClick={() => void decide(m, 'rejected')}>반려</button></>}</td></tr>)}</tbody></table></div>{!members.length && !error && <p className="cd-empty">조회된 가입 신청이 없습니다.</p>}</section>
+}
