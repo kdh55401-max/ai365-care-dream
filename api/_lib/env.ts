@@ -1,4 +1,5 @@
 /** 서버 전용 환경변수. VITE_ 접두사가 없으므로 Vite가 브라우저 번들에 절대 포함하지 않는다. */
+import { resolveCareAiConfiguration } from './careAiConfig.js'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -22,9 +23,11 @@ export const env = {
   get geminiApiKey() {
     return required('GEMINI_API_KEY')
   },
-  // Vertex AI는 선택 사항이다 — 아래 세 값이 모두 설정된 경우에만 켜진다(useVertexAi).
-  // 설정 전/부분 설정 상태에서는 기존 GEMINI_API_KEY 경로가 그대로 동작해야 하므로
-  // required()로 강제하지 않는다(하나라도 없으면 조용히 기존 경로로 돌아간다).
+  get careAiConfiguration() {
+    return resolveCareAiConfiguration(process.env)
+  },
+  // auto는 기존의 프로젝트+서비스계정 존재 여부로 경로를 고른다.
+  // LOCATION은 선택 사항이며 명시 선택된 provider의 실패를 다른 경로로 대체하지 않는다.
   get vertexProjectId() {
     return process.env.GOOGLE_VERTEX_PROJECT_ID || null
   },
@@ -35,9 +38,6 @@ export const env = {
    * 올리지 않는다 — 서버리스 환경에 파일시스템 영속성이 없다. */
   get vertexServiceAccountJson() {
     return process.env.GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON || null
-  },
-  get useVertexAi() {
-    return Boolean(process.env.GOOGLE_VERTEX_PROJECT_ID && process.env.GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON)
   },
   get isProduction() {
     return process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'

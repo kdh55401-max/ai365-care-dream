@@ -36,6 +36,28 @@ describe('vertexAuth', () => {
     await expect(getVertexAccessToken()).rejects.toThrow('client_email/private_key')
   })
 
+  it('JSON null·배열과 문자열이 아닌 키 항목을 인증 시도 전에 거부한다', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { getVertexAccessToken } = await import('./vertexAuth.js')
+    for (const value of [null, [], { client_email: 123, private_key: {} }]) {
+      process.env.GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON = JSON.stringify(value)
+      await expect(getVertexAccessToken()).rejects.toThrow('GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON')
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('잘못된 200 인증 응답을 성공으로 캐시하거나 Bearer 토큰으로 반환하지 않는다', async () => {
+    const privateKey = await generateTestPrivateKeyPem()
+    process.env.GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: 'test@example.iam.gserviceaccount.com', private_key: privateKey })
+    const invalid = [null, {}, { access_token: '', expires_in: 3600 }, { access_token: 'test', expires_in: 0 }, { access_token: 'test', expires_in: '3600' }]
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(invalid.shift()), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { getVertexAccessToken } = await import('./vertexAuth.js')
+    for (let i = 0; i < 5; i++) await expect(getVertexAccessToken()).rejects.toThrow('Vertex AI 인증 토큰')
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+  })
+
   it('정상 키가 있으면 oauth2 토큰 교환을 호출하고 access_token을 반환한다', async () => {
     const privateKey = await generateTestPrivateKeyPem()
     process.env.GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON = JSON.stringify({

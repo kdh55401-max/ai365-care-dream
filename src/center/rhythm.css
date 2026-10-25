@@ -1,0 +1,81 @@
+.cr-card { margin-top: 16px; padding: 16px; border: 1px solid var(--cd-line, #d9dee3); border-radius: 12px; background: #fff }
+.cr-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px }
+.cr-head h2 { margin: 0; font-size: 18px }
+.cr-months { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px }
+.cr-months button, .cr-seg button { min-height: 32px; padding: 0 10px }
+.cr-months button[aria-pressed="true"], .cr-seg button[aria-pressed="true"] { background: #0f766e; color: #fff; border-color: #0f766e }
+.cr-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px }
+.cr-seg { display: inline-flex; gap: 0 }
+.cr-check { display: inline-flex; align-items: center; gap: 4px; font-size: 14px }
+.cr-summary { font-weight: 600; margin: 8px 0 }
+.cr-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; margin: 0 0 6px; font-size: 12px; color: #4b5563 }
+.cr-legend svg { vertical-align: -3px; margin-right: 4px }
+.cr-axis { position: relative; height: 18px; font-size: 11px; color: #4b5563; margin: 6px 0 0 }
+.cr-axis span { position: absolute; top: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; border-left: 1px solid #d9dee3; padding-left: 3px; box-sizing: border-box }
+.cr-group h3 { margin: 12px 0 2px; font-size: 13px; color: #4b5563 }
+.cr-lane { border-top: 1px solid #e5e7eb; padding: 6px 0 2px }
+.cr-lane p { margin: 2px 0 4px; font-size: 13px }
+.cr-name { display: flex; align-items: center; gap: 8px }
+.cr-tag { font-size: 11px; border-radius: 6px; padding: 1px 7px; background: #f3f4f6; border: 1px solid #9ca3af; color: #374151 }
+.cr-tag-missing { background: #fef2f2; border-color: #dc2626; color: #991b1b }
+.cr-note { font-size: 12px; color: #4b5563; margin: 8px 0 }
+.cr-visit { fill: #4b5563 } .cr-visit-planned { fill: none; stroke: #6b7280; stroke-width: 1.2 }
+.cr-record { fill: #0f766e; stroke: #fff; stroke-width: 1 }
+.cr-weekline { stroke: #e5e7eb; stroke-width: .6 }
+.cr-missing { fill: none; stroke: #dc2626; stroke-width: 1.2; stroke-dasharray: 3 3 }
+.cr-pending { fill: none; stroke: #9ca3af; stroke-width: 1.2; stroke-dasharray: 3 3 }
+.cr-today { stroke: #2563eb; stroke-width: 1.5 }
+.cr-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 2px }
+.cr-chip { font-size: 11px; border-radius: 6px; padding: 1px 7px; background: #f3f4f6; border: 1px solid #9ca3af; color: #374151 }
+.cr-chip-ref { background: #eff6ff; border-color: #93c5fd; color: #1e3a8a }
+.cr-chip-warning { background: #fffbeb; border-color: #d97706; color: #92400e }
+.cr-chip-danger { background: #fef2f2; border-color: #dc2626; color: #991b1b }
+.cr-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 }
+.cr-filters button { min-height: 34px; padding: 0 12px }
+.cr-filters button b { margin-left: 6px; font-weight: 600 }
+.cr-filters button[aria-pressed="true"] { background: #0f766e; color: #fff; border-color: #0f766e }
+.cr-summary span { font-weight: 400; font-size: 12px; color: #4b5563 }
+.cr-table-wrap { overflow-x: auto; border: 1px solid #d9dee3; border-radius: 8px }
+.cr-table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13px }
+.cr-table th, .cr-table td { border-bottom: 1px solid #e5e7eb; border-right: 1px solid #f1f3f5; padding: 5px 8px; text-align: left; white-space: nowrap }
+.cr-table thead th { background: #f3f4f6; position: sticky; top: 0; font-weight: 600 }
+.cr-card .cr-table thead button, .cr-card .cr-table .cr-rowbtn { all: unset; cursor: pointer; font: inherit; font-weight: inherit; color: inherit; min-height: 0 }
+.cr-card .cr-table .cr-rowbtn:focus-visible, .cr-card .cr-table thead button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px }
+.cr-table tbody th { font-weight: 600; background: #fff }
+.cr-table tbody tr:hover td, .cr-table tbody tr:hover th { background: #f9fafb }
+.cr-table tr.cr-open td, .cr-table tr.cr-open th { background: #f0fdfa }
+.cr-num { text-align: right !important }
+.cr-bad { color: #991b1b; font-weight: 600 }
+.cr-warn { color: #92400e; font-weight: 600 }
+.cr-weeks { display: inline-flex; gap: 3px; vertical-align: middle }
+.cr-w { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid #d1d5db; box-sizing: border-box; vertical-align: -2px; margin-right: 0 }
+.cr-w-recorded { background: #0f766e; border-color: #0f766e }
+.cr-w-missing { background: #fff; border: 1.5px dashed #dc2626 }
+.cr-w-pending { background: #fff; border: 1.5px dashed #9ca3af }
+.cr-w-none { background: #f3f4f6 }
+.cr-legend .cr-w { margin-right: 4px }
+.cr-detail td { white-space: normal !important; background: #fcfcfd }
+.cr-detail p { margin: 2px 0 6px; font-size: 13px }
+.cr-w-wait { background: #fff; border: 1.5px solid #0f766e }
+.cr-w-same { background: #0f766e; border-color: #0f766e }
+.cr-w-changed { background: #d97706; border-color: #b45309 }
+.cr-w-stale { background: #fff; border: 1.5px dashed #d97706 }
+.cr-w-obs { background: repeating-linear-gradient(45deg, #d1d5db, #d1d5db 2px, #fff 2px, #fff 4px); border-color: #9ca3af }
+.cr-review { display: grid; gap: 10px; margin-top: 8px }
+.cr-review-week { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; background: #fff }
+.cr-review-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 4px }
+.cr-status { font-size: 11px; border-radius: 6px; padding: 1px 7px; border: 1px solid #9ca3af; background: #f3f4f6 }
+.cr-status-confirmed { background: #ecfdf5; border-color: #0f766e; color: #115e59 }
+.cr-status-stale { background: #fffbeb; border-color: #d97706; color: #92400e }
+.cr-status-unreviewed { background: #eff6ff; border-color: #93c5fd; color: #1e3a8a }
+.cr-record-text { margin: 4px 0; font-size: 13px; background: #f9fafb; border-radius: 6px; padding: 4px 8px }
+.cr-record-text p { margin: 2px 0 }
+.cr-review-values, .cr-review-areas { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; font-size: 13px }
+.cr-review-note { display: grid; gap: 2px; font-size: 12px; color: #4b5563 }
+.cr-review-note input { min-height: 32px }
+.cr-error { color: #991b1b; font-size: 13px; margin: 4px 0 }
+.cr-save { margin-top: 6px; min-height: 34px; padding: 0 14px; background: #0f766e; color: #fff; border-color: #0f766e }
+.cr-batch { border: 2px solid #0f766e; border-radius: 10px; padding: 10px 14px; margin: 8px 0; background: #f0fdfa }
+.cr-batch h3 { margin: 0 0 4px; font-size: 15px }
+.cr-batch ul { max-height: 160px; overflow: auto; margin: 6px 0; padding-left: 18px; font-size: 13px }
+.cr-batch-actions { display: flex; gap: 8px; justify-content: flex-end }

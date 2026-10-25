@@ -12,11 +12,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+export async function readJsonBody(req: IncomingMessage, byteLimit = 200_000): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   for await (const chunk of req) {
     chunks.push(chunk as Buffer)
-    if (chunks.reduce((n, c) => n + c.length, 0) > 200_000) {
+    if (chunks.reduce((n, c) => n + c.length, 0) > byteLimit) {
       throw new ApiError(413, '요청 본문이 너무 큽니다.')
     }
   }

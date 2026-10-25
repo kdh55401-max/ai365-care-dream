@@ -30,3 +30,6 @@ test-results
 playwright-report
 blob-report
 playwright/.cache
+
+# Local SQL/browser test runtime and downloaded executables
+/test-temp/

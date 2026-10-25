@@ -23,8 +23,11 @@ function parseServiceAccountKey(): ServiceAccountKey {
   } catch {
     throw new Error('GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON이 올바른 JSON이 아닙니다.')
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON은 서비스 계정 객체여야 합니다.')
+  }
   const key = parsed as Partial<ServiceAccountKey>
-  if (!key.client_email || !key.private_key) {
+  if (typeof key.client_email !== 'string' || !key.client_email.trim() || typeof key.private_key !== 'string' || !key.private_key.trim()) {
     throw new Error('GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON에 client_email/private_key가 없습니다.')
   }
   return key as ServiceAccountKey
@@ -55,8 +58,13 @@ async function fetchAccessToken(): Promise<{ token: string; expiresInSeconds: nu
     const detail = await res.text().catch(() => '')
     throw new Error(`Vertex AI 인증 토큰 발급 실패 (HTTP ${res.status}): ${detail.slice(0, 300)}`)
   }
-  const data = (await res.json()) as { access_token: string; expires_in: number }
-  return { token: data.access_token, expiresInSeconds: data.expires_in }
+  const data: unknown = await res.json()
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Vertex AI 인증 토큰 응답 형식이 올바르지 않습니다.')
+  const token = data as { access_token?: unknown; expires_in?: unknown }
+  if (typeof token.access_token !== 'string' || !token.access_token.trim() || typeof token.expires_in !== 'number' || !Number.isFinite(token.expires_in) || token.expires_in <= 0) {
+    throw new Error('Vertex AI 인증 토큰 또는 만료 정보를 확인하지 못했습니다.')
+  }
+  return { token: token.access_token, expiresInSeconds: token.expires_in }
 }
 
 /** 서버리스 함수가 warm 상태로 재사용될 때(같은 인스턴스가 다음 요청도 처리할 때)

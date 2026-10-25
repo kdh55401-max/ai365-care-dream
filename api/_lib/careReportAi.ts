@@ -2,8 +2,8 @@ import { env } from './env.js'
 import { ApiError } from './http.js'
 import { isLikelyOffTopic } from '../../shared/offTopicEngine.js'
 import { getVertexAccessToken } from './vertexAuth.js'
+import { CareAiConfigurationError, type CareAiConfiguration } from './careAiConfig.js'
 
-const MODEL = 'gemini-3.6-flash'
 const REQUEST_TIMEOUT_MS = 18000
 const MAX_FOLLOWUPS = 3
 
@@ -236,14 +236,17 @@ export async function runCareReportTurn(
   const forceFinalize = clientForceFinalize || history.length >= MAX_FOLLOWUPS
   const userText = buildUserMessage(rawInput, history, forceFinalize)
 
-  // Vertex AI(GOOGLE_VERTEX_* 세 값이 모두 설정된 경우)와 기존 API 키 방식(AI
-  // Studio) 중 어느 쪽을 쓸지 결정한다 — 요청/응답 스키마는 두 경로가 동일하므로
-  // (Google이 Gemini API 표면을 통일해 뒀다) 여기서 URL·인증 헤더만 갈라진다.
-  // 하나라도 미설정이면 조용히 기존 경로로 돌아간다(마이그레이션 중 끊김 방지).
-  const useVertex = env.useVertexAi
+  // Preserve the follow-up/report protocol; only server provider/model routing varies.
+  // An explicit provider never falls back to another project's authentication/billing path.
+  let configuration: CareAiConfiguration
+  try { configuration = env.careAiConfiguration }
+  catch (error) {
+    if (error instanceof CareAiConfigurationError) throw new ApiError(503, error.message)
+    throw error
+  }
   let requestUrl: string
   const requestHeaders: Record<string, string> = { 'content-type': 'application/json' }
-  if (useVertex) {
+  if (configuration.provider === 'vertex') {
     try {
       requestHeaders.authorization = `Bearer ${await getVertexAccessToken()}`
     } catch (e) {
@@ -251,9 +254,9 @@ export async function runCareReportTurn(
     }
     requestUrl =
       `https://${env.vertexLocation}-aiplatform.googleapis.com/v1/projects/${env.vertexProjectId}` +
-      `/locations/${env.vertexLocation}/publishers/google/models/${MODEL}:generateContent`
+      `/locations/${env.vertexLocation}/publishers/google/models/${configuration.model}:generateContent`
   } else {
-    requestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${env.geminiApiKey}`
+    requestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${configuration.model}:generateContent?key=${env.geminiApiKey}`
   }
 
   const controller = new AbortController()
