@@ -5,7 +5,6 @@ import { ErrorBoundary } from './ErrorBoundary.tsx'
 import SafetyScannerApp from './safetyScanner/SafetyScannerApp.tsx'
 import MemberGateway from './center/MemberGateway.tsx'
 import TeamWorkspace from './team/TeamWorkspace.tsx'
-import CommunityWorkspace from './community/CommunityWorkspace.tsx'
 import CareApp from './pilot/care/CareApp.tsx'
 import AdminApp from './pilot/admin/AdminApp.tsx'
 import CenterWorkspace from './center/CenterWorkspace.tsx'
@@ -14,9 +13,7 @@ import CenterWorkspace from './center/CenterWorkspace.tsx'
 // 생활안전스캐너를 경로(pathname)만으로 전환하는 최소 진입점 스위치.
 // /            회원가입·기관 승인·역할별 로그인
 // /team        관리자(TEAM) — 기존 확장형 MVP, 보존
-// /community   생활지원사(COMMUNITY) — 기존 App(현장 대응 도우미) 보존
-// /support     /community의 공개 진입 별칭(관리자/care와 이름 규칙을 맞춤, 화면·데이터는 동일)
-// /safety-scanner  생활안전스캐너(기존 기능, COMMUNITY에서 진입)
+// /safety-scanner  생활안전스캐너(기존 기능; 생활지원사 화면 제거 뒤에는 직접 주소로만 진입)
 //
 // /care, /admin  60초 AI 돌봄보고(CARE REPORT) 실증 파일럿 (2026-09-07~09-18).
 //   이 브랜치(claude/care-report-pilot-mvp-*)에서만 /care를 파일럿 화면으로 연결한다.
@@ -36,9 +33,6 @@ function Root() {
   if (pathname.startsWith('/team')) return <TeamWorkspace />
   if (pathname.startsWith('/admin')) return <AdminApp />
   if (pathname.startsWith('/care')) return <CareApp />
-  // /support: 생활지원사 공개 진입 별칭(관리자/care와 같은 역할-이름 규칙을
-  // 맞추기 위함일 뿐, 기존 /community 경로·화면·데이터는 그대로 유지한다).
-  if (pathname.startsWith('/community') || pathname.startsWith('/support')) return <CommunityWorkspace />
   return <MemberGateway />
 }
 

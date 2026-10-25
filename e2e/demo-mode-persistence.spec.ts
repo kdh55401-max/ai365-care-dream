@@ -79,13 +79,4 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
     await expect(page).toHaveURL(/\/admin\?demo=1/)
     await expect(page.getByPlaceholder('비밀번호')).toBeVisible()
   })
-
-  // /support: 생활지원사 공개 진입 별칭. 기존 /community와 같은 화면(App.tsx,
-  // '현장 대응 도우미')을 그대로 보여줘야 한다 — 새 로그인/데이터 계층을 만들지
-  // 않는다는 요청 범위를 지킨다.
-  test('/support는 /community와 같은 생활지원사 화면(현장 대응 도우미)을 보여준다', async ({ page }) => {
-    await page.goto('/support')
-    await expect(page.getByText('현장 대응 도우미')).toBeVisible()
-    await expect(page.getByText('COMMUNITY')).toBeVisible()
-  })
 })

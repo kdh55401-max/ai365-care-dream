@@ -11,9 +11,9 @@
    둔다 (아래 C 단계의 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
 
 ## B. Gemini API 키
-- https://aistudio.google.com/apikey 에서 서버 전용 키를 발급한다. (기존
-  `VITE_GEMINI_API_KEY`와는 별개의 값이어야 하며, `GEMINI_API_KEY`라는 이름으로
-  서버에만 설정한다.)
+- https://aistudio.google.com/apikey 에서 서버 전용 키를 발급한다. `GEMINI_API_KEY`라는
+  이름으로 서버에만 설정한다. (브라우저용 `VITE_GEMINI_API_KEY`는 생활지원사 화면과
+  함께 제거되었다 — 다시 만들지 않는다.)
 
 ## C. 환경변수 설정 (Vercel 프로젝트 설정 → Environment Variables)
 `.env.local.example`을 참고해 아래 값을 모두 등록한다 (전부 서버 전용, `VITE_`

@@ -378,9 +378,9 @@ function SafetyScannerApp() {
           className="pointer-events-none select-none absolute -top-6 left-1/2 -translate-x-1/2 -z-10 w-56 opacity-[0.06]"
         />
         <button
-          onClick={() => navigate('/community')}
+          onClick={() => navigate('/')}
           className="absolute left-0 top-0 flex items-center gap-1 text-slate-400 hover:text-slate-600 text-sm py-1 px-1"
-          aria-label="생활지원사 업무공간으로 돌아가기"
+          aria-label="처음 화면으로 돌아가기"
         >
           <BackIcon className="w-5 h-5" />
           <span>홈</span>
@@ -391,7 +391,7 @@ function SafetyScannerApp() {
 
       <main className="relative w-full max-w-md flex-1">
         {screen === 'start' && (
-          <StartScreen onStart={startScan} onBack={() => navigate('/community')} />
+          <StartScreen onStart={startScan} onBack={() => navigate('/')} />
         )}
 
         {screen === 'chat' && currentStep && (
@@ -459,7 +459,7 @@ function SafetyScannerApp() {
             finalized={resultFinalized}
             onFinalize={() => setResultFinalized(true)}
             onEdit={() => setScreen('actions')}
-            onHome={() => navigate('/community')}
+            onHome={() => navigate('/')}
             onNewScan={startScan}
           />
         )}

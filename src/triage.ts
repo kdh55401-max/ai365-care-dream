@@ -1,4 +1,4 @@
-import type { RiskLevel } from './gemini'
+export type RiskLevel = '일반 관찰' | '기관 확인 필요' | '우선 확인 필요'
 
 /**
  * 데모용 규칙 기반 1차 분류. 의료 진단이 아니라, 사용자가 말한 위험 신호를
