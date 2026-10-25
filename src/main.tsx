@@ -2,18 +2,16 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
-import SafetyScannerApp from './safetyScanner/SafetyScannerApp.tsx'
 import MemberGateway from './center/MemberGateway.tsx'
 import TeamWorkspace from './team/TeamWorkspace.tsx'
 import CareApp from './pilot/care/CareApp.tsx'
 import AdminApp from './pilot/admin/AdminApp.tsx'
 import CenterWorkspace from './center/CenterWorkspace.tsx'
 
-// react-router 등 별도 라우팅 라이브러리를 추가하지 않고, 역할별 업무공간과
-// 생활안전스캐너를 경로(pathname)만으로 전환하는 최소 진입점 스위치.
+// react-router 등 별도 라우팅 라이브러리를 추가하지 않고, 역할별 업무공간을
+// 경로(pathname)만으로 전환하는 최소 진입점 스위치.
 // /            회원가입·기관 승인·역할별 로그인
 // /team        관리자(TEAM) — 기존 확장형 MVP, 보존
-// /safety-scanner  생활안전스캐너(기존 기능; 생활지원사 화면 제거 뒤에는 직접 주소로만 진입)
 //
 // /care, /admin  60초 AI 돌봄보고(CARE REPORT) 실증 파일럿 (2026-09-07~09-18).
 //   이 브랜치(claude/care-report-pilot-mvp-*)에서만 /care를 파일럿 화면으로 연결한다.
@@ -29,7 +27,6 @@ function Root() {
   }, [])
 
   if (pathname === '/center' || pathname.startsWith('/center/')) return <CenterWorkspace />
-  if (pathname.startsWith('/safety-scanner')) return <SafetyScannerApp />
   if (pathname.startsWith('/team')) return <TeamWorkspace />
   if (pathname.startsWith('/admin')) return <AdminApp />
   if (pathname.startsWith('/care')) return <CareApp />

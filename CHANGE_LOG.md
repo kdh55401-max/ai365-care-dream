@@ -1112,3 +1112,7 @@ Supabase·Gemini 실계정 없이도 사용자가 실제 브라우저에서 전�
 
 ### 2026-10-25 · 생활지원사(/community, /support) 화면 제거 (Claude)
 사용자 결정으로 생활지원사 "현장 대응 도우미" 화면(src/App.tsx)과 그 전용 파일(CommunityWorkspace, gemini.ts, caseDraft.ts, careKnowledge.ts)을 삭제했다. 이 화면이 브라우저에서 Gemini를 직접 호출해 VITE_GEMINI_API_KEY가 앱 파일에 들어가는 구조였기 때문이다(돌봄·센터 화면은 서버 키만 사용). /community·/support는 이제 첫 화면(MemberGateway)으로 간다. RiskLevel 타입은 triage.ts로 옮겼고, 생활안전스캐너의 되돌아가기는 '/'로 바꿨다(스캐너는 직접 주소로만 진입). VITE_GEMINI_API_KEY 변수 설명·예시·e2e 시험 1건을 정리했다. 운영 반영은 master 병합 뒤이며, Vercel 변수와 Google 키 삭제는 사용자가 별도 진행한다.
+
+
+### 2026-10-25 · 첫 화면을 가드림365재가복지센터 업무지원시스템으로 전환, 생활안전스캐너 제거 (Claude)
+사용자 결정: 포항 바이브코딩 사업화지원 MVP는 끝났고, 이 앱은 가드림365재가복지센터 업무지원시스템(AI 업무자동화)이다. 시스템 이름은 AI365 CARE DREAM을 유지하고 주소(app.ai365caredream.com)도 그대로 쓴다. 첫 화면(MemberGateway)과 브라우저 탭 제목에 센터 업무지원시스템 문구를 넣었다. 생활안전스캐너(src/safetyScanner)는 나중에 다시 개발하기로 하고 삭제했으며, /safety-scanner는 첫 화면으로 간다. 옛 CareWorkspace가 쓰던 useVoiceInput은 src/care로 옮겼다. /care·/admin의 '실증' 문구와 e2e는 이번에 바꾸지 않았다(범위 확인 대기).

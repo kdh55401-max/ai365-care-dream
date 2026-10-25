@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import WorkspaceHeader from '../roles/WorkspaceHeader'
 import { CheckIcon, MicIcon, NfcIcon, PhoneIcon } from '../roles/icons'
-import { useVoiceInput } from '../safetyScanner/useVoiceInput'
+import { useVoiceInput } from './useVoiceInput'
 import { generateMockCareResponse, type CareMockResult, type CareMockRiskLevel } from './mockCareResponse'
 
 type CareScreen = 'nfc' | 'session' | 'result' | 'saved'
