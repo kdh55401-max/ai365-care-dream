@@ -31,7 +31,7 @@ function dayLabel(date: string): string {
 
 const CELL_STYLE: Record<string, string> = {
   changed: 'bg-amber-100 text-amber-900 border-amber-300',
-  same_as_usual: 'bg-teal-50 text-teal-800 border-teal-200',
+  same_as_usual: 'bg-brand-tint text-brand border-[#c9d4e8]',
   mixed: 'bg-violet-100 text-violet-900 border-violet-300',
   not_observed: 'bg-slate-100 text-slate-600 border-slate-200',
   uncertain: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -335,7 +335,7 @@ export function RecipientObservationsSection({
                   항목별 상태: {r.hasStoredItems ? r.observations.map((o) => `${o.label} ${o.statusLabel}`).join(' · ') : '저장 없음'}
                   {r.hasStoredItems && ' (항목별 근거 연결 전 — 보고 전체가 근거)'}
                 </p>
-                <button onClick={() => onOpenReport(r.reportId)} className="mt-1 text-[11px] font-bold text-teal-700 underline">
+                <button onClick={() => onOpenReport(r.reportId)} className="mt-1 text-[11px] font-bold text-brand underline">
                   보고 전체 열기
                 </button>
               </li>
@@ -367,7 +367,7 @@ export function RecipientObservationsSection({
               {c.signals.map((s) => (
                 <li key={`${s.reportId}-${s.domain}`}>
                   {s.date} · 요양보호사 {s.participantCode} · {formatKoreanDateTime(s.submittedAt)} 제출{' '}
-                  <button onClick={() => onOpenReport(s.reportId)} className="underline text-teal-700 font-semibold">
+                  <button onClick={() => onOpenReport(s.reportId)} className="underline text-brand font-semibold">
                     원문 보기
                   </button>
                 </li>

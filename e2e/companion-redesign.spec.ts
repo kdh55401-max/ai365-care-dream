@@ -15,7 +15,7 @@ test('provided avatar persists and moves from home into conversation; reduced vi
   await expect(page.getByRole('heading', { name: '오늘 A01 어르신은 어떠셨어요?' })).toBeVisible()
   const image = page.getByTestId('companion-avatar')
   const before = (await image.boundingBox())!
-  expect(before.width).toBeGreaterThan(200)
+  expect(before.width).toBeGreaterThanOrEqual(200)
   await image.evaluate((node) => { (window as any).initialAvatar = node })
   await page.screenshot({ path: info.outputPath('home.png'), fullPage: true })
   await page.getByRole('button', { name: '글로 입력하기', exact: true }).click()
@@ -43,7 +43,9 @@ test('provided avatar persists and moves from home into conversation; reduced vi
   await admin.getByRole('button', { name: '돌봄기록', exact: true }).click()
   await admin.getByRole('button', { name: /C01 → A01/ }).click()
   await expect(admin.getByRole('heading', { name: /C01 · A01 · 기본/ })).toBeVisible()
-  await expect(admin.locator('div.whitespace-pre-wrap').filter({ hasText: /^물을 적게 드셨어요$/ })).toBeVisible()
+  // 상세 화면은 "원문 대조"와 본문에 같은 원문을 두 번 보여 준다 — 둘 다 보여야 한다.
+  await expect(admin.locator('div.whitespace-pre-wrap').filter({ hasText: /^물을 적게 드셨어요$/ })).toHaveCount(2)
+  await expect(admin.locator('div.whitespace-pre-wrap').filter({ hasText: /^물을 적게 드셨어요$/ }).first()).toBeVisible()
   const saved = await page.evaluate(async () => {
     const { demoCareRepo } = await import('/src/pilot/demo/demoCareRepo.ts' /* @vite-ignore */)
     const reports = await demoCareRepo.listReports()

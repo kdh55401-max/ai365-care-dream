@@ -21,7 +21,7 @@ import { SpinnerIcon } from './adminBadges'
 const PERIOD_LABELS: Record<OperationPeriod, string> = { 7: '최근 7일', 30: '최근 30일', 90: '최근 90일', 0: '전체 기간' }
 
 const STATE_STYLE: Record<string, string> = {
-  ok: 'bg-teal-100 text-teal-800',
+  ok: 'bg-[#e2e9f4] text-brand',
   not_measurable: 'bg-slate-200 text-slate-600',
   not_applicable: 'bg-slate-100 text-slate-500',
   error: 'bg-red-100 text-red-700',
@@ -69,7 +69,7 @@ function MetricCard({ metric }: { metric: OperationMetric }) {
         </dl>
       )}
 
-      <button onClick={() => setOpen((v) => !v)} className="mt-2 text-[11px] font-bold text-teal-700 underline" aria-expanded={open}>
+      <button onClick={() => setOpen((v) => !v)} className="mt-2 text-[11px] font-bold text-brand underline" aria-expanded={open}>
         {open ? '정의·분모 접기' : '정의·분모·제외 보기'}
       </button>
       {open && (
@@ -160,7 +160,7 @@ export function OperationMetricsPanel({ repo, orgId }: { repo: AdminRepo; orgId:
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`text-xs px-2.5 py-1 rounded-full font-bold ${period === p ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'}`}
+              className={`text-xs px-2.5 py-1 rounded-full font-bold ${period === p ? 'bg-brand text-white' : 'bg-slate-100 text-slate-500'}`}
             >
               {PERIOD_LABELS[p]}
             </button>
@@ -176,7 +176,7 @@ export function OperationMetricsPanel({ repo, orgId }: { repo: AdminRepo; orgId:
       )}
       {!view && !error && (
         <div className="flex justify-center py-6">
-          <SpinnerIcon className="w-5 h-5 text-teal-600" />
+          <SpinnerIcon className="w-5 h-5 text-brand" />
         </div>
       )}
       {stale && <p className="text-[11px] text-slate-400">기간을 바꿔 다시 계산하는 중입니다 — 아래는 이전 기간의 결과입니다.</p>}

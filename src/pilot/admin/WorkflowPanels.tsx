@@ -294,7 +294,7 @@ export function ReportWorkflowSection({
   if (!view) {
     return (
       <section className="rounded-2xl bg-white border border-slate-100 p-4 flex justify-center">
-        <SpinnerIcon className="w-5 h-5 text-teal-600" />
+        <SpinnerIcon className="w-5 h-5 text-brand" />
       </section>
     )
   }
@@ -477,7 +477,7 @@ export function ReportWorkflowSection({
                 role="radio"
                 aria-checked={decision === d}
                 onClick={() => setDecision(d)}
-                className={`min-h-[40px] rounded-xl border-2 text-sm font-bold px-2 ${decision === d ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-200 text-slate-700'}`}
+                className={`min-h-[40px] rounded-xl border-2 text-sm font-bold px-2 ${decision === d ? 'bg-brand border-brand text-white' : 'border-slate-200 text-slate-700'}`}
               >
                 {DECISION_LABELS[d]}
               </button>
@@ -723,7 +723,7 @@ export function ActionDetailPanel({
       <div className="flex flex-col gap-3">
         {back}
         <div className="flex justify-center py-16">
-          <SpinnerIcon className="w-6 h-6 text-teal-600" />
+          <SpinnerIcon className="w-6 h-6 text-brand" />
         </div>
       </div>
     )
@@ -797,7 +797,7 @@ export function ActionDetailPanel({
           <h2 className="text-lg font-bold text-slate-900">{action.purpose}</h2>
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{ACTION_STATUS_LABELS[action.status]}</span>
           {summary.overdue && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">기한 지남</span>}
-          {summary.dueToday && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">오늘 재확인</span>}
+          {summary.dueToday && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#e2e9f4] text-brand">오늘 재확인</span>}
           {summary.awaitingVerification && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">응답 도착 · 결과 확인 대기</span>}
         </div>
         <p className="text-sm text-slate-600 mt-1">
@@ -898,7 +898,7 @@ export function ActionDetailPanel({
                   <td className="p-1.5">
                     {OBLIGATION_STATUS_LABELS[o.status]}
                     {o.overdue && <span className="ml-1 font-bold text-amber-800">· 지남</span>}
-                    {o.dueToday && <span className="ml-1 font-bold text-teal-700">· 오늘</span>}
+                    {o.dueToday && <span className="ml-1 font-bold text-brand">· 오늘</span>}
                   </td>
                   <td className="p-1.5">{formatDue(o.initialDueKind, o.initialDueAt)}</td>
                   <td className="p-1.5">
@@ -907,7 +907,7 @@ export function ActionDetailPanel({
                   </td>
                   <td className="p-1.5">
                     {editable && o.cycleNo === action.current_cycle && o.status !== 'fulfilled' && o.status !== 'cancelled' && (
-                      <button onClick={() => open({ due: o })} className="text-teal-700 font-bold underline">
+                      <button onClick={() => open({ due: o })} className="text-brand font-bold underline">
                         기한 변경
                       </button>
                     )}
@@ -932,7 +932,7 @@ export function ActionDetailPanel({
             </button>
           )}
           {action.status === 'open' && action.kind === 'admin_direct' && (
-            <button onClick={() => open('complete')} className="min-h-[38px] px-3 rounded-full bg-teal-600 text-white text-sm font-bold">
+            <button onClick={() => open('complete')} className="min-h-[38px] px-3 rounded-full bg-brand text-white text-sm font-bold">
               수행 결과 기록 · 완료
             </button>
           )}
@@ -944,7 +944,7 @@ export function ActionDetailPanel({
           {canVerify && (
             <button
               onClick={() => open('verify')}
-              className={`min-h-[38px] px-3 rounded-full text-sm font-bold ${summary.awaitingVerification ? 'bg-teal-600 text-white' : 'border border-teal-600 text-teal-700'}`}
+              className={`min-h-[38px] px-3 rounded-full text-sm font-bold ${summary.awaitingVerification ? 'bg-brand text-white' : 'border border-brand text-brand'}`}
             >
               결과 확인
             </button>
@@ -1020,7 +1020,7 @@ export function ActionDetailPanel({
           </div>
         )}
         {mode === 'verify' && (
-          <div className="flex flex-col gap-2 rounded-xl bg-teal-50 p-3">
+          <div className="flex flex-col gap-2 rounded-xl bg-brand-tint p-3">
             {currentRequest?.request.status === 'published' && (
               <p className="text-[11px] text-amber-800">아직 이번 주기 현장 응답이 없습니다. 결과 확인을 기록하면 게시 중인 요청도 함께 내려갑니다(기록은 보존).</p>
             )}
@@ -1066,7 +1066,7 @@ export function ActionDetailPanel({
               </label>
             </div>
             {!verify.close && (
-              <div className="flex flex-col gap-2 border-t border-teal-100 pt-2">
+              <div className="flex flex-col gap-2 border-t border-[#c9d4e8] pt-2">
                 <label className="block">
                   <span className={labelClass}>다음 주기 현장 요청 문구(초안 — 다시 게시해야 전달)</span>
                   <textarea value={verify.followMsg} onChange={(e) => setVerify({ ...verify, followMsg: e.target.value })} rows={2} className={inputClass} />
@@ -1091,7 +1091,7 @@ export function ActionDetailPanel({
                 })
               }
               disabled={saving}
-              className="self-start min-h-[38px] px-4 rounded-full bg-teal-600 text-white text-sm font-bold disabled:bg-slate-300"
+              className="self-start min-h-[38px] px-4 rounded-full bg-brand text-white text-sm font-bold disabled:bg-slate-300"
             >
               결과 확인 기록
             </button>
@@ -1162,7 +1162,7 @@ export function ActionDetailPanel({
               <textarea value={remaining} onChange={(e) => setRemaining(e.target.value)} rows={2} className={inputClass} />
             </label>
             <EnteredByField value={enteredBy} onChange={setEnteredBy} />
-            <button onClick={() => void mutate({ ...base, op: 'complete', evidence, remaining })} disabled={saving} className="self-start min-h-[38px] px-4 rounded-full bg-teal-600 text-white text-sm font-bold disabled:bg-slate-300">
+            <button onClick={() => void mutate({ ...base, op: 'complete', evidence, remaining })} disabled={saving} className="self-start min-h-[38px] px-4 rounded-full bg-brand text-white text-sm font-bold disabled:bg-slate-300">
               완료 기록
             </button>
           </div>

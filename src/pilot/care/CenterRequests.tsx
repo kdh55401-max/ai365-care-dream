@@ -82,14 +82,14 @@ export function CenterRequestAnswers({
             <div key={r.id} className="rounded-2xl bg-white border border-sky-100 p-3" data-testid="center-request-answer">
               <p className="text-slate-900 text-base font-semibold">“{r.message}”</p>
               {evidence && (
-                <div className="mt-2 rounded-xl bg-teal-50 border border-teal-100 p-2">
+                <div className="mt-2 rounded-xl bg-brand-tint border border-[#c9d4e8] p-2">
                   <p className="text-sm text-slate-700">방금 말씀하신 내용: “{evidence}”</p>
                   <button
                     type="button"
                     disabled={disabled}
                     aria-pressed={a.useEvidence}
                     onClick={() => set(a.useEvidence ? { useEvidence: false, status: null } : { useEvidence: true, status: a.status ?? 'observed' })}
-                    className={`mt-1.5 min-h-[44px] w-full rounded-xl text-base font-bold ${a.useEvidence ? 'bg-teal-600 text-white' : 'border-2 border-teal-600 text-teal-700 bg-white'}`}
+                    className={`mt-1.5 min-h-[44px] w-full rounded-xl text-base font-bold ${a.useEvidence ? 'bg-brand text-white' : 'border-2 border-brand text-brand bg-white'}`}
                   >
                     {a.useEvidence ? '✓ 이 내용으로 답했어요' : '이 내용으로 답하기'}
                   </button>

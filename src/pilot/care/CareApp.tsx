@@ -129,7 +129,7 @@ const FIELD_LABELS: Array<{ key: keyof StructuredReport; label: string }> = [
  * 색으로 구분해 눈에 바로 들어오게 한다 — 값 자체를 AI가 새로 분류하는 게 아니라
  * 이미 있는 두 필드를 다르게 보여줄 뿐이다(프로토콜 변경 없음). */
 const FIELD_CARD_STYLE: Partial<Record<keyof StructuredReport, string>> = {
-  action: 'bg-teal-50 border-teal-200',
+  action: 'bg-brand-tint border-[#c9d4e8]',
   escalation: 'bg-amber-50 border-amber-200',
 }
 const FIELD_CAPTION: Partial<Record<keyof StructuredReport, string>> = {
@@ -164,8 +164,8 @@ export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElemen
   return (
     <button
       {...rest}
-      className={`care-primary w-full min-h-[52px] rounded-full bg-teal-600 text-white text-lg font-bold py-3
-                  hover:bg-teal-700 transition disabled:bg-slate-300 disabled:cursor-not-allowed ${className ?? ''}`}
+      className={`care-primary w-full min-h-[52px] rounded-full bg-brand text-white text-lg font-bold py-3
+                  hover:bg-brand-hover transition disabled:bg-slate-300 disabled:cursor-not-allowed ${className ?? ''}`}
     />
   )
 }
@@ -202,7 +202,7 @@ export function LoginScreen({ demo, onLogin, title = '목표 60초 AI 돌봄보�
     <Shell demo={demo} onResetDemo={() => undefined}>
       <div className="flex flex-col items-center justify-center flex-1 gap-8 py-10">
         <div className="text-center">
-          <p className="text-base font-semibold tracking-wide text-teal-600">AI365 CARE DREAM</p>
+          <p className="text-base font-semibold tracking-wide text-brand">AI365 CARE DREAM</p>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">{title}</h1>
           <p className="text-slate-500 text-base mt-2 leading-relaxed">
             {subtitle}
@@ -221,7 +221,7 @@ export function LoginScreen({ demo, onLogin, title = '목표 60초 AI 돌봄보�
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder={demo ? '예: c1' : '예: C01'}
-              className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-[#2563eb]"
               autoCapitalize={demo ? 'none' : 'characters'}
             />
           </div>
@@ -233,7 +233,7 @@ export function LoginScreen({ demo, onLogin, title = '목표 60초 AI 돌봄보�
               type="password"
               inputMode="numeric"
               placeholder="숫자 4자리"
-              className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-[#2563eb]"
             />
           </div>
           {error && <p role="alert" className="care-error">{error}</p>}
@@ -283,7 +283,7 @@ function CurrentRecipientCard({
         <div>
           <p className="text-slate-400 text-xs font-bold">오늘 돌봄 대상</p>
           <p className="text-slate-900 text-2xl font-bold mt-0.5">{recipientNames[recipientCode] ? `${recipientCode} · ${recipientNames[recipientCode]} 어르신` : `${recipientCode} 어르신`}</p>
-          <p className="text-teal-700 text-sm font-bold mt-1">배정된 돌봄 대상</p>
+          <p className="text-brand text-sm font-bold mt-1">배정된 돌봄 대상</p>
         </div>
         {recipientCodes.length > 1 && (
           <button onClick={onTogglePicker} className="text-slate-400 text-sm font-bold underline shrink-0">
@@ -300,8 +300,8 @@ function CurrentRecipientCard({
               onClick={() => onSelect(c)}
               className={`text-left rounded-2xl border px-4 py-2.5 font-bold transition ${
                 c === recipientCode
-                  ? 'border-teal-500 bg-teal-50 text-teal-800'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
+                  ? 'border-brand bg-brand-tint text-brand'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-[#9db0d3]'
               }`}
             >
               {recipientNames[c] ? `${c} · ${recipientNames[c]}` : c}
@@ -1259,7 +1259,7 @@ function CareApp() {
   if (phase === 'loading') {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <SpinnerIcon className="w-8 h-8 text-teal-600" />
+        <SpinnerIcon className="w-8 h-8 text-brand" />
       </div>
     )
   }
@@ -1268,7 +1268,7 @@ function CareApp() {
   return (
     <Shell demo={demo} onResetDemo={handleResetDemo}>
       <div className="care-experience" data-screen={screen} onFocusCapture={(e) => { if (e.target instanceof HTMLTextAreaElement) cancelSpeech() }}>
-      {scenarioRoute && <aside className="care-simulation" aria-label="시뮬레이션 안내"><strong>시뮬레이션 · 연습용 상황</strong><p>예시 상황이며 실제 관찰 기록이 아닙니다. 실제 돌봄 기록·실증 지표와 별도로 저장·집계합니다.</p><a href={demo ? '/care?demo=1' : '/care'}>실제 돌봄 화면으로 돌아가기</a></aside>}
+      {scenarioRoute && <aside className="care-simulation" aria-label="시뮬레이션 안내"><strong>시뮬레이션 · 연습용 상황</strong><p>예시 상황이며 실제 관찰 기록이 아닙니다. 실제 돌봄 기록·실증 지표와 별도로 저장·집계합니다.</p><a href={demo ? '/care/classic?demo=1' : '/care/classic'}>실제 돌봄 화면으로 돌아가기</a></aside>}
       <div className="care-context">
         {screen === 'home' && <>
           <div className="care-account"><span>{participantCode}</span><span>{today}</span></div>
@@ -1334,13 +1334,13 @@ function CareApp() {
               key={s.id}
               onClick={() => void startScenario(s.id)}
               disabled={loading || !recipientCode}
-              className="text-left rounded-3xl bg-white border border-slate-100 shadow-sm p-5 hover:border-teal-300 transition disabled:opacity-50"
+              className="text-left rounded-3xl bg-white border border-slate-100 shadow-sm p-5 hover:border-[#9db0d3] transition disabled:opacity-50"
             >
               <p className="font-bold text-slate-900 mb-1">{s.title}</p>
               <p className="text-slate-500 text-sm leading-relaxed">{s.prompt}</p>
             </button>
           ))}
-          <a href={demo ? '/care?demo=1' : '/care'} className="text-center text-slate-400 text-xs underline mt-1">
+          <a href={demo ? '/care/classic?demo=1' : '/care/classic'} className="text-center text-slate-400 text-xs underline mt-1">
             실제 현장보고 화면으로 돌아가기
           </a>
         </div>
@@ -1348,25 +1348,25 @@ function CareApp() {
 
       {screen === 'statusChoice' && (
         <div className="flex flex-col gap-4 pt-2">
-          <p className="text-teal-600 font-semibold text-sm text-center">
+          <p className="text-brand font-semibold text-sm text-center">
             {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode}
           </p>
           <h2 className="text-xl font-bold text-slate-900 text-center">오늘 방문은 어땠나요?</h2>
           <button
             onClick={() => void goRecord('changed')}
-            className="w-full min-h-[64px] rounded-3xl border-2 border-teal-500 bg-teal-50 text-teal-800 text-lg font-bold px-5 hover:bg-teal-100 transition"
+            className="w-full min-h-[64px] rounded-3xl border-2 border-brand bg-brand-tint text-brand text-lg font-bold px-5 hover:bg-[#e2e9f4] transition"
           >
             평소와 다른 점이 있었어요
           </button>
           <button
             onClick={() => void goRecord('similar')}
-            className="w-full min-h-[64px] rounded-3xl border-2 border-slate-200 bg-white text-slate-900 text-lg font-bold px-5 hover:border-teal-400 transition"
+            className="w-full min-h-[64px] rounded-3xl border-2 border-slate-200 bg-white text-slate-900 text-lg font-bold px-5 hover:border-[#9db0d3] transition"
           >
             평소와 비슷했어요
           </button>
           <button
             onClick={() => void goRecord('uncertain')}
-            className="w-full min-h-[64px] rounded-3xl border-2 border-slate-200 bg-white text-slate-900 text-lg font-bold px-5 hover:border-teal-400 transition"
+            className="w-full min-h-[64px] rounded-3xl border-2 border-slate-200 bg-white text-slate-900 text-lg font-bold px-5 hover:border-[#9db0d3] transition"
           >
             잘 모르겠거나 확인이 필요해요
           </button>
@@ -1380,7 +1380,7 @@ function CareApp() {
         <div className="flex flex-col gap-4 pt-2">
           {/* 홈 화면의 큰 아바타가 작아져 대화 내내 상단에 남는다 — 같은 존재와
               계속 이야기하고 있다는 연속성을 준다. */}
-          <p className="text-teal-600 font-semibold text-sm text-center">
+          <p className="text-brand font-semibold text-sm text-center">
             {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode}
           </p>
           {activeScenarioId ? (
@@ -1392,7 +1392,7 @@ function CareApp() {
                   아래 편집 상자에서 검토·수정한다(같은 내용을 두 번 보여주지 않음). */}
               <ConversationLog turns={buildRecordTurns()} />
               {voice.isListening && (
-                <p className="text-teal-600 text-sm font-semibold text-center leading-relaxed">
+                <p className="text-brand text-sm font-semibold text-center leading-relaxed">
                   천천히 말씀하셔도 괜찮아요. 다 말씀하시면 완료를 눌러주세요.
                 </p>
               )}
@@ -1411,7 +1411,7 @@ function CareApp() {
                                 ? 'bg-red-500 animate-pulse'
                                 : voice.state === 'reconnecting'
                                   ? 'bg-amber-500'
-                                  : 'bg-teal-600'
+                                  : 'bg-brand'
                             }`}
               >
                 <MicIcon className="w-8 h-8" />
@@ -1494,7 +1494,7 @@ function CareApp() {
           {/* 이제 1번 질문을 건너뛸 수 있어 "몇 번째/총 몇 번" 표시가 항상 맞다고
               단정할 수 없다(예: 2번만 물으면 "2/2"가 되어 1번이 있었던 것처럼
               보인다) — 고정 분모 없이 "추가 확인 중"으로만 안내한다. */}
-          <p className="text-teal-600 font-semibold text-sm text-center">평소와 비슷했어요 · 추가 확인 · {recipientCode}</p>
+          <p className="text-brand font-semibold text-sm text-center">평소와 비슷했어요 · 추가 확인 · {recipientCode}</p>
           <div className="care-current-question" data-testid="current-question"><span className="conversation-speaker">AI 돌봄 동료</span>
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">
               {noChangeStep === 1 ? NO_CHANGE_QUESTION_1 : NO_CHANGE_QUESTION_2}
@@ -1563,7 +1563,7 @@ function CareApp() {
       {screen === 'question' && currentQuestion && (
         <div className="flex flex-col gap-4 pt-2">
           <ConversationLog turns={buildQuestionTurns()} />
-          <p className="text-teal-600 font-semibold text-sm text-center">추가 확인 {followupHistory.length + 1}/3 · {recipientCode}</p>
+          <p className="text-brand font-semibold text-sm text-center">추가 확인 {followupHistory.length + 1}/3 · {recipientCode}</p>
           <div className="care-current-question" data-testid="current-question"><span className="conversation-speaker">AI 돌봄 동료</span>
             <p className="text-xl font-bold text-slate-900 text-center leading-relaxed">{currentQuestion.question}</p>
           </div>
@@ -1587,14 +1587,14 @@ function CareApp() {
                       disabled={loading}
                       className={`min-h-[56px] rounded-3xl border-2 text-lg font-bold px-5 transition text-left disabled:opacity-50 ${
                         selected
-                          ? 'border-teal-500 bg-teal-50 text-teal-800'
-                          : 'border-slate-200 bg-white text-slate-900 hover:border-teal-400'
+                          ? 'border-brand bg-brand-tint text-brand'
+                          : 'border-slate-200 bg-white text-slate-900 hover:border-[#9db0d3]'
                       }`}
                     >
                       {currentQuestion.allowMultiple && (
                         <span
                           className={`inline-block w-5 h-5 mr-3 rounded-full border-2 align-middle ${
-                            selected ? 'border-teal-600 bg-teal-600' : 'border-slate-300'
+                            selected ? 'border-brand bg-brand' : 'border-slate-300'
                           }`}
                         />
                       )}
@@ -1658,7 +1658,7 @@ function CareApp() {
                       ? 'bg-red-500 animate-pulse'
                       : answerVoice.state === 'reconnecting'
                         ? 'bg-amber-500'
-                        : 'bg-teal-600'
+                        : 'bg-brand'
                   }`}
                 >
                   <MicIcon className="w-6 h-6" />
@@ -1666,7 +1666,7 @@ function CareApp() {
                 {(answerVoice.state === 'listening' || answerVoice.state === 'reconnecting') && (
                   <button
                     onClick={() => answerVoice.finish((finalText) => setAnswerText(finalText))}
-                    className="text-teal-700 text-sm font-bold underline"
+                    className="text-brand text-sm font-bold underline"
                   >
                     말하기 완료
                   </button>
@@ -1770,7 +1770,7 @@ function CareApp() {
 
       {screen === 'reportReview' && (
         <div className="flex flex-col gap-4 pt-2">
-          <p className="text-teal-600 font-semibold text-sm text-center">
+          <p className="text-brand font-semibold text-sm text-center">
             {activeScenarioId ? '시뮬레이션 · 연습용 상황' : REPORT_TYPE_LABEL[reportType] + ' 돌봄보고'} · {recipientCode} · 아직 보내지 않았어요
           </p>
           <h2 className="text-xl font-bold text-slate-900 text-center">말씀해주신 내용을 정리했어요.</h2>
@@ -1783,7 +1783,7 @@ function CareApp() {
                   .join('. ')
                 speakKorean(summary)
               }}
-              className="self-center text-teal-700 text-sm font-bold underline"
+              className="self-center text-brand text-sm font-bold underline"
             >
               🔊 요약 듣기
             </button>
@@ -1859,7 +1859,7 @@ function CareApp() {
       {screen === 'submitted' && (
         <div className="flex flex-col items-center gap-6 pt-16 flex-1 justify-center">
           <span className="care-done-mark" aria-hidden="true">✓</span>
-          {!activeScenarioId && <p className="text-teal-600 font-semibold text-sm text-center">{recipientCode}</p>}
+          {!activeScenarioId && <p className="text-brand font-semibold text-sm text-center">{recipientCode}</p>}
           <p className="text-2xl font-bold text-slate-900 text-center">
             {activeScenarioId
               ? '표준상황 연습이 저장되었습니다.'
@@ -1871,7 +1871,7 @@ function CareApp() {
           {/* 데모 완료 확인은 같은 Vercel origin의 /admin?demo=1로만 보낸다 —
               운영 관리자 주소로 보내면 데모 기록을 찾을 수 없다(DEP-03). */}
           {demo && !activeScenarioId && (
-            <a href="/admin?demo=1" target="_blank" rel="noopener noreferrer" className="text-teal-600 text-sm underline">
+            <a href="/admin?demo=1" target="_blank" rel="noopener noreferrer" className="text-brand text-sm underline">
               데모 관리자 화면에서 보기
             </a>
           )}
@@ -1891,13 +1891,13 @@ function CareApp() {
               <button
                 key={r.id}
                 onClick={() => void openHistoryDetail(r.id)}
-                className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-teal-300 transition"
+                className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-[#9db0d3] transition"
               >
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-900">
                     {r.recipient_code} · {REPORT_TYPE_LABEL[r.report_type]}
                   </span>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${r.status === 'submitted' ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${r.status === 'submitted' ? 'bg-brand-tint text-brand' : 'bg-slate-100 text-slate-500'}`}>
                     {r.status === 'submitted' ? '제출완료' : '임시저장'}
                   </span>
                 </div>
@@ -1922,7 +1922,7 @@ function CareApp() {
           question 화면과 같은 이유로 로딩 안내를 반드시 보여준다. */}
       {screen === 'historyDetail' && !historyDetail && (
         <div className="flex flex-col items-center gap-4 pt-16 flex-1 justify-center">
-          <SpinnerIcon className="w-8 h-8 text-teal-600" />
+          <SpinnerIcon className="w-8 h-8 text-brand" />
           <p className="text-slate-500 text-base">불러오는 중이에요</p>
           <SecondaryButton onClick={() => setScreen('history')}>목록으로</SecondaryButton>
         </div>
@@ -1959,7 +1959,7 @@ function CareApp() {
               {historyDetail.review_status === 'pending' && <p className="text-slate-500">관리자 검토 대기</p>}
               {historyDetail.review_status !== 'pending' && (
                 <>
-                  <p className={`font-bold ${historyDetail.review_status === 'approved' ? 'text-teal-700' : 'text-red-700'}`}>
+                  <p className={`font-bold ${historyDetail.review_status === 'approved' ? 'text-brand' : 'text-red-700'}`}>
                     {historyDetail.review_status === 'approved' ? '승인됨' : '반려됨'}
                   </p>
                   {historyDetail.review_note_visible_to_caregiver && historyDetail.review_note && (

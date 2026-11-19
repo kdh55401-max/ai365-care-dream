@@ -67,7 +67,7 @@ function InfoTip({ title, formula, num, den, note }: { title: string; formula: s
             </p>
           )}
           {note && <p className="text-slate-400 mt-1">{note}</p>}
-          <button onClick={() => setOpen(false)} className="mt-2 text-teal-300 font-bold">
+          <button onClick={() => setOpen(false)} className="mt-2 text-[#9db0d3] font-bold">
             닫기
           </button>
         </div>
@@ -128,7 +128,7 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (password: str
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm flex flex-col gap-4">
         <div className="text-center mb-2">
-          <p className="text-teal-600 font-semibold">AI365 CARE DREAM</p>
+          <p className="font-brand text-brand font-semibold tracking-[0.3em] text-sm">AI365 CARE DREAM</p>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">관리자 로그인</h1>
           {demo && <p className="text-amber-600 text-xs mt-2 font-bold">데모 모드 — 비밀번호 {DEMO_ADMIN_ALIAS_PASSWORD}</p>}
         </div>
@@ -137,7 +137,7 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (password: str
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="비밀번호"
-          className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="w-full text-lg border border-slate-300 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-[#2563eb]"
           onKeyDown={(e) => e.key === 'Enter' && void submit()}
         />
         {error && <p className="text-base text-red-700 bg-red-50 border border-red-100 rounded-2xl p-3">{error}</p>}
@@ -234,7 +234,7 @@ function PriorityCareStrip({ board, boardError, onOpenCard, onOpen, onOpenAction
       )}
       {!board && !boardError && (
         <div className="flex justify-center py-6">
-          <SpinnerIcon className="w-5 h-5 text-teal-600" />
+          <SpinnerIcon className="w-5 h-5 text-brand" />
         </div>
       )}
       {board && (
@@ -279,7 +279,7 @@ function Dashboard({ demo, section, repo, orgId, lastRefreshed, data, reports, b
   if (!data) {
     return (
       <div className="flex justify-center py-16">
-        <SpinnerIcon className="w-6 h-6 text-teal-600" />
+        <SpinnerIcon className="w-6 h-6 text-brand" />
       </div>
     )
   }
@@ -596,7 +596,7 @@ function Dashboard({ demo, section, repo, orgId, lastRefreshed, data, reports, b
                             }`}
                             title={`${c.date} · 기본 ${c.dailySubmitted ? '제출' : '미제출'}, 추가 ${c.additionalCount}건`}
                           >
-                            {c.additionalCount > 0 ? <span className="bg-teal-500 rounded-full w-full h-full flex items-center justify-center">{c.additionalCount}</span> : ''}
+                            {c.additionalCount > 0 ? <span className="bg-[#2f5aa8] rounded-full w-full h-full flex items-center justify-center">{c.additionalCount}</span> : ''}
                           </div>
                         </td>
                       ))}
@@ -615,8 +615,8 @@ function Dashboard({ demo, section, repo, orgId, lastRefreshed, data, reports, b
                 <button
                   key={r.id}
                   onClick={() => onOpen(r.id)}
-                  className={`text-left rounded-2xl bg-white border p-3 hover:border-teal-300 transition ${
-                    i === 0 ? 'border-teal-300 ring-2 ring-teal-100' : 'border-slate-100'
+                  className={`text-left rounded-2xl bg-white border p-3 hover:border-[#9db0d3] transition ${
+                    i === 0 ? 'border-[#9db0d3] ring-2 ring-[#e2e9f4]' : 'border-slate-100'
                   }`}
                 >
                   <div className="flex justify-between text-sm">
@@ -753,7 +753,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
   if (!report) {
     return (
       <div className="flex justify-center py-16">
-        <SpinnerIcon className="w-6 h-6 text-teal-600" />
+        <SpinnerIcon className="w-6 h-6 text-brand" />
       </div>
     )
   }
@@ -854,7 +854,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
 
   const boolRadio = (value: boolean | null, set: (v: boolean) => void, yesLabel = '예', noLabel = '아니오') => (
     <div className="flex gap-2">
-      <button onClick={() => set(true)} className={`flex-1 min-h-[44px] rounded-xl border-2 font-bold ${value === true ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-200 text-slate-700'}`}>
+      <button onClick={() => set(true)} className={`flex-1 min-h-[44px] rounded-xl border-2 font-bold ${value === true ? 'bg-brand border-brand text-white' : 'border-slate-200 text-slate-700'}`}>
         {yesLabel}
       </button>
       <button onClick={() => set(false)} className={`flex-1 min-h-[44px] rounded-xl border-2 font-bold ${value === false ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-200 text-slate-700'}`}>
@@ -865,7 +865,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
   const scoreButtons = (value: number, set: (v: number) => void) => (
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} onClick={() => set(n)} className={`flex-1 min-h-[40px] rounded-lg border font-bold ${value === n ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-200 text-slate-700'}`}>
+        <button key={n} onClick={() => set(n)} className={`flex-1 min-h-[40px] rounded-lg border font-bold ${value === n ? 'bg-brand border-brand text-white' : 'border-slate-200 text-slate-700'}`}>
           {n}
         </button>
       ))}
@@ -878,7 +878,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
         <button onClick={onBack} className="text-slate-400 text-sm">
           ← 뒤로
         </button>
-        <button onClick={() => onOpenRecipient(report.recipient_code)} className="text-teal-700 text-xs font-bold underline">
+        <button onClick={() => onOpenRecipient(report.recipient_code)} className="text-brand text-xs font-bold underline">
           수급자 {report.recipient_code}의 기록 흐름 보기
         </button>
       </div>
@@ -929,7 +929,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
             <span
               className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                 report.review_status === 'approved'
-                  ? 'bg-teal-100 text-teal-700'
+                  ? 'bg-[#e2e9f4] text-brand'
                   : report.review_status === 'rejected'
                     ? 'bg-red-100 text-red-700'
                     : 'bg-slate-100 text-slate-500'
@@ -940,8 +940,8 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
           </div>
 
           {report.review_status !== 'pending' && report.admin_final_report && (
-            <div className={`rounded-xl p-3 mb-3 text-sm ${report.review_status === 'approved' ? 'bg-teal-50' : 'bg-red-50 border border-red-100'}`}>
-              <p className={`text-xs font-bold mb-1 ${report.review_status === 'approved' ? 'text-teal-600' : 'text-red-600'}`}>
+            <div className={`rounded-xl p-3 mb-3 text-sm ${report.review_status === 'approved' ? 'bg-brand-tint' : 'bg-red-50 border border-red-100'}`}>
+              <p className={`text-xs font-bold mb-1 ${report.review_status === 'approved' ? 'text-brand' : 'text-red-600'}`}>
                 {report.review_status === 'approved' ? '승인본 (활용 가능 기록)' : '반려 시 검토본 (재작업 필요 — 활용 가능 기록 아님)'}
               </p>
               {FIELD_LABELS.map(({ key, label }) => (
@@ -953,7 +953,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
               {report.review_status === 'rejected' && report.review_note && (
                 <p className="text-red-700 mt-1">
                   반려 사유: {report.review_note}{' '}
-                  <span className={`text-[10px] font-bold ${report.review_note_visible_to_caregiver ? 'text-teal-600' : 'text-slate-400'}`}>
+                  <span className={`text-[10px] font-bold ${report.review_note_visible_to_caregiver ? 'text-brand' : 'text-slate-400'}`}>
                     ({report.review_note_visible_to_caregiver ? '요양보호사에게 공개됨' : '관리자 전용(비공개)'})
                   </span>
                 </p>
@@ -980,7 +980,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
               재확인·수정 시간을 늘린다). */}
           <div className="flex items-center justify-between mb-2">
             <p className="text-slate-500 text-xs">정리문 · 이상 없으면 바로 승인하세요</p>
-            <button onClick={() => setEditingReview((v) => !v)} className="text-teal-600 text-xs font-bold underline shrink-0">
+            <button onClick={() => setEditingReview((v) => !v)} className="text-brand text-xs font-bold underline shrink-0">
               {editingReview ? '요약으로 보기' : '내용 수정'}
             </button>
           </div>
@@ -1031,7 +1031,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
             <button
               onClick={() => void submitReview('approved')}
               disabled={reviewSaving}
-              className="flex-1 min-h-[44px] rounded-full bg-teal-600 text-white font-bold hover:bg-teal-700 disabled:bg-slate-300"
+              className="flex-1 min-h-[44px] rounded-full bg-brand text-white font-bold hover:bg-brand-hover disabled:bg-slate-300"
             >
               {reviewSaving ? '저장 중...' : '승인'}
             </button>
@@ -1079,10 +1079,10 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
             {scoreButtons(rawScore, setRawScore)}
           </div>
           <textarea value={rawNote} onChange={(e) => setRawNote(e.target.value)} placeholder="원문 평가 메모" rows={2} className="w-full border border-slate-200 rounded-xl p-2 text-sm" />
-          <button onClick={() => void saveStage1()} disabled={saving} className="min-h-[44px] rounded-full bg-teal-600 text-white font-bold hover:bg-teal-700 disabled:bg-slate-300">
+          <button onClick={() => void saveStage1()} disabled={saving} className="min-h-[44px] rounded-full bg-brand text-white font-bold hover:bg-brand-hover disabled:bg-slate-300">
             {stage1Done ? '원문 평가 다시 저장' : '원문 평가 저장'}
           </button>
-          {stage1Done && <p className="text-teal-600 text-xs text-center">저장됨 · {formatKoreanDateTime(report.raw_evaluated_at)}</p>}
+          {stage1Done && <p className="text-brand text-xs text-center">저장됨 · {formatKoreanDateTime(report.raw_evaluated_at)}</p>}
         </div>
       </section>
 
@@ -1109,8 +1109,8 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
                   <p className="text-slate-400 text-[10px] mb-0.5">AI 생성</p>
                   <p className="text-slate-700 whitespace-pre-wrap">{report.ai_generated_report?.[key]}</p>
                 </div>
-                <div className="bg-teal-50 rounded-lg p-2">
-                  <p className="text-teal-500 text-[10px] mb-0.5">최종 제출</p>
+                <div className="bg-brand-tint rounded-lg p-2">
+                  <p className="text-[#3b5fa8] text-[10px] mb-0.5">최종 제출</p>
                   <p className="text-slate-700 whitespace-pre-wrap">{report.caregiver_final_report?.[key]}</p>
                 </div>
               </div>
@@ -1135,7 +1135,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
               <p className="text-sm font-semibold text-slate-600 mb-1">실제 추가 전화·문자 확인 발생</p>
               <div className="flex gap-2">
                 {(['none', 'sms', 'call'] as const).map((t) => (
-                  <button key={t} onClick={() => setFollowupType(t)} className={`flex-1 min-h-[40px] rounded-lg border font-bold text-sm ${followupType === t ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-200 text-slate-700'}`}>
+                  <button key={t} onClick={() => setFollowupType(t)} className={`flex-1 min-h-[40px] rounded-lg border font-bold text-sm ${followupType === t ? 'bg-brand border-brand text-white' : 'border-slate-200 text-slate-700'}`}>
                     {t === 'none' ? '필요없음' : t === 'sms' ? '문자확인' : '전화확인'}
                   </button>
                 ))}
@@ -1162,7 +1162,7 @@ function ReportDetailPanel({ repo, id, onBack, onChanged, onOpenRecipient, workf
             <button onClick={() => void saveStage2()} disabled={saving} className="min-h-[44px] rounded-full bg-slate-900 text-white font-bold hover:bg-slate-800 disabled:bg-slate-300">
               {stage2Done ? 'AI 평가 다시 저장' : 'AI 평가 저장'}
             </button>
-            {stage2Done && <p className="text-teal-600 text-xs text-center">저장됨 · {formatKoreanDateTime(report.ai_evaluated_at)}</p>}
+            {stage2Done && <p className="text-brand text-xs text-center">저장됨 · {formatKoreanDateTime(report.ai_evaluated_at)}</p>}
             {stage1Done && stage2Done && (
               <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 flex flex-col gap-1">
                 <p className="font-bold text-slate-700">이 건의 변화</p>
@@ -1235,7 +1235,7 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
             <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1 text-xs" />
             <span className="text-slate-400 text-xs">~</span>
             <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1 text-xs" />
-            <button onClick={() => { setRangeStart(today); setRangeEnd(today) }} className="text-teal-600 text-xs font-bold underline ml-auto">
+            <button onClick={() => { setRangeStart(today); setRangeEnd(today) }} className="text-brand text-xs font-bold underline ml-auto">
               오늘로 초기화
             </button>
           </div>
@@ -1273,14 +1273,14 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
       </div>
       {loading && (
         <div className="flex justify-center py-10">
-          <SpinnerIcon className="w-6 h-6 text-teal-600" />
+          <SpinnerIcon className="w-6 h-6 text-brand" />
         </div>
       )}
       {!loading && reports.length === 0 && <p className="text-slate-400 text-center py-10">아직 보고가 없습니다.</p>}
       {reports.map((r) => {
         const finalReport = r.caregiver_final_report ?? r.ai_generated_report
         return (
-          <button key={r.id} onClick={() => onOpen(r.id)} className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-teal-300 transition">
+          <button key={r.id} onClick={() => onOpen(r.id)} className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-[#9db0d3] transition">
             <div className="flex justify-between items-center text-sm">
               <span className="font-bold text-slate-900">
                 {r.participant_code} → {r.recipient_code}
@@ -1308,7 +1308,7 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
               </div>
             )}
             <div className="flex gap-1 mt-2 flex-wrap">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.status === 'submitted' ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.status === 'submitted' ? 'bg-brand-tint text-brand' : 'bg-slate-100 text-slate-500'}`}>
                 {r.status === 'submitted' ? '제출완료' : '임시저장'}
               </span>
               {r.status === 'submitted' && <FallbackBadge used={r.ai_fallback_used} ruleBasedByDesign={r.initial_status_choice === 'similar'} />}
@@ -1317,7 +1317,7 @@ function ReportsPanel({ repo, onOpen }: { repo: AdminRepo; onOpen: (id: string) 
               {r.no_information_report && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">무정보</span>}
               {r.emergency_flagged && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">🔴 응급신호</span>}
               {r.status === 'submitted' && r.review_status === 'approved' && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">승인됨</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e2e9f4] text-brand">승인됨</span>
               )}
               {r.status === 'submitted' && r.review_status === 'rejected' && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">반려됨</span>
@@ -1359,7 +1359,7 @@ function ParticipantsPanel({ repo }: { repo: AdminRepo }) {
   if (loading) {
     return (
       <div className="flex justify-center py-16">
-        <SpinnerIcon className="w-6 h-6 text-teal-600" />
+        <SpinnerIcon className="w-6 h-6 text-brand" />
       </div>
     )
   }
@@ -1367,11 +1367,11 @@ function ParticipantsPanel({ repo }: { repo: AdminRepo }) {
   return (
     <div className="flex flex-col gap-3">
       {issuedPin && (
-        <div className="rounded-2xl bg-teal-50 border border-teal-200 p-4 text-center">
-          <p className="text-teal-700 font-bold">
+        <div className="rounded-2xl bg-brand-tint border border-[#c9d4e8] p-4 text-center">
+          <p className="text-brand font-bold">
             {issuedPin.code} 새 PIN: {issuedPin.pin}
           </p>
-          <p className="text-teal-600 text-xs mt-1">이 PIN은 다시 표시되지 않습니다. 지금 오프라인으로 전달하세요.</p>
+          <p className="text-brand text-xs mt-1">이 PIN은 다시 표시되지 않습니다. 지금 오프라인으로 전달하세요.</p>
         </div>
       )}
       {participants.map((p) => (
@@ -1398,7 +1398,7 @@ function PresentationView({ data, demo, status }: { data: StatsResponse; demo: b
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center px-6 py-10">
       {demo && <div className="mb-4 px-4 py-1.5 rounded-full bg-amber-500 text-slate-900 text-sm font-bold">DEMO DATA · 실제 실증 결과가 아닙니다</div>}
-      <p className="text-teal-300 font-semibold">{INSTITUTION_NAME} · 2주 현장 실증</p>
+      <p className="text-[#9db0d3] font-semibold">{INSTITUTION_NAME} · 2주 현장 실증</p>
       <p className="text-slate-400 text-sm mt-1">{status === 'final' ? '최종 실증 결과' : '중간집계 · 데이터 수집 진행 중'}</p>
       <h1 className="text-3xl sm:text-5xl font-bold mt-6 text-center">AI365 CARE DREAM 초기 실증 성과</h1>
 
@@ -1424,13 +1424,13 @@ function PresentationView({ data, demo, status }: { data: StatsResponse; demo: b
       <div className="grid sm:grid-cols-2 gap-6 mt-10 w-full max-w-4xl">
         <div className="bg-slate-800 rounded-2xl p-6 text-center">
           <p className="text-slate-400 text-sm">AI 적용 전후 바로 판단 가능률</p>
-          <p className="text-3xl font-bold mt-2 text-teal-300">
+          <p className="text-3xl font-bold mt-2 text-[#9db0d3]">
             {stats.beforeAfter.rawActionable.percent ?? '—'}% → {stats.beforeAfter.aiActionable.percent ?? '—'}%
           </p>
         </div>
         <div className="bg-slate-800 rounded-2xl p-6 text-center">
           <p className="text-slate-400 text-sm">정보충실도 전후 차이 (0~4)</p>
-          <p className="text-3xl font-bold mt-2 text-teal-300">
+          <p className="text-3xl font-bold mt-2 text-[#9db0d3]">
             {stats.beforeAfter.informativenessBefore ?? '—'} → {stats.beforeAfter.informativenessAfter ?? '—'}
           </p>
         </div>
@@ -1583,7 +1583,7 @@ function AdminApp() {
   if (phase === 'loading') {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <SpinnerIcon className="w-8 h-8 text-teal-600" />
+        <SpinnerIcon className="w-8 h-8 text-brand" />
       </div>
     )
   }
@@ -1593,7 +1593,7 @@ function AdminApp() {
     if (!stats) {
       return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-          <SpinnerIcon className="w-8 h-8 text-teal-300" />
+          <SpinnerIcon className="w-8 h-8 text-[#9db0d3]" />
         </div>
       )
     }
@@ -1628,7 +1628,7 @@ function AdminApp() {
       <div className="w-full max-w-5xl flex-1 flex flex-col gap-4">
         <div className="flex justify-between items-center">
           <div>
-            <p className="text-teal-600 font-semibold text-sm">AI365 CARE DREAM</p>
+            <p className="font-brand text-brand font-semibold tracking-[0.3em] text-xs">AI365 CARE DREAM</p>
             <h1 className="text-xl font-bold text-slate-900">관리자 검증 화면</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -1652,8 +1652,8 @@ function AdminApp() {
         <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
           {(
             [
-              ['research', '주간 상태변화(연구)', { kind: 'research' }],
-              ['researchData', '연구 자료·내보내기', { kind: 'researchData' }],
+              ['research', '주간 상태변화', { kind: 'research' }],
+              ['researchData', '자료·내보내기', { kind: 'researchData' }],
               ['dashboard', '오늘의 돌봄', { kind: 'dashboard' }],
               ['recipients', '수급자 변화', { kind: 'recipients', orgId }],
               ['recipientAdmin', '수급자 관리', { kind: 'recipientAdmin' }],
@@ -1666,7 +1666,7 @@ function AdminApp() {
             <button
               key={id}
               onClick={() => go(target)}
-              className={`px-3 py-2 text-sm font-bold border-b-2 -mb-px whitespace-nowrap ${tab === id ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-400'}`}
+              className={`px-3 py-2 text-sm font-bold border-b-2 -mb-px whitespace-nowrap ${tab === id ? 'border-brand text-brand' : 'border-transparent text-slate-400'}`}
             >
               {label}
             </button>

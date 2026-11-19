@@ -47,7 +47,7 @@ async function publishRequest(admin: Page, target?: string) {
 
 /** 오늘 기본 보고를 낸 뒤 추가 상태변화 보고를 검토 화면까지 진행한다. */
 async function reachReview(page: Page, text: string) {
-  await page.goto('/care?demo=1')
+  await page.goto('/care/classic?demo=1')
   await startReport(page, '추가 상태변화 기록하기')
   await submitChangedReport(page, text)
   await answerAllFollowups(page, ['점심때입니다', '천천히 드시게 도왔습니다', '지금은 편안하십니다'])
@@ -81,7 +81,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await expect(card(admin, '현장 응답 대기 요청')).toContainText('방문 대기 1')
 
     // 현장: 홈에 요청 문구만 보이고 내부 메모는 보이지 않는다
-    await care.goto('/care?demo=1')
+    await care.goto('/care/classic?demo=1')
     const notice = care.getByRole('region', { name: '센터 확인 요청' })
     await expect(notice).toContainText('센터 확인 요청 1건')
     await expect(notice).toContainText(MESSAGE)
@@ -162,7 +162,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await expect(admin.locator('tr', { hasText: '현장 응답기한' })).toHaveCount(2) // 과거 주기 기한 보존 + 새 주기
 
     // 내려간 요청은 현장에 보이지 않는다
-    await care.goto('/care?demo=1')
+    await care.goto('/care/classic?demo=1')
     await expect(care.getByRole('region', { name: '센터 확인 요청' })).toHaveCount(0)
 
     // 새 주기에서 다시 게시
@@ -217,7 +217,7 @@ test.describe('field-requests: 관리자 요청 → 현장 응답 → 결과 확
     await expect(admin.getByText('지정한 요양보호사가 지금 이 수급자 담당이 아님 — 재배정 필요')).toBeVisible()
 
     // C02는 A01 담당이지만 C01에게 지정된 요청이라 아직 안 보인다
-    await care.goto('/care?demo=1')
+    await care.goto('/care/classic?demo=1')
     await care.getByText('연습 및 계정').click()
     await care.getByRole('button', { name: '로그아웃' }).click()
     await loginCare(care, 'c2', '6003')

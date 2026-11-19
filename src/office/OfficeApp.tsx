@@ -82,14 +82,14 @@ export default function OfficeApp() {
   const home = demo ? '/?demo=1' : '/'
 
   return (
-    <div className="min-h-dvh bg-[#f6f4ef] text-[#2f3a36]">
+    <div className="min-h-dvh bg-white text-[#111827]">
       <header className="px-4 py-4 flex items-center justify-between gap-3 max-w-3xl mx-auto">
         <a href={home} className="min-w-0">
-          <span className="block text-xs font-semibold text-[#5b7a6e]">가드림365재가복지센터</span>
-          <span className="block text-lg font-bold">센터 업무 지원 시스템</span>
+          <span className="block font-brand text-sm font-semibold tracking-[0.3em] text-brand">AI365 CARE DREAM</span>
+          <span className="block mt-1 text-base font-bold">센터 업무 지원 시스템</span>
         </a>
         {access === 'ready' && (
-          <button onClick={logout} className="shrink-0 rounded-xl border border-[#c9c3b6] px-3 py-2 text-sm font-bold bg-white">로그아웃</button>
+          <button onClick={logout} className="shrink-0 rounded-xl border border-[#d6dbe4] px-3 py-2 text-sm font-bold bg-white">로그아웃</button>
         )}
       </header>
       {demo && <p className="text-center text-xs font-bold text-amber-700 px-4">시연용 화면입니다.</p>}
@@ -105,16 +105,16 @@ export default function OfficeApp() {
               <span className="block font-bold text-base mb-1">이메일</span>
               <input name="email" type={demo ? 'text' : 'email'} autoComplete="username" required={!demo}
                 placeholder={demo ? '시연용: 아무 값' : ''}
-                className="w-full text-lg border border-slate-300 rounded-2xl p-4 bg-white focus:outline-none focus:ring-2 focus:ring-[#5b7a6e]" />
+                className="w-full text-lg border border-slate-300 rounded-2xl p-4 bg-white focus:outline-none focus:ring-2 focus:ring-[#2563eb]" />
             </label>
             <label className="block">
               <span className="block font-bold text-base mb-1">비밀번호</span>
               <input name="password" type="password" autoComplete="current-password" required
                 placeholder={demo ? `시연용: ${DEMO_ALIAS_PASSWORD}` : ''}
-                className="w-full text-lg border border-slate-300 rounded-2xl p-4 bg-white focus:outline-none focus:ring-2 focus:ring-[#5b7a6e]" />
+                className="w-full text-lg border border-slate-300 rounded-2xl p-4 bg-white focus:outline-none focus:ring-2 focus:ring-[#2563eb]" />
             </label>
             {error && <p role="alert" className="text-sm font-bold text-red-700">{error}</p>}
-            <button disabled={busy} className="rounded-2xl bg-[#3f6f5e] text-white text-lg font-bold py-4 disabled:opacity-60">
+            <button disabled={busy} className="rounded-2xl bg-brand hover:bg-brand-hover text-white text-lg font-bold py-4 disabled:opacity-60">
               {busy ? '확인 중…' : '로그인'}
             </button>
           </form>
@@ -126,10 +126,10 @@ export default function OfficeApp() {
           <p className="text-sm text-slate-600">{name ? `${name}님, ` : ''}세부 기능은 다음 단계에서 정합니다.</p>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
             {SECTIONS.map((s) => (
-              <section key={s.title} className="rounded-3xl bg-white border border-[#e2ddd2] p-5">
+              <section key={s.title} className="rounded-3xl bg-white border border-[#e5e7eb] p-5">
                 <h2 className="text-lg font-bold">{s.title}</h2>
                 <p className="mt-1 text-sm text-slate-600">{s.note}</p>
-                <p className="mt-4 text-xs font-bold text-[#8a8373]">준비 중</p>
+                <p className="mt-4 text-xs font-bold text-[#6b7280]">준비 중</p>
               </section>
             ))}
           </div>

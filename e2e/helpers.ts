@@ -8,7 +8,7 @@ export const DEMO_SUBMITTED_TEXT = '이 브라우저에 데모 기록을 저장�
 /** 데모 모드는 요구사항대로 브라우저(프로필)당 localStorage에만 저장되므로,
  * 각 테스트를 독립적으로 만들기 위해 시작할 때 항상 초기화한다. */
 export async function resetDemo(page: Page) {
-  await page.goto('/care?demo=1')
+  await page.goto('/care/classic?demo=1')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 }
@@ -17,7 +17,7 @@ export async function resetDemo(page: Page) {
  * 그대로(C01 등)를 입력칸에 넣어도 데모 화면의 placeholder/문구는 항상 별칭
  * 기준("예: c1")이라 그에 맞춰 입력한다. */
 export async function loginCare(page: Page, code = 'c7', pin = '6003') {
-  await page.goto('/care?demo=1')
+  await page.goto('/care/classic?demo=1')
   await page.getByPlaceholder('예: c1').fill(code)
   await page.getByPlaceholder('숫자 4자리').fill(pin)
   await page.getByRole('button', { name: '로그인' }).click()

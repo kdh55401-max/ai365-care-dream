@@ -1,3 +1,22 @@
+## 2026-11-20 — 디자인 개편: 글자 로고 B안 블루 + "논문 연구용" 문구 제거 (Claude, 브랜치 claude/research-tool-v2)
+
+사용자 결정: 화면에서 "논문 연구용" 표시를 뺀다(기능은 그대로). 그림 로고 대신 글자 로고 "AI365 CARE DREAM"(넓은 산세리프, B안)을 짙은 블루(#0b2e6b)로 쓰고, 흰 바탕·검정 글씨에 블루는 주 버튼에만 쓴다.
+- 첫 화면(src/landing/Landing.tsx): 글자 로고, "돌봄의 기록부터 센터의 하루까지", 기존 아바타 영상(AvatarVideo), 입구 3개(요양보호사=블루 버튼, 관리자=검정 테두리, 대표 전용=자물쇠 링크). 컴퓨터 폭에서는 2단.
+- 글꼴: Pretendard(본문, jsDelivr), Montserrat(글자 로고, Google Fonts) — index.html, src/index.css(@theme --font-sans/--font-brand/--color-brand*). 파비콘을 Vite 기본 그림에서 블루 "AI"로 교체.
+- 요양보호사 화면 색: careConversation.css의 초록 계열과 src/pilot/care/*.tsx의 teal 클래스를 블루·무채색으로 교체(/care/classic도 같이 바뀜). /office 머리말에 글자 로고, 색 교체.
+- 문구: 첫 화면 버튼 설명, 요양보호사 로그인 안내, 관리자 탭 "주간 상태변화"·"자료·내보내기".
+- 시안: docs/design-mockups/ v1~v5(Codex 이미지 생성), ref/(아바타·현재 화면 캡처, 미리캔버스·아임웹 레퍼런스 캡처 — 저작물 캡처라 커밋 제외 권장).
+검증: tsc·oxlint(기존 경고만)·build 통과. 전체 vitest 676 중 675, recipientFlow 5초 시간초과 1건 단독 12/12. 화면: 375×812 첫 화면 한 화면에 입구까지 보임·가로 넘침 없음, 1280 폭 2단, /care·/office 색 확인, 글꼴 로드 확인. 실기기 미확인.
+
+추가(같은 날, 커밋 전 검증 보강):
+- 관리자 화면도 블루로 통일(teal 클래스·그래프 색 #0d9488/#0f766e → 블루, 머리말 글자 로고). 요양보호사 화면 CSS의 남은 초록 계열 전부 교체(완료 표시 등).
+- 글꼴을 외부 CDN 대신 앱 안에 내장: public/fonts/pretendard(동적 서브셋 92개 + CSS), public/fonts/montserrat(500·600), 각 LICENSE(SIL OFL 1.1). node_modules가 원래 작업 폴더와 연결돼 있어 npm 설치 대신 파일로 넣음.
+- 버그 수정: 예전 60초 보고(/care/classic)의 "돌아가기" 링크 두 곳이 /care(연구 화면)로 가던 것을 /care/classic으로.
+- e2e: 1~5단계(2654c29)에서 /care를 연구 화면으로 바꾸고 e2e를 고치지 않아 42개가 실패하던 것을 발견 → /care/classic으로, 첫 화면 시험은 새 첫 화면 기준으로 수정. 작업 전 코드(5950566)에서도 실패하던 2개(원문 대조 중복 표시, 아바타 문구 변경)와 360 폭 아바타 크기 경계(정확히 200px) 시험도 현재 화면에 맞게 수정. recipientFlow 시험 시간 제한 60초(새 DB를 시험 안에서 생성).
+- .gitignore: docs/design-mockups/ref/miricanvas·imweb(외부 저작물 캡처) 제외.
+- Codex 읽기 전용 검토: 이번 변경 문제 없음. MemberGateway의 /care 링크 지적은 현재 어느 경로에서도 열리지 않는 화면이라 보류.
+최종 검증: tsc·oxlint(오류 0)·build, vitest 676/676, Playwright 168/168(390·360). 실기기 미확인.
+
 ## 2026-11-19 — 연구도구 전환 5단계: 연구용 데이터 구조·내보내기 (Claude, 브랜치 claude/research-tool-v2)
 
 관리자 탭 "연구 자료·내보내기"(/admin/research-data, src/pilot/admin/ResearchDataPanel.tsx) 추가. ① 사전·사후 기준일(설정값, 언제든 변경; 비어 있으면 앱 기록=사후, 옮겨 적은 도입 전 기록=사전) ② 요양보호사별 연구 동의·동의일·"기록 수준 높음" 태그·메모 ③ 도입 전(사전) 상태변화기록 옮겨 적기(요양보호사·어르신 코드·작성일·출처 종이/이지케어/기타·작성 시간·본문, 지우지 않고 목록에서 빼기) ④ 연구용 CSV 3종(하루 기록 원자료 / 주간 상태변화기록: AI 초안·요양보호사 수정본·관리자 확정본·상담·후속조치 각 열 / 도입 전 기록). 동의한 요양보호사만, 이름 없이 코드만, 사전사후·구분근거·작성소요초·고수준태그 열 포함, 엑셀용 UTF-8 BOM. 사전·사후는 저장 시 고정하지 않고 내보낼 때 현재 기준일로 계산(shared/researchExport.ts).

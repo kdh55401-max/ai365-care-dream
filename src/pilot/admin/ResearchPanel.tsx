@@ -29,7 +29,7 @@ const STATUS_LABEL: Record<string, { text: string; tone: string }> = {
   none: { text: '주간 기록 없음', tone: 'bg-slate-100 text-slate-500' },
   draft: { text: '요양보호사 확인 중', tone: 'bg-amber-50 text-amber-700' },
   sent: { text: '검토 대기', tone: 'bg-sky-50 text-sky-700' },
-  confirmed: { text: '확정', tone: 'bg-teal-50 text-teal-700' },
+  confirmed: { text: '확정', tone: 'bg-brand-tint text-brand' },
 }
 
 export function ResearchPanel({ demo }: { demo: boolean }) {
@@ -99,7 +99,7 @@ export function ResearchPanel({ demo }: { demo: boolean }) {
         <div className="flex gap-1 rounded-full bg-slate-100 p-1" role="group" aria-label="묶는 기준">
           {(['caregiver', 'recipient'] as const).map((g) => (
             <button key={g} onClick={() => setGroupBy(g)} aria-pressed={groupBy === g}
-              className={`rounded-full px-3 py-1 text-sm font-bold ${groupBy === g ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500'}`}>
+              className={`rounded-full px-3 py-1 text-sm font-bold ${groupBy === g ? 'bg-white text-brand shadow-sm' : 'text-slate-500'}`}>
               {g === 'caregiver' ? '요양보호사별' : '어르신별'}
             </button>
           ))}
@@ -144,7 +144,7 @@ export function ResearchPanel({ demo }: { demo: boolean }) {
               const st = STATUS_LABEL[p.weekly?.status ?? 'none']
               const firstOfGroup = idx === 0 || groupLabel(pairs[idx - 1]) !== groupLabel(p)
               return (
-                <tr key={k} className={`border-t border-slate-100 ${selected === k ? 'bg-teal-50' : ''}`}>
+                <tr key={k} className={`border-t border-slate-100 ${selected === k ? 'bg-brand-tint' : ''}`}>
                   <td className="p-2 font-bold">{firstOfGroup ? groupLabel(p) : ''}</td>
                   <td className="p-2">{otherLabel(p)}</td>
                   {days.map((d) => {
@@ -241,9 +241,9 @@ function PairReview({ repo, pair, onSaved }: {
       </div>
 
       {canReview ? (
-        <div className="rounded-2xl bg-white border border-teal-200 p-4 flex flex-col gap-3">
+        <div className="rounded-2xl bg-white border border-[#c9d4e8] p-4 flex flex-col gap-3">
           <label className="block">
-            <span className="block font-bold text-slate-800 mb-1">④ 관리자 확정본 {confirmed && <span className="text-xs text-teal-700">· 확정됨 {w.admin_confirmed_at ? new Date(w.admin_confirmed_at).toLocaleString('ko-KR') : ''}</span>}</span>
+            <span className="block font-bold text-slate-800 mb-1">④ 관리자 확정본 {confirmed && <span className="text-xs text-brand">· 확정됨 {w.admin_confirmed_at ? new Date(w.admin_confirmed_at).toLocaleString('ko-KR') : ''}</span>}</span>
             <textarea value={finalText} onChange={(e) => setFinalText(e.target.value)} readOnly={confirmed} rows={8}
               className={`w-full rounded-xl border border-slate-300 p-3 text-sm leading-relaxed ${confirmed ? 'bg-slate-50' : ''}`} />
           </label>
@@ -262,12 +262,12 @@ function PairReview({ repo, pair, onSaved }: {
           {message && <p role="status" className="text-sm font-bold text-slate-700">{message}</p>}
           <div className="flex flex-wrap gap-2">
             <button onClick={() => void save(false)} disabled={busy} className="rounded-full border border-slate-300 bg-white px-5 py-2 font-bold disabled:opacity-50">저장</button>
-            {!confirmed && !asking && <button onClick={() => setAsking(true)} disabled={busy || !finalText.trim()} className="rounded-full bg-teal-700 text-white px-5 py-2 font-bold disabled:opacity-50">확정</button>}
+            {!confirmed && !asking && <button onClick={() => setAsking(true)} disabled={busy || !finalText.trim()} className="rounded-full bg-brand text-white px-5 py-2 font-bold disabled:opacity-50">확정</button>}
           </div>
           {!confirmed && asking && (
             <div role="alertdialog" aria-label="확정 확인" className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex flex-wrap items-center gap-2">
               <p className="text-sm text-amber-900 flex-1 min-w-[12rem]">확정하면 확정본은 더 고칠 수 없습니다(상담·후속조치는 계속 덧붙일 수 있습니다).</p>
-              <button onClick={() => void save(true)} disabled={busy} className="rounded-full bg-teal-700 text-white px-4 py-1.5 text-sm font-bold">확정하기</button>
+              <button onClick={() => void save(true)} disabled={busy} className="rounded-full bg-brand text-white px-4 py-1.5 text-sm font-bold">확정하기</button>
               <button onClick={() => setAsking(false)} className="rounded-full border border-slate-300 bg-white px-4 py-1.5 text-sm font-bold">취소</button>
             </div>
           )}

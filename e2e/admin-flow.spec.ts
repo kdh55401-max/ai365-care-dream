@@ -63,7 +63,7 @@ test.describe('admin-flow: /admin?demo=1 대시보드·평가·실시간 반영'
     await expect(adminPage.getByText('1 / 90건')).toBeVisible()
 
     // C01이 두 번째 보고(추가) 제출 → 재사용 참여자 수 변경
-    await carePage.goto('/care?demo=1')
+    await carePage.goto('/care/classic?demo=1')
     await startReport(carePage, '추가 상태변화 기록하기')
     await submitChangedReport(carePage, '오늘 점심을 잘 안 드셨어요.')
     await answerAllFollowups(carePage, ['오늘 낮 12시경입니다', '조금 더 드시라고 권했습니다', '지금은 평소와 비슷합니다'])

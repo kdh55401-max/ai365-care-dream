@@ -54,7 +54,7 @@ function CaregiverChips({ codes }: { codes: string[] }) {
   return (
     <>
       {codes.map((c) => (
-        <span key={c} className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-100">
+        <span key={c} className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-tint text-brand border border-[#c9d4e8]">
           {c}
         </span>
       ))}
@@ -182,7 +182,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
   if (!view) {
     return (
       <div className="flex justify-center py-16">
-        <SpinnerIcon className="w-6 h-6 text-teal-600" />
+        <SpinnerIcon className="w-6 h-6 text-brand" />
       </div>
     )
   }
@@ -205,13 +205,13 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
           <h2 className="text-lg font-bold text-slate-900">수급자 관리 · {view.recipients.length}명</h2>
           <p className="text-slate-400 text-xs mt-0.5">별칭(표시명)으로 등록합니다. 삭제는 없고, 사용하지 않는 수급자는 비활성화합니다.</p>
         </div>
-        <button onClick={openCreate} disabled={form?.mode === 'create'} className="shrink-0 min-h-[44px] px-4 rounded-full bg-teal-600 text-white font-bold text-sm disabled:opacity-40">
+        <button onClick={openCreate} disabled={form?.mode === 'create'} className="shrink-0 min-h-[44px] px-4 rounded-full bg-brand text-white font-bold text-sm disabled:opacity-40">
           수급자 추가
         </button>
       </div>
 
       {notice && (
-        <p role="status" className="rounded-2xl bg-teal-50 border border-teal-200 px-4 py-3 text-teal-800 text-sm font-bold">
+        <p role="status" className="rounded-2xl bg-brand-tint border border-[#c9d4e8] px-4 py-3 text-brand text-sm font-bold">
           {notice}
         </p>
       )}
@@ -228,7 +228,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
             e.preventDefault()
             void submit()
           }}
-          className="rounded-2xl bg-white border-2 border-teal-200 shadow-sm p-4 flex flex-col gap-4"
+          className="rounded-2xl bg-white border-2 border-[#c9d4e8] shadow-sm p-4 flex flex-col gap-4"
         >
           <h3 className="font-bold text-slate-900">{form.mode === 'create' ? '수급자 추가' : `수급자 ${form.code} 수정`}</h3>
 
@@ -276,7 +276,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
                 return (
                   <label
                     key={c.code}
-                    className={`flex items-center justify-center gap-2 min-h-[44px] rounded-xl border-2 font-bold text-sm cursor-pointer ${checked ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600'}`}
+                    className={`flex items-center justify-center gap-2 min-h-[44px] rounded-xl border-2 font-bold text-sm cursor-pointer ${checked ? 'border-brand bg-brand-tint text-brand' : 'border-slate-200 text-slate-600'}`}
                   >
                     <input type="checkbox" checked={checked} onChange={() => toggleCaregiver(c.code)} disabled={saving} className="w-4 h-4" />
                     {c.code}
@@ -305,7 +305,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
           )}
 
           <div className="flex gap-2">
-            <button type="submit" disabled={saving} className="flex-1 min-h-[48px] rounded-full bg-teal-600 text-white font-bold disabled:opacity-50">
+            <button type="submit" disabled={saving} className="flex-1 min-h-[48px] rounded-full bg-brand text-white font-bold disabled:opacity-50">
               {saving ? '저장 중…' : '저장'}
             </button>
             <button type="button" onClick={closeForm} disabled={saving} className="min-h-[48px] px-5 rounded-full border-2 border-slate-300 text-slate-600 font-bold disabled:opacity-50">
@@ -324,7 +324,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-900">{r.code}</span>
                   <span className={`text-base ${r.displayName ? 'text-slate-900' : 'text-slate-400'}`}>{r.displayName ?? '표시명 없음'}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.active ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'}`}>{r.active ? '활성' : '비활성'}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.active ? 'bg-[#e2e9f4] text-brand' : 'bg-slate-200 text-slate-600'}`}>{r.active ? '활성' : '비활성'}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
                   <span className="text-xs text-slate-500">담당</span>
@@ -335,7 +335,7 @@ export function RecipientAdminPanel({ repo, onOpenRecipient }: { repo: AdminRepo
                 <button onClick={() => openEdit(r)} className="min-h-[40px] px-4 rounded-full border-2 border-slate-900 text-slate-900 font-bold text-sm hover:bg-slate-50">
                   수정
                 </button>
-                <button onClick={() => onOpenRecipient(r.code)} className="min-h-[36px] px-3 rounded-full text-teal-700 font-bold text-xs underline">
+                <button onClick={() => onOpenRecipient(r.code)} className="min-h-[36px] px-3 rounded-full text-brand font-bold text-xs underline">
                   기록 보기
                 </button>
               </div>

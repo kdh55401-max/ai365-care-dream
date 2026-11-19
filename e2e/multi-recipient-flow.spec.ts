@@ -14,12 +14,12 @@ test.describe('multi-recipient-flow: 대상자별 기본보고 완료 상태 분
     test.setTimeout(60_000)
     await loginCare(page, 'c1', '6003')
     await expect(page.getByText('A01 어르신', { exact: true })).toBeVisible()
-    await expect(page.getByText('이야기할 준비가 됐어요', { exact: true })).toBeVisible()
+    await expect(page.getByText('이야기할 준비 됐어요', { exact: true })).toBeVisible()
 
     // 대상자를 A02로 바꾼다 — 아직 아무 것도 제출하지 않았으므로 A02도 미제출이어야 한다.
     await switchRecipient(page, 'A02')
     await expect(page.getByText('A02 어르신', { exact: true })).toBeVisible()
-    await expect(page.getByText('이야기할 준비가 됐어요', { exact: true })).toBeVisible()
+    await expect(page.getByText('이야기할 준비 됐어요', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '이야기 시작' })).toBeVisible()
 
     // A02의 기본보고를 먼저 제출한다.
@@ -42,7 +42,7 @@ test.describe('multi-recipient-flow: 대상자별 기본보고 완료 상태 분
     // 핵심 회귀 조건).
     await switchRecipient(page, 'A01')
     await expect(page.getByText('A01 어르신', { exact: true })).toBeVisible()
-    await expect(page.getByText('이야기할 준비가 됐어요', { exact: true })).toBeVisible()
+    await expect(page.getByText('이야기할 준비 됐어요', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '이야기 시작' })).toBeVisible()
 
     // A01의 기본보고도 별도로 정상 제출할 수 있어야 한다(다른 수급자 제출

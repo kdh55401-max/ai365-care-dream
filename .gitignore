@@ -33,3 +33,12 @@ playwright/.cache
 
 # Local SQL/browser test runtime and downloaded executables
 /test-temp/
+
+# 디자인 레퍼런스 캡처(미리캔버스·아임웹 저작물) — 내부 참고용, 저장소에 올리지 않는다
+docs/design-mockups/ref/miricanvas/
+docs/design-mockups/ref/imweb/
+# 채택하지 않은 초기 시안(v1~v4, 약 15MB) — 로컬 보관만. 채택안 v5와 실제 화면 final/만 올린다
+docs/design-mockups/v1/
+docs/design-mockups/v2/
+docs/design-mockups/v3/
+docs/design-mockups/v4/

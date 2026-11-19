@@ -105,7 +105,7 @@ function SourceLine({ entry, documents, repo, orgId }: { entry: BaselineEntry; d
       {doc && (
         <>
           {' · '}
-          <button onClick={() => void openOriginal(repo, orgId, doc.id)} className="underline font-semibold text-teal-700">
+          <button onClick={() => void openOriginal(repo, orgId, doc.id)} className="underline font-semibold text-brand">
             원본 보기
           </button>
         </>
@@ -378,7 +378,7 @@ function EntryForm({
             ))}
           </select>
           {doc?.document_date && !referenceDate && (
-            <button type="button" onClick={() => setReferenceDate(doc.document_date!)} className="self-start text-[11px] text-teal-700 underline">
+            <button type="button" onClick={() => setReferenceDate(doc.document_date!)} className="self-start text-[11px] text-brand underline">
               문서 기준일({doc.document_date})을 {scale ? '측정일' : '기준일'}로 쓰기
             </button>
           )}
@@ -419,7 +419,7 @@ function EntryForm({
 // ── 수급자 기준정보 섹션 ──────────────────────────────────────────────
 
 function StatusBadge({ e }: { e: BaselineEntry }) {
-  const style = e.status === 'confirmed' ? (e.superseded_at ? 'bg-slate-100 text-slate-500' : 'bg-teal-100 text-teal-800') : e.status === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'
+  const style = e.status === 'confirmed' ? (e.superseded_at ? 'bg-slate-100 text-slate-500' : 'bg-[#e2e9f4] text-brand') : e.status === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'
   return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${style}`}>{e.superseded_at ? '이전 버전' : ENTRY_STATUS_LABELS[e.status]}</span>
 }
 
@@ -511,7 +511,7 @@ function LineageRow({
       )}
       <div className="flex flex-wrap gap-2 mt-1">
         {latest.status === 'draft' && (
-          <button onClick={() => void setStatus('confirmed')} disabled={saving} className="min-h-[32px] px-3 rounded-full bg-teal-600 text-white text-xs font-bold disabled:bg-slate-300">
+          <button onClick={() => void setStatus('confirmed')} disabled={saving} className="min-h-[32px] px-3 rounded-full bg-brand text-white text-xs font-bold disabled:bg-slate-300">
             관리자 확인
           </button>
         )}
@@ -568,18 +568,18 @@ function ConflictBox({ view, repo, orgId, onChanged }: { view: RecipientBaseline
             {c.needsConfirmation ? (
               <span className="text-amber-800">— 현재 참고값 확인 필요</span>
             ) : (
-              <span className="text-teal-700">— 현재 참고값 선택됨({formatKoreanDateTime(c.chosen?.chosen_at)} · 이유: {c.chosen?.reason})</span>
+              <span className="text-brand">— 현재 참고값 선택됨({formatKoreanDateTime(c.chosen?.chosen_at)} · 이유: {c.chosen?.reason})</span>
             )}
           </p>
           {c.newerThanChoice.length > 0 && <p className="text-[11px] text-amber-800">선택 뒤 새로 확인된 다른 값 {c.newerThanChoice.length}건 — 다시 확인해 주세요.</p>}
           <ul className="mt-1 flex flex-col gap-1">
             {c.entries.map((e) => (
               <li key={e.id} className="text-sm">
-                {c.chosen?.chosen_entry_id === e.id && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 mr-1">현재 참고값</span>}
+                {c.chosen?.chosen_entry_id === e.id && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e2e9f4] text-brand mr-1">현재 참고값</span>}
                 <EntryText e={e} />
                 <SourceLine entry={e} documents={docs} repo={repo} orgId={orgId} />
                 {c.chosen?.chosen_entry_id !== e.id && (
-                  <button onClick={() => setChoosing(choosing === e.id ? null : e.id)} className="text-[11px] font-bold text-teal-700 underline">
+                  <button onClick={() => setChoosing(choosing === e.id ? null : e.id)} className="text-[11px] font-bold text-brand underline">
                     이 값을 현재 참고값으로
                   </button>
                 )}
@@ -875,7 +875,7 @@ export function ActionBaselineSection({
                     근거 문서: {docLabel(document)}
                     {entry.page_ref && ` · ${entry.page_ref}`}
                     {document.status === 'withdrawn' && <span className="text-red-700 font-semibold"> (이후 철회됨)</span>}{' '}
-                    <button onClick={() => void openOriginal(repo, orgId, document.id)} className="underline font-semibold text-teal-700">
+                    <button onClick={() => void openOriginal(repo, orgId, document.id)} className="underline font-semibold text-brand">
                       원본 보기
                     </button>
                   </p>

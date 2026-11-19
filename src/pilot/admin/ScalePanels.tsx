@@ -137,20 +137,20 @@ function ScaleForm({ repo, orgId, recipientCode, onDone, onCancel }: { repo: Adm
             const n = i + 1
             const opts = optionsFor(def, n)
             return (
-              <li key={`${def.id}-${n}`} className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2 py-1 ${r === null ? 'bg-white' : 'bg-teal-50'}`}>
+              <li key={`${def.id}-${n}`} className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2 py-1 ${r === null ? 'bg-white' : 'bg-brand-tint'}`}>
                 <span className="w-24 shrink-0 text-xs font-bold text-slate-700">
                   {n}번{def.itemLabels ? ` ${def.itemLabels[i]}` : ''}
                   {def.reverse.includes(n) && <span className="ml-1 text-[10px] font-normal text-slate-400">역</span>}
                 </span>
                 <span role="radiogroup" aria-label={`${n}번 응답`} className="flex flex-wrap gap-1">
                   {opts.map((o) => (
-                    <label key={o.value} className={`cursor-pointer rounded-md border px-2 py-0.5 text-xs ${r === o.value ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>
+                    <label key={o.value} className={`cursor-pointer rounded-md border px-2 py-0.5 text-xs ${r === o.value ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-700'}`}>
                       <input type="radio" className="sr-only" name={`${def.id}-${n}`} checked={r === o.value} onChange={() => setItem(i, o.value)} aria-label={`${n}번 ${o.value} ${o.label}`} />
                       {opts.length <= 2 || def.itemOptions?.[n] ? o.label : o.value}
                     </label>
                   ))}
                   {def.allowNotApplicable && (
-                    <label className={`cursor-pointer rounded-md border px-2 py-0.5 text-xs ${r === 'NA' ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>
+                    <label className={`cursor-pointer rounded-md border px-2 py-0.5 text-xs ${r === 'NA' ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-700'}`}>
                       <input type="radio" className="sr-only" name={`${def.id}-${n}`} checked={r === 'NA'} onChange={() => setItem(i, 'NA')} aria-label={`${n}번 해당사항 없음`} />X
                     </label>
                   )}
@@ -212,10 +212,10 @@ function TrendChart({ points, min, max }: { points: Array<{ date: string; value:
       <line x1={pad.l} x2={W - pad.r} y1={y(max)} y2={y(max)} stroke="#e2e8f0" />
       <text x={pad.l - 4} y={y(max) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{max}</text>
       <text x={pad.l - 4} y={y(min) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{min}</text>
-      {line.length > 1 && <polyline fill="none" stroke="#0f766e" strokeWidth="2" points={line.map((p) => `${x(p.i)},${y(p.value)}`).join(' ')} />}
+      {line.length > 1 && <polyline fill="none" stroke="#0b2e6b" strokeWidth="2" points={line.map((p) => `${x(p.i)},${y(p.value)}`).join(' ')} />}
       {points.map((p, i) => (
         <g key={`${p.date}-${i}`}>
-          <circle cx={x(i)} cy={y(p.value)} r="4" fill={p.confirmed ? '#0f766e' : '#fff'} stroke="#0f766e" strokeWidth="1.5" />
+          <circle cx={x(i)} cy={y(p.value)} r="4" fill={p.confirmed ? '#0b2e6b' : '#fff'} stroke="#0b2e6b" strokeWidth="1.5" />
           <text x={x(i)} y={y(p.value) - 7} textAnchor="middle" fontSize="10" fill="#0f172a">{p.value}</text>
           <text x={x(i)} y={H - 6} textAnchor={points.length > 1 && i === points.length - 1 ? 'end' : points.length > 1 && i === 0 ? 'start' : 'middle'} fontSize="9" fill="#64748b">{p.date.slice(2)}</text>
         </g>

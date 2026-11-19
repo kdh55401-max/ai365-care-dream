@@ -74,7 +74,7 @@ test.describe('care-flow: /care?demo=1 골든 패스', () => {
     // 지연 구간에서만 드러나던 버그(답변 제출 시 currentQuestion을 먼저 비우고,
     // 다음 질문/보고는 비동기 응답이 온 뒤에야 채워져 그 사이 대화 영역 전체가
     // 빈 화면으로 보임)를 이 쿼리 파라미터로 재현한다.
-    await page.goto('/care?demo=1&e2eAiDelayMs=1500')
+    await page.goto('/care/classic?demo=1&e2eAiDelayMs=1500')
     await page.getByPlaceholder('예: c1').fill('c1')
     await page.getByPlaceholder('숫자 4자리').fill('6003')
     await page.getByRole('button', { name: '로그인' }).click()

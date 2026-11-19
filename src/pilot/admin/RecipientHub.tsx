@@ -32,7 +32,7 @@ function errorMessage(e: unknown, fallback: string): string {
 const REPORT_TYPE_LABEL = { daily: '기본보고', additional: '추가보고' } as const
 
 function ReviewBadge({ status }: { status: TimelineEntry['review']['status'] }) {
-  const style = status === 'approved' ? 'bg-teal-100 text-teal-700' : status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'
+  const style = status === 'approved' ? 'bg-[#e2e9f4] text-brand' : status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'
   const label = status === 'approved' ? '승인됨' : status === 'rejected' ? '반려됨(기록 수정 요청)' : '검토 대기'
   return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${style}`}>{label}</span>
 }
@@ -68,7 +68,7 @@ export function ReviewQueueList({
   if (!items) {
     return (
       <div className="flex justify-center py-6">
-        <SpinnerIcon className="w-5 h-5 text-teal-600" />
+        <SpinnerIcon className="w-5 h-5 text-brand" />
       </div>
     )
   }
@@ -150,7 +150,7 @@ export function RecipientsPanel({
   if (!data) {
     return (
       <div className="flex justify-center py-16">
-        <SpinnerIcon className="w-6 h-6 text-teal-600" />
+        <SpinnerIcon className="w-6 h-6 text-brand" />
       </div>
     )
   }
@@ -168,7 +168,7 @@ export function RecipientsPanel({
         <button
           key={r.code}
           onClick={() => onOpenRecipient(r.code)}
-          className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-teal-300 transition"
+          className="text-left rounded-2xl bg-white border border-slate-100 shadow-sm p-4 hover:border-[#9db0d3] transition"
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-900 text-base">수급자 {r.code}</span>
@@ -275,14 +275,14 @@ function TimelineCard({
                       o.status === 'changed'
                         ? 'bg-amber-50 border-amber-200 text-amber-800'
                         : o.status === 'same_as_usual'
-                          ? 'bg-teal-50 border-teal-100 text-teal-800'
+                          ? 'bg-brand-tint border-[#c9d4e8] text-brand'
                           : 'bg-slate-50 border-slate-200 text-slate-600'
                     }`}
                   >
                     {o.label}: {o.statusLabel}
                   </button>
                   {baselineDomains?.has(o.domain) && (
-                    <a href={`#baseline-domain-${o.domain}`} className="text-[10px] text-teal-700 underline">
+                    <a href={`#baseline-domain-${o.domain}`} className="text-[10px] text-brand underline">
                       평소 기준
                     </a>
                   )}
@@ -349,15 +349,15 @@ function TimelineCard({
                 {review.historyCount > 0 ? ` · 이전 검토 이력 ${review.historyCount}건` : ''}
               </p>
               {review.status !== 'pending' && review.adminFinal && !sameStructured(review.adminFinal, structured.caregiverFinal) && (
-                <div className="mt-1 bg-teal-50 rounded-lg p-2">
-                  <p className="text-[11px] text-teal-700 font-bold mb-0.5">관리자가 고친 검토본</p>
+                <div className="mt-1 bg-brand-tint rounded-lg p-2">
+                  <p className="text-[11px] text-brand font-bold mb-0.5">관리자가 고친 검토본</p>
                   <StructuredFields report={review.adminFinal} />
                 </div>
               )}
               {review.note && (
                 <p className="text-xs mt-1">
                   {review.status === 'rejected' ? '반려 사유' : '검토 메모'}: {review.note}{' '}
-                  <span className={`font-bold ${review.noteVisibleToCaregiver ? 'text-teal-600' : 'text-slate-400'}`}>
+                  <span className={`font-bold ${review.noteVisibleToCaregiver ? 'text-brand' : 'text-slate-400'}`}>
                     ({review.noteVisibleToCaregiver ? '요양보호사에게 공개됨' : '관리자 전용'})
                   </span>
                 </p>
@@ -468,7 +468,7 @@ export function RecipientDetailPanel({
       <div className="flex flex-col gap-3">
         {back}
         <div className="flex justify-center py-16">
-          <SpinnerIcon className="w-6 h-6 text-teal-600" />
+          <SpinnerIcon className="w-6 h-6 text-brand" />
         </div>
       </div>
     )
@@ -586,7 +586,7 @@ export function RecipientDetailPanel({
         <div className="rounded-2xl bg-white border border-slate-100 p-6 text-center">
           <p className="text-slate-500">선택한 기간에 제출된 보고가 없습니다.</p>
           {period !== 'all' && (
-            <button onClick={() => onChangePeriod('all')} className="mt-2 text-teal-700 text-sm font-bold underline">
+            <button onClick={() => onChangePeriod('all')} className="mt-2 text-brand text-sm font-bold underline">
               전체 기간 보기
             </button>
           )}

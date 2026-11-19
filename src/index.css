@@ -1,5 +1,30 @@
 @import "tailwindcss";
 
+/* 글꼴: 한글은 Pretendard, 글자 로고(AI365 CARE DREAM)는 넓은 산세리프(Montserrat). */
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-brand: "Montserrat", "Pretendard Variable", Pretendard, sans-serif;
+  --color-brand: #0b2e6b;
+  --color-brand-hover: #123a80;
+  --color-brand-tint: #eef2f8;
+}
+
+/* 글꼴 파일은 public/fonts에 내장(SIL OFL 1.1, 라이선스 파일 동봉) — 외부 사이트에 의존하지 않는다. */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/montserrat/montserrat-latin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/montserrat/montserrat-latin-600.woff2") format("woff2");
+}
+
 body {
   margin: 0;
 }

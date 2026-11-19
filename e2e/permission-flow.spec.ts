@@ -7,7 +7,7 @@ test.describe('permission-flow: 참여자 간 격리, 로그인/로그아웃 보
   })
 
   test('잘못된 PIN은 거부된다', async ({ page }) => {
-    await page.goto('/care?demo=1')
+    await page.goto('/care/classic?demo=1')
     // 데모 모드(?demo=1)의 입력칸 placeholder는 항상 별칭 기준("예: c1")이다.
     await page.getByPlaceholder('예: c1').fill('c1')
     await page.getByPlaceholder('숫자 4자리').fill('0000')

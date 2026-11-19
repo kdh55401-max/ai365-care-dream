@@ -65,8 +65,8 @@ export function BeforeAfterBarChart({ metrics }: { metrics: BeforeAfterMetric[] 
                 </text>
               </>
             )}
-            <rect x={afterX} y={H - PAD.bottom - afterH} width={barW} height={afterH} fill="#0d9488" rx={4} />
-            <text x={afterX + barW / 2} y={H - PAD.bottom - afterH - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#0f766e">
+            <rect x={afterX} y={H - PAD.bottom - afterH} width={barW} height={afterH} fill="#2f5aa8" rx={4} />
+            <text x={afterX + barW / 2} y={H - PAD.bottom - afterH - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#0b2e6b">
               {fmtValue(m.after)}
             </text>
             <text x={cx} y={H - PAD.bottom + 16} textAnchor="middle" fontSize="11" fill="#334155">
@@ -111,9 +111,9 @@ export function CumulativeLineChart({ series, goal }: { series: CumulativePoint[
       <text x={W - PAD.right} y={goalY - 4} textAnchor="end" fontSize="10" fill="#64748b">
         목표 {goal}건
       </text>
-      {known.length > 1 && <polyline points={linePoints} fill="none" stroke="#0d9488" strokeWidth={2.5} />}
+      {known.length > 1 && <polyline points={linePoints} fill="none" stroke="#2f5aa8" strokeWidth={2.5} />}
       {known.map((p, i) => (
-        <circle key={p.date} cx={xOf(i)} cy={yOf(p.totalCumulative)} r={2.5} fill="#0d9488" />
+        <circle key={p.date} cx={xOf(i)} cy={yOf(p.totalCumulative)} r={2.5} fill="#2f5aa8" />
       ))}
       {todayIndex >= 0 && (
         <line x1={xOf(todayIndex)} y1={PAD.top} x2={xOf(todayIndex)} y2={H - PAD.bottom} stroke="#f59e0b" strokeDasharray="2 3" />

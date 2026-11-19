@@ -211,7 +211,7 @@ export default function ResearchCareApp() {
     return <Shell demo={demo} onResetDemo={() => undefined}><p className="text-center text-slate-500 py-16">불러오는 중…</p></Shell>
   }
   if (phase === 'login') {
-    return <LoginScreen demo={demo} title="요양보호사 로그인" subtitle="담당 어르신의 오늘 돌봄을 말로 남기는 연구용 화면입니다." onLogin={async (code, pin) => { await care.login(code, pin); await loadSession() }} />
+    return <LoginScreen demo={demo} title="요양보호사 로그인" subtitle="담당 어르신의 오늘 돌봄을 말로 남깁니다." onLogin={async (code, pin) => { await care.login(code, pin); await loadSession() }} />
   }
 
   const resetDemo = () => { resetDemoData(); window.location.reload() }
@@ -226,9 +226,9 @@ export default function ResearchCareApp() {
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex gap-2" role="tablist">
           <button role="tab" aria-selected={view === 'talk'} onClick={() => setView('talk')}
-            className={`rounded-full px-4 py-2 text-sm font-bold ${view === 'talk' ? 'bg-teal-700 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>오늘 기록</button>
+            className={`rounded-full px-4 py-2 text-sm font-bold ${view === 'talk' ? 'bg-brand text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>오늘 기록</button>
           <button role="tab" aria-selected={view === 'weekly'} onClick={() => { voice.cancel(); setView('weekly') }}
-            className={`rounded-full px-4 py-2 text-sm font-bold ${view === 'weekly' ? 'bg-teal-700 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>주간 정리</button>
+            className={`rounded-full px-4 py-2 text-sm font-bold ${view === 'weekly' ? 'bg-brand text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>주간 정리</button>
         </div>
         <button onClick={logout} className="text-xs font-bold text-slate-500 underline shrink-0">로그아웃</button>
       </div>
@@ -265,7 +265,7 @@ export default function ResearchCareApp() {
                     voice.state === 'idle' ? (
                       <PrimaryButton onClick={startVoice}>{stage === 'first' ? '말로 이야기하기' : '말로 답하기'}</PrimaryButton>
                     ) : (
-                      <div className="rounded-2xl bg-white border border-teal-200 p-3">
+                      <div className="rounded-2xl bg-white border border-[#c9d4e8] p-3">
                         <p className="text-sm text-slate-700 min-h-[2.5rem]">{voice.text || '듣고 있어요…'}</p>
                         <PrimaryButton className="mt-2" onClick={finishVoice}>말하기 완료</PrimaryButton>
                       </div>
@@ -287,9 +287,9 @@ export default function ResearchCareApp() {
               {stage === 'saving' && <p className="text-center text-slate-500 mt-4">저장하고 있어요…</p>}
 
               {stage === 'saved' && (
-                <div className="mt-4 rounded-3xl bg-teal-50 border border-teal-200 p-5">
-                  <p className="font-bold text-teal-800">오늘 기록을 남겼어요.</p>
-                  <p className="text-sm text-teal-800 mt-1">관리자 화면에서 바로 볼 수 있어요.</p>
+                <div className="mt-4 rounded-3xl bg-brand-tint border border-[#c9d4e8] p-5">
+                  <p className="font-bold text-brand">오늘 기록을 남겼어요.</p>
+                  <p className="text-sm text-brand mt-1">관리자 화면에서 바로 볼 수 있어요.</p>
                   {noChangeLine && <p className="text-sm text-slate-700 mt-2">{noChangeLine}</p>}
                   <div className="mt-4 flex flex-col gap-2">
                     <PrimaryButton onClick={() => setView('weekly')}>이번 주 정리 보기</PrimaryButton>
@@ -363,8 +363,8 @@ function WeeklyPanel({ research, recipient, today, demo }: { research: ResearchR
   return (
     <section className="mt-2 flex flex-col gap-3">
       <div className="flex gap-2">
-        <button onClick={() => setWeek(addDays(thisWeek, -7))} className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-bold ${week !== thisWeek ? 'bg-teal-700 text-white' : 'bg-white text-slate-600'}`}>지난주</button>
-        <button onClick={() => setWeek(thisWeek)} className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-bold ${week === thisWeek ? 'bg-teal-700 text-white' : 'bg-white text-slate-600'}`}>이번 주</button>
+        <button onClick={() => setWeek(addDays(thisWeek, -7))} className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-bold ${week !== thisWeek ? 'bg-brand text-white' : 'bg-white text-slate-600'}`}>지난주</button>
+        <button onClick={() => setWeek(thisWeek)} className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-bold ${week === thisWeek ? 'bg-brand text-white' : 'bg-white text-slate-600'}`}>이번 주</button>
       </div>
       <p className="text-sm text-slate-600">{weekLabel} · 저장된 하루 기록 {dayCount}일</p>
       {loading && <p className="text-slate-500">불러오는 중…</p>}
@@ -379,7 +379,7 @@ function WeeklyPanel({ research, recipient, today, demo }: { research: ResearchR
       )}
 
       {!loading && weekly && weekly.status === 'draft' && (
-        <div className="rounded-3xl bg-white border border-teal-200 p-5">
+        <div className="rounded-3xl bg-white border border-[#c9d4e8] p-5">
           <p className="font-bold text-slate-900">이렇게 정리했는데 관리자에게 보낼까요?</p>
           <p className="text-xs text-slate-500 mt-1">
             {weekly.ai_model === 'rule' ? (demo ? '시연 모드: AI 없이 날짜별 기록을 모은 자동 정리입니다.' : 'AI 연결이 안 되어 날짜별 기록을 모은 자동 정리입니다.') : 'AI가 만든 초안입니다. 틀린 곳은 직접 고쳐 주세요.'}
@@ -391,9 +391,9 @@ function WeeklyPanel({ research, recipient, today, demo }: { research: ResearchR
       )}
 
       {!loading && weekly && weekly.status !== 'draft' && (
-        <div className="rounded-3xl bg-teal-50 border border-teal-200 p-5">
-          <p className="font-bold text-teal-800">관리자에게 보냈어요{weekly.sent_at ? ` (${new Date(weekly.sent_at).toLocaleString('ko-KR')})` : ''}.</p>
-          {weekly.status === 'confirmed' && <p className="text-sm text-teal-800 mt-1">관리자가 확인을 마쳤습니다.</p>}
+        <div className="rounded-3xl bg-brand-tint border border-[#c9d4e8] p-5">
+          <p className="font-bold text-brand">관리자에게 보냈어요{weekly.sent_at ? ` (${new Date(weekly.sent_at).toLocaleString('ko-KR')})` : ''}.</p>
+          {weekly.status === 'confirmed' && <p className="text-sm text-brand mt-1">관리자가 확인을 마쳤습니다.</p>}
           <p className="mt-3 whitespace-pre-wrap text-slate-800 text-base">{weekly.caregiver_text}</p>
         </div>
       )}

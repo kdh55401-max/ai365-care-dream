@@ -48,7 +48,7 @@ export function ResearchDataPanel({ demo }: { demo: boolean }) {
   return (
     <section className="flex flex-col gap-4">
       {error && <p role="alert" className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</p>}
-      {message && <p role="status" className="rounded-2xl bg-teal-50 border border-teal-200 px-4 py-3 text-sm text-teal-800">{message}</p>}
+      {message && <p role="status" className="rounded-2xl bg-brand-tint border border-[#c9d4e8] px-4 py-3 text-sm text-brand">{message}</p>}
 
       <div className={box}>
         <h2 className="font-bold text-slate-900">사전·사후 기준일</h2>
@@ -59,7 +59,7 @@ export function ResearchDataPanel({ demo }: { demo: boolean }) {
         <div className="flex flex-wrap items-center gap-2">
           <input type="date" value={cutoff} onChange={(e) => setCutoffInput(e.target.value)} className={input} aria-label="사전·사후 기준일" />
           <button onClick={() => void run(() => repo.setCutoff(cutoff || null), cutoff ? `기준일을 ${cutoff}로 저장했습니다.` : '기준일을 비웠습니다.')}
-            className="rounded-full bg-teal-700 text-white px-4 py-2 text-sm font-bold">저장</button>
+            className="rounded-full bg-brand text-white px-4 py-2 text-sm font-bold">저장</button>
           <span className="text-sm text-slate-500">현재: {data?.cutoffDate ?? '미설정'}</span>
         </div>
       </div>
@@ -105,8 +105,8 @@ export function ResearchDataPanel({ demo }: { demo: boolean }) {
         <div className="grid gap-2 sm:grid-cols-3">
           {exports.map(([type, label, note]) => (
             <button key={type} onClick={() => void run(() => repo.exportCsv(type), `${label} 파일을 내려받았습니다.`)}
-              className="rounded-2xl border border-teal-200 bg-teal-50 p-3 text-left hover:bg-teal-100">
-              <span className="block font-bold text-teal-800">{label}</span>
+              className="rounded-2xl border border-[#c9d4e8] bg-brand-tint p-3 text-left hover:bg-[#e2e9f4]">
+              <span className="block font-bold text-brand">{label}</span>
               <span className="block text-xs text-slate-600 mt-1">{note}</span>
             </button>
           ))}
@@ -130,7 +130,7 @@ function ParticipantRow({ p, onSave }: { p: ResearchParticipant; onSave: (v: { c
       <td className="p-2"><input type="checkbox" checked={high} onChange={(e) => setHigh(e.target.checked)} aria-label={`${p.caregiver_code} 기록 수준 높음`} className="h-5 w-5" /></td>
       <td className="p-2"><input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} aria-label={`${p.caregiver_code} 메모`} className={`${input} w-full`} /></td>
       <td className="p-2"><button disabled={!changed} onClick={() => void onSave({ code: p.caregiver_code, consented, consentDate: consented ? date || null : null, highBaseline: high, note })}
-        className="rounded-full bg-teal-700 text-white px-3 py-1 text-xs font-bold disabled:bg-slate-300">저장</button></td>
+        className="rounded-full bg-brand text-white px-3 py-1 text-xs font-bold disabled:bg-slate-300">저장</button></td>
     </tr>
   )
 }
@@ -175,7 +175,7 @@ function PreRecordForm({ repo, caregivers, onDone, onError }: { repo: ResearchAd
         </label>
       </div>
       <textarea name="text" required rows={4} placeholder="상태변화기록 본문" className={`${input} w-full`} aria-label="상태변화기록 본문" />
-      <button disabled={busy} className="self-start rounded-full bg-teal-700 text-white px-5 py-2 text-sm font-bold disabled:opacity-50">{busy ? '저장 중…' : '추가'}</button>
+      <button disabled={busy} className="self-start rounded-full bg-brand text-white px-5 py-2 text-sm font-bold disabled:opacity-50">{busy ? '저장 중…' : '추가'}</button>
     </form>
   )
 }

@@ -173,7 +173,7 @@ test.describe('operation-dashboard: 책임을 나눈 업무 화면과 운영 지
     await expect(admin.getByText('게시됨 · 응답 대기')).toBeVisible()
     const actionUrl = admin.url()
 
-    await care.goto('/care?demo=1')
+    await care.goto('/care/classic?demo=1')
     await startReport(care, '추가 상태변화 기록하기')
     await submitChangedReport(care, '점심 식사는 반 정도 드셨어요.')
     await answerAllFollowups(care, ['점심때입니다', '천천히 드시게 도왔습니다', '지금은 편안하십니다'])

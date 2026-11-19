@@ -212,5 +212,5 @@ describe('기존 데이터 호환', () => {
     expect((await adminView()).json).toMatchObject({ ready: false })
     const blocked = await adminPost({ op: 'recipient_register', displayName: '준비전', caregiverCodes: [], requestId: rid() })
     expect(blocked.status).toBe(503)
-  })
+  }, 60_000) // 새 테스트 DB를 테스트 안에서 만들어 병렬 실행 시 5초를 넘길 수 있다
 })

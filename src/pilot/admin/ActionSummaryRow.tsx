@@ -17,13 +17,13 @@ export function ActionSummaryRow({ a, onOpen }: { a: ActionSummary; onOpen: (id:
   const current = a.obligations.filter((o) => o.cycleNo === a.currentCycle)
   const badge = requestBadge(a)
   return (
-    <button onClick={() => onOpen(a.id)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+    <button onClick={() => onOpen(a.id)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-[#9db0d3]">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{ACTION_STATUS_LABELS[a.status]}</span>
         <span className="font-bold text-slate-900">수급자 {a.recipientCode}</span>
         <span className="text-slate-500 text-xs">{ACTION_KIND_LABELS[a.kind]}</span>
         {a.overdue && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">기한 지남</span>}
-        {a.dueToday && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">오늘 재확인</span>}
+        {a.dueToday && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e2e9f4] text-brand">오늘 재확인</span>}
         {badge && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge.style}`}>{badge.text}</span>}
         {a.closureOutcome && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">결과: {VERIFICATION_OUTCOME_LABELS[a.closureOutcome]}</span>

@@ -26,7 +26,7 @@ import { ActionSummaryRow } from './ActionSummaryRow'
 const CATEGORY_STYLE: Record<WorkCategory, string> = {
   safety: 'bg-red-100 text-red-700',
   overdue: 'bg-amber-100 text-amber-800',
-  verification_today: 'bg-teal-100 text-teal-800',
+  verification_today: 'bg-[#e2e9f4] text-brand',
   verification_pending: 'bg-indigo-100 text-indigo-800',
   reassign: 'bg-orange-100 text-orange-800',
   report_attention: 'bg-slate-900 text-white',
@@ -36,10 +36,10 @@ const CATEGORY_STYLE: Record<WorkCategory, string> = {
 function Card({ title, onClick, children, tone = 'plain' }: { title: string; onClick: () => void; children: React.ReactNode; tone?: 'alert' | 'plain' | 'muted' }) {
   const style = tone === 'alert' ? 'bg-red-50 border-red-200' : tone === 'muted' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'
   return (
-    <button onClick={onClick} className={`text-left rounded-2xl border p-3 hover:border-teal-400 transition ${style}`}>
+    <button onClick={onClick} className={`text-left rounded-2xl border p-3 hover:border-[#9db0d3] transition ${style}`}>
       <p className="text-xs font-semibold text-slate-500">{title}</p>
       <div className="mt-1">{children}</div>
-      <p className="text-[10px] text-teal-700 font-bold mt-1.5">전체 목록 보기 →</p>
+      <p className="text-[10px] text-brand font-bold mt-1.5">전체 목록 보기 →</p>
     </button>
   )
 }
@@ -239,7 +239,7 @@ function SafetyRows({ items, onOpenReport, note }: { items: SafetySignalItem[]; 
     <div className="flex flex-col gap-2">
       {note && <p className="text-[11px] text-slate-500">{note}</p>}
       {items.map((s) => (
-        <button key={s.reportId} onClick={() => onOpenReport(s.reportId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+        <button key={s.reportId} onClick={() => onOpenReport(s.reportId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-[#9db0d3]">
           <p className="text-sm">
             <span className="font-bold text-slate-900">수급자 {s.recipientCode}</span> <span className="text-slate-500">요양보호사 {s.participantCode}</span>{' '}
             <span className="text-slate-400 text-xs">
@@ -262,7 +262,7 @@ function ActionRows({ items, onOpenAction, mode }: { items: ActionWorkItem[]; on
   return (
     <div className="flex flex-col gap-2">
       {items.map((a) => (
-        <button key={a.actionId} onClick={() => onOpenAction(a.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+        <button key={a.actionId} onClick={() => onOpenAction(a.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-[#9db0d3]">
           <p className="text-sm">
             <span className="font-bold text-slate-900">수급자 {a.recipientCode}</span> <span className="text-slate-500">{ACTION_KIND_LABELS[a.kind]}</span>
           </p>
@@ -287,7 +287,7 @@ function RequestRows({ items, onOpenAction }: { items: RequestWorkItem[]; onOpen
   return (
     <div className="flex flex-col gap-2">
       {items.map((r) => (
-        <button key={r.requestId} onClick={() => onOpenAction(r.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+        <button key={r.requestId} onClick={() => onOpenAction(r.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-[#9db0d3]">
           <p className="text-sm">
             <span className="font-bold text-slate-900">수급자 {r.recipientCode}</span>{' '}
             <span className="text-slate-500">{r.targetMode === 'specific_caregiver' ? `대상 ${r.targetCaregiverCode}` : '현재 배정 요양보호사'}</span>{' '}
@@ -311,7 +311,7 @@ function VerificationRows({ items, onOpenAction }: { items: VerificationWorkItem
   return (
     <div className="flex flex-col gap-2">
       {items.map((v) => (
-        <button key={v.requestId} onClick={() => onOpenAction(v.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+        <button key={v.requestId} onClick={() => onOpenAction(v.actionId)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-[#9db0d3]">
           <p className="text-sm">
             <span className="font-bold text-slate-900">수급자 {v.recipientCode}</span> <span className="text-slate-400 text-xs">응답 도착 {formatKoreanDateTime(v.answeredAt)}</span>
           </p>
@@ -361,7 +361,7 @@ export function WorkCardListPanel({
     </button>
   )
   if (error) return <div className="flex flex-col gap-3">{back}<p className="text-red-700 bg-red-50 border border-red-100 rounded-2xl p-4">{error}</p></div>
-  if (!board) return <div className="flex flex-col gap-3">{back}<div className="flex justify-center py-16"><SpinnerIcon className="w-6 h-6 text-teal-600" /></div></div>
+  if (!board) return <div className="flex flex-col gap-3">{back}<div className="flex justify-center py-16"><SpinnerIcon className="w-6 h-6 text-brand" /></div></div>
   const ready = board.workflowReady
   return (
     <div className="flex flex-col gap-3">
@@ -427,7 +427,7 @@ export function WorkCardListPanel({
           ) : (
             <div className="flex flex-col gap-2">
               {board.lists.repeat.map(({ candidate: c, latestDecision, needsRecheck, newEvidence }) => (
-                <button key={c.key} onClick={() => onOpenRecipient(c.recipientCode)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-teal-300">
+                <button key={c.key} onClick={() => onOpenRecipient(c.recipientCode)} className="text-left rounded-xl border border-slate-200 bg-white p-3 hover:border-[#9db0d3]">
                   <p className="text-sm">
                     <span className="font-bold text-slate-900">수급자 {c.recipientCode}</span> <span className="text-slate-700">{c.headline}</span>
                   </p>
@@ -512,7 +512,7 @@ export function ActionsPanel({
       </div>
       {!current && (
         <div className="flex justify-center py-10">
-          <SpinnerIcon className="w-6 h-6 text-teal-600" />
+          <SpinnerIcon className="w-6 h-6 text-brand" />
         </div>
       )}
       {current?.error && <p className="text-red-700 bg-red-50 border border-red-100 rounded-2xl p-3 text-sm">불러오기 실패: {current.error}</p>}

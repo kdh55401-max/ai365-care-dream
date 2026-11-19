@@ -24,7 +24,7 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
     await expect(page.getByPlaceholder('예: c1')).not.toBeVisible()
 
     await page.getByRole('link', { name: '실제 현장보고 화면으로 돌아가기' }).click()
-    await expect(page).toHaveURL(/\/care\?demo=1/)
+    await expect(page).toHaveURL(/\/care\/classic\?demo=1/)
     await expect(page.getByText('C01', { exact: true })).toBeVisible()
 
     // 새로고침 후에도 여전히 로그인 상태 + 데모 모드여야 한다(로그아웃되지 않음).
@@ -59,23 +59,23 @@ test.describe('demo-mode-persistence: 데모 내부 이동에서 demo=1 유지 (
   // AI365 — 홈페이지 역할 선택·로그인 경로 작업: RoleGateway.handleSelect가 현재
   // 쿼리스트링(?demo=1)을 이어 붙이지 않으면, 역할을 고르는 순간 운영 로그인
   // 화면으로 떨어진다.
-  test('역할 선택(/?demo=1)에서 요양보호사를 고르면 /care?demo=1로 이동해 데모 로그인 화면이 보인다', async ({
+  test('첫 화면(/?demo=1)에서 요양보호사를 고르면 /care?demo=1로 이동해 데모 로그인 화면이 보인다', async ({
     page,
   }) => {
     await page.goto('/?demo=1')
-    await expect(page.getByRole('heading', { name: '어떤 업무를 시작할까요?' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /돌봄의 기록부터/ })).toBeVisible()
 
-    await page.getByRole('button', { name: /요양보호사/ }).click()
+    await page.getByRole('link', { name: /요양보호사/ }).click()
     await expect(page).toHaveURL(/\/care\?demo=1/)
     // 운영 로그인 화면이었다면 데모 전용 placeholder(별칭 c1~c9)가 없다.
     await expect(page.getByPlaceholder('예: c1')).toBeVisible()
   })
 
-  test('역할 선택(/?demo=1)에서 관리자를 고르면 /admin?demo=1로 이동해 데모 로그인 화면이 보인다', async ({
+  test('첫 화면(/?demo=1)에서 관리자를 고르면 /admin?demo=1로 이동해 데모 로그인 화면이 보인다', async ({
     page,
   }) => {
     await page.goto('/?demo=1')
-    await page.getByRole('button', { name: /관리자/ }).click()
+    await page.getByRole('link', { name: /관리자/ }).click()
     await expect(page).toHaveURL(/\/admin\?demo=1/)
     await expect(page.getByPlaceholder('비밀번호')).toBeVisible()
   })
