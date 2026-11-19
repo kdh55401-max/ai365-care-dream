@@ -1,3 +1,5 @@
+import { ResearchPanel } from './ResearchPanel'
+import { ResearchDataPanel } from './ResearchDataPanel'
 import { useEffect, useRef, useState } from 'react'
 import { ApiClientError } from '../shared/api'
 import { SafetyFooter } from '../shared/SafetyNotice'
@@ -24,7 +26,7 @@ import { parseTimelinePeriod } from '../../../shared/recipientHub'
 import type { WorkBoard } from '../../../shared/workBoard'
 import { parseActionFilter } from '../../../shared/workflowViews'
 
-type Tab = 'dashboard' | 'recipients' | 'recipientAdmin' | 'actions' | 'reports' | 'quality' | 'participants'
+type Tab = 'research' | 'researchData' | 'dashboard' | 'recipients' | 'recipientAdmin' | 'actions' | 'reports' | 'quality' | 'participants'
 const PARTICIPANT_CODES = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09']
 const INSTITUTION_NAME = '가드림365재가복지센터'
 const TARGET_PARTICIPANTS = 9
@@ -1452,7 +1454,11 @@ function AdminApp() {
   const route = parseAdminPath(location.pathname)
   const presentationRoute = route.kind === 'presentation'
   const tab: Tab =
-    route.kind === 'recipients' || route.kind === 'recipient'
+    route.kind === 'research'
+      ? 'research'
+      : route.kind === 'researchData'
+        ? 'researchData'
+        : route.kind === 'recipients' || route.kind === 'recipient'
       ? 'recipients'
       : route.kind === 'reports' || route.kind === 'report'
         ? 'reports'
@@ -1646,6 +1652,8 @@ function AdminApp() {
         <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
           {(
             [
+              ['research', '주간 상태변화(연구)', { kind: 'research' }],
+              ['researchData', '연구 자료·내보내기', { kind: 'researchData' }],
               ['dashboard', '오늘의 돌봄', { kind: 'dashboard' }],
               ['recipients', '수급자 변화', { kind: 'recipients', orgId }],
               ['recipientAdmin', '수급자 관리', { kind: 'recipientAdmin' }],
@@ -1758,6 +1766,8 @@ function AdminApp() {
         {route.kind === 'reports' && <ReportsPanel repo={repo} onOpen={openReport} />}
         {route.kind === 'recipientAdmin' && <RecipientAdminPanel repo={repo} onOpenRecipient={openRecipient} />}
         {route.kind === 'participants' && <ParticipantsPanel repo={repo} />}
+        {route.kind === 'research' && <ResearchPanel demo={demo} />}
+        {route.kind === 'researchData' && <ResearchDataPanel demo={demo} />}
       </div>
       <div className="w-full max-w-5xl">
         <SafetyFooter />

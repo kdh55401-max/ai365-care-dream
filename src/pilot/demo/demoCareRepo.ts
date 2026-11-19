@@ -136,6 +136,8 @@ function patchToRecord(patch: Record<string, unknown>): Partial<CareReportRecord
     emergencyFlagged: 'emergency_flagged',
     aiFallbackUsed: 'ai_fallback_used',
     aiFallbackStage: 'ai_fallback_stage',
+    transcriptOnly: 'transcript_only',
+    questionsSource: 'ai_questions_source',
   }
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(patch)) {

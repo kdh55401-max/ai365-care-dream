@@ -2,16 +2,19 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
-import MemberGateway from './center/MemberGateway.tsx'
-import TeamWorkspace from './team/TeamWorkspace.tsx'
 import CareApp from './pilot/care/CareApp.tsx'
+import ResearchCareApp from './pilot/care/ResearchCareApp.tsx'
 import AdminApp from './pilot/admin/AdminApp.tsx'
 import CenterWorkspace from './center/CenterWorkspace.tsx'
+import Landing from './landing/Landing.tsx'
+import OfficeApp from './office/OfficeApp.tsx'
 
 // react-router 등 별도 라우팅 라이브러리를 추가하지 않고, 역할별 업무공간을
 // 경로(pathname)만으로 전환하는 최소 진입점 스위치.
-// /            회원가입·기관 승인·역할별 로그인
-// /team        관리자(TEAM) — 기존 확장형 MVP, 보존
+// /            첫 화면: 로그인 입구 3개만 (요양보호사 /care, 관리자 /admin, 센터 업무 지원 /office)
+// /office      센터 업무 지원 시스템 — 센터 대표(master) 로그인 + 빈 대시보드 틀
+// /center      기존 센터 ERP. 로그아웃 상태에서는 기존 회원 로그인·가입 화면이 뜬다.
+// /team        기존 확장형 MVP는 로그인 없이 기능이 보여 연결을 끊었다(파일은 보존).
 //
 // /care, /admin  60초 AI 돌봄보고(CARE REPORT) 실증 파일럿 (2026-09-07~09-18).
 //   이 브랜치(claude/care-report-pilot-mvp-*)에서만 /care를 파일럿 화면으로 연결한다.
@@ -27,10 +30,12 @@ function Root() {
   }, [])
 
   if (pathname === '/center' || pathname.startsWith('/center/')) return <CenterWorkspace />
-  if (pathname.startsWith('/team')) return <TeamWorkspace />
+  if (pathname === '/office' || pathname.startsWith('/office/')) return <OfficeApp />
   if (pathname.startsWith('/admin')) return <AdminApp />
-  if (pathname.startsWith('/care')) return <CareApp />
-  return <MemberGateway />
+  // /care = 연구용 요양보호사 화면. 기존 60초 돌봄보고는 /care/classic, 표준상황 연습은 /care/scenario에 보존.
+  if (pathname.startsWith('/care/classic') || pathname.startsWith('/care/scenario')) return <CareApp />
+  if (pathname.startsWith('/care')) return <ResearchCareApp />
+  return <Landing />
 }
 
 createRoot(document.getElementById('root')!).render(

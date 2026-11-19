@@ -1,3 +1,4 @@
+import { addPreRecord, hidePreRecord, researchDataView, saveResearchParticipant, setCutoff } from '../_lib/researchData.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ApiError, getQuery, readJsonBody, requireMethod, sendJson, withHandler } from '../_lib/http.js'
 import { requireAdminOrganization, generateRandomPin, hashPin } from '../_lib/auth.js'
@@ -14,6 +15,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const supabase = getSupabaseAdmin()
 
     // 수급자 등록·담당 요양보호사 배정(Vercel 함수 개수 제한 때문에 이 파일에 함께 둔다). 관리자 세션은 위에서 이미 확인했다.
+    // 연구 자료(기준일·동의·고수준 태그·도입 전 기록). 같은 이유로 이 파일에 둔다.
+    if (req.method === 'GET' && getQuery(req).get('view') === 'research') {
+      sendJson(res, 200, await researchDataView(supabase))
+      return
+    }
     if (req.method === 'GET' && getQuery(req).get('view') === 'recipients') {
       sendJson(res, 200, await loadRecipientAdminView(supabase))
       return
@@ -51,6 +57,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
 
     const body = await readJsonBody(req)
+    if (body.op === 'research_cutoff' || body.op === 'research_participant' || body.op === 'research_pre_add' || body.op === 'research_pre_hide') {
+      const result = body.op === 'research_cutoff' ? await setCutoff(supabase, body.cutoffDate)
+        : body.op === 'research_participant' ? await saveResearchParticipant(supabase, body)
+          : body.op === 'research_pre_add' ? await addPreRecord(supabase, body)
+            : await hidePreRecord(supabase, body.id)
+      // 기록 본문은 감사 기록에 남기지 않는다.
+      await logAudit(body.op, body.op === 'research_participant' ? String(body.code ?? '') : undefined)
+      sendJson(res, 200, result)
+      return
+    }
     if (body.op === 'recipient_register' || body.op === 'recipient_update') {
       const result = body.op === 'recipient_register' ? await registerRecipient(supabase, body) : await updateRecipient(supabase, body)
       // 표시명 등 내용은 감사 기록에 남기지 않는다 — 어떤 수급자에 무슨 작업을 했는지만.

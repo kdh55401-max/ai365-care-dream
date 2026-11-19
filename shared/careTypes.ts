@@ -93,6 +93,10 @@ export interface CareReportRecord {
   followup_answers: FollowupItem[]
   ai_generated_report: StructuredReport | null
   caregiver_final_report: StructuredReport | null
+  /** 연구용 흐름: AI 정리본 없이 원자료 전사본만 제출한 하루 기록(2026-11-19 마이그레이션 전에는 없음). */
+  transcript_only?: boolean
+  /** 연구용 흐름: 하루 되묻기 질문을 만든 방식. */
+  ai_questions_source?: 'ai' | 'rule' | null
 
   // 특이사항 없음 흐름 전용 필드
   initial_status_choice: InitialStatusChoice

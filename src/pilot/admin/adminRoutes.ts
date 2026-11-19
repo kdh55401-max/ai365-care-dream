@@ -4,6 +4,8 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
  * 화면 상태를 주소(pathname)에 담는다. 라우팅 라이브러리는 쓰지 않는다(main.tsx와 동일).
  *
  * /admin                                  오늘의 돌봄(업무 카드 + 통합 목록 + 시스템 상태)
+ * /admin/research                         주간 상태변화(논문 연구용: 원자료·AI 초안·요양보호사 수정본·관리자 확정)
+ * /admin/research-data                    연구 자료(사전·사후 기준일·연구 동의·고수준 태그·도입 전 기록·CSV 내보내기)
  * /admin/quality                           실증과 품질(운영 지표 + 기존 연구용 실증 대시보드)
  * /admin/org/:orgId/recipients            수급자 목록
  * /admin/org/:orgId/recipients/:code      수급자 상세(보고 타임라인)
@@ -20,6 +22,8 @@ import { WORK_CARDS, type WorkCard } from './adminFormat'
  * 코드를 잘못 열지 않게 하기 위함이다. 권한 판단은 서버가 세션 기관으로 한다. */
 export type AdminRoute =
   | { kind: 'dashboard' }
+  | { kind: 'research' }
+  | { kind: 'researchData' }
   | { kind: 'quality' }
   | { kind: 'recipients'; orgId: string }
   | { kind: 'recipient'; orgId: string; code: string }
@@ -37,6 +41,8 @@ export function parseAdminPath(pathname: string): AdminRoute {
   if (parts[0] !== 'admin') return { kind: 'dashboard' }
   const [, section, a, b, c] = parts
   if (section === 'presentation') return { kind: 'presentation' }
+  if (section === 'research') return { kind: 'research' }
+  if (section === 'research-data') return { kind: 'researchData' }
   if (section === 'quality') return { kind: 'quality' }
   if (section === 'participants') return { kind: 'participants' }
   if (section === 'recipient-admin') return { kind: 'recipientAdmin' }
@@ -53,6 +59,10 @@ export function adminPath(route: AdminRoute): string {
   switch (route.kind) {
     case 'dashboard':
       return '/admin'
+    case 'research':
+      return '/admin/research'
+    case 'researchData':
+      return '/admin/research-data'
     case 'quality':
       return '/admin/quality'
     case 'recipients':

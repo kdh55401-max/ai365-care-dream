@@ -54,6 +54,9 @@ export type CareReportDetail = CareReportRecord
  * 요청 바디. wire 포맷은 camelCase를 쓴다(기존 API 컨벤션 유지). */
 export interface CareReportPatchInput {
   id: string
+  /** 연구용 흐름: AI 정리본 없이 원자료 전사본만 제출한다. */
+  transcriptOnly?: boolean
+  questionsSource?: 'ai' | 'rule'
   rawInput?: string
   inputMethod?: 'voice' | 'text'
   followupQuestions?: import('../../../shared/careTypes.js').FollowupItem[]

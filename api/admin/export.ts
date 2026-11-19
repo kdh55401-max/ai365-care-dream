@@ -4,6 +4,7 @@ import { requireAdminOrganization } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import { toCsv } from '../../shared/csv.js'
+import { parseExportType, researchExport } from '../_lib/researchData.js'
 
 const SUMMARY_HEADERS = [
   '보고ID', '참여자코드', '수급자코드', '보고유형', '보고일자', '제출일시', '완료소요초', '입력방식',
@@ -80,6 +81,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   await withHandler(res, async () => {
     requireMethod(req, 'GET')
     await requireAdminOrganization(req)
+
+    // 연구용 내보내기: 연구 동의한 요양보호사 기록만, 사전·사후 구분 포함.
+    const researchType = parseExportType(getQuery(req).get('type'))
+    if (researchType) {
+      const { headers, rows } = await researchExport(getSupabaseAdmin(), researchType)
+      await logAudit('export_csv', undefined, { type: researchType, count: rows.length })
+      res.statusCode = 200
+      res.setHeader('content-type', 'text/csv; charset=utf-8')
+      res.setHeader('content-disposition', `attachment; filename="${researchType}-${new Date().toISOString().slice(0, 10)}.csv"`)
+      res.setHeader('cache-control', 'no-store')
+      res.end(toCsv(headers, rows))
+      return
+    }
 
     const type = getQuery(req).get('type') === 'full' ? 'full' : 'summary'
 

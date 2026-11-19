@@ -1,3 +1,29 @@
+## 2026-11-19 — 연구도구 전환 5단계: 연구용 데이터 구조·내보내기 (Claude, 브랜치 claude/research-tool-v2)
+
+관리자 탭 "연구 자료·내보내기"(/admin/research-data, src/pilot/admin/ResearchDataPanel.tsx) 추가. ① 사전·사후 기준일(설정값, 언제든 변경; 비어 있으면 앱 기록=사후, 옮겨 적은 도입 전 기록=사전) ② 요양보호사별 연구 동의·동의일·"기록 수준 높음" 태그·메모 ③ 도입 전(사전) 상태변화기록 옮겨 적기(요양보호사·어르신 코드·작성일·출처 종이/이지케어/기타·작성 시간·본문, 지우지 않고 목록에서 빼기) ④ 연구용 CSV 3종(하루 기록 원자료 / 주간 상태변화기록: AI 초안·요양보호사 수정본·관리자 확정본·상담·후속조치 각 열 / 도입 전 기록). 동의한 요양보호사만, 이름 없이 코드만, 사전사후·구분근거·작성소요초·고수준태그 열 포함, 엑셀용 UTF-8 BOM. 사전·사후는 저장 시 고정하지 않고 내보낼 때 현재 기준일로 계산(shared/researchExport.ts).
+
+서버: /api/admin/participants view=research, op=research_cutoff|research_participant|research_pre_add|research_pre_hide, /api/admin/export type=research_daily|research_weekly|research_pre(api/_lib/researchData.ts). 새 함수 파일 없음. 마이그레이션 같은 파일에 research_settings·research_participants·research_pre_records 추가(운영 미적용). 하루 기록 내보내기는 연구 흐름 기록(transcript_only=true)만 — 예전 60초 보고는 빠짐.
+
+검증: 단위 5건·서버 3건(요양보호사 세션 401, 기준일·동의·사전기록 저장/검증/빼기, 미동의·예전 보고 제외·기준일 사전사후·CSV 응답) 통과. tsc·oxlint 0오류·build 통과. 전체 vitest(--maxWorkers=3) 676 중 675, recipientFlow 5초 시간초과 1건 단독 12/12 통과. 데모: 기준일 저장, C01 동의·태그 저장, 사전 기록 추가(5분→300초) 확인, 390 가로 넘침 없음. 시연 모드 내보내기 버튼 실제 내려받기는 누르지 않음(시험으로 행 내용 확인). 운영 DB 미적용·커밋 안 함.
+
+## 2026-11-19 — 연구도구 전환 4단계: 관리자 "주간 상태변화(연구)" 화면 (Claude, 브랜치 claude/research-tool-v2)
+
+관리자 화면 첫 탭에 /admin/research(src/pilot/admin/ResearchPanel.tsx)를 추가했다. 주(월~일) 단위로 요양보호사별/어르신별 묶음 표에 날짜별 "평소/변화" 표시(말한 표현 기준, 의학적 판단 아님)와 주간 기록 상태(없음/요양보호사 확인 중/검토 대기/확정), 요약(하루 기록 수·참여 요양보호사·변화 기록 수·평균 작성 시간·검토 대기/확정)을 보인다. 한 쌍을 열면 ① 원자료 전사본 ② AI 초안 ③ 요양보호사 수정본(초안 그대로/수정함·수정 시간)을 나란히, ④ 관리자 확정본·상담 기록·후속조치 기록을 저장/확정한다. 확정 뒤 확정본은 잠기고 상담·후속조치만 덧붙일 수 있다. 확정은 화면 안 2단계 확인(브라우저 팝업 없음). 요양보호사 주간 정리 화면에 "관리자가 확인을 마쳤습니다" 표시.
+
+서버: /api/admin/reports view=research_week, op=weekly_review(api/_lib/researchAdmin.ts). updated_at 비교로 동시 수정 덮어쓰기 방지, 보내기 전 초안 검토 거절, 감사로그(confirm_weekly/edit_weekly). AI 호출 없음. 마이그레이션 파일에 weekly_drafts.admin_followup 추가(운영 미적용 상태라 같은 파일에 반영).
+
+검증: 서버 흐름 시험에 관리자 3건 추가(요양보호사 세션 401, 보내기 전 409, 저장·동시수정 409·확정·확정본 잠금·확정 뒤 상담 추가) 통과, 주소 규칙 시험 통과. tsc·oxlint 0오류·build 통과. 전체 vitest(--maxWorkers=3) 668 중 667, recipientFlow 5초 시간초과 1건 단독 재실행 12/12 통과. 데모 1024/390: 표·열기·나란히 보기·확정본 수정·상담/후속조치 저장·확정·잠금·요양보호사 쪽 확정 표시 확인, 390 가로 넘침 없음(표는 상자 안 가로 스크롤). 운영 DB·실서버 관리자 로그인은 미확인. 커밋하지 않았다.
+
+## 2026-11-19 — 논문 연구도구 전환 2~3단계 (Claude, worktree ai365-care-dream-research, 브랜치 claude/research-tool-v2)
+
+목적: 사용자 지시로 Claude가 직접 구현(공통 지침의 Codex 구현 원칙과 다름). 기준 HEAD 5950566, 미커밋. 원래 폴더(work/ai365-care-dream)의 Codex 미커밋 변경과 분리.
+핵심 파일: src/landing/Landing.tsx, src/office/OfficeApp.tsx, src/main.tsx, src/pilot/care/ResearchCareApp.tsx, src/pilot/shared/researchRepo.ts, src/pilot/demo/demoResearchRepo.ts, shared/researchCare.ts, api/_lib/researchCare{Ai,Store,Handlers}.ts, api/care/{ai-turn,reports}.ts, db/migrations/2026-11-19-research-daily-weekly.sql.
+경로: / 3버튼, /office 센터 master 전용 빈 대시보드, /care 연구용 흐름, /care/classic 기존 60초 보고, /care/scenario 연습, /team 연결 해제.
+AI: 하루 되묻기 1회(mode=ask), 주간 초안 1회(mode=weekly, 재호출 없음). 실패 시 규칙 기반. 이름→코드·전화·주민번호 가림.
+검사: tsc·oxlint 0오류·build 통과. vitest --maxWorkers=3 전체 665 중 664 통과, recipientFlow 5초 시간초과 1건은 단독 재실행 통과(기존에도 기록된 시간초과). 기본 병렬에서는 PGlite 준비 30초 초과 다수(단독 통과). 데모 390/360 클릭 확인.
+미확인/남은 위험: 운영 DB 마이그레이션 미적용, 실제 Gemini 응답 품질·비용, 실기기 음성, e2e(playwright) /care 시나리오는 /care/classic 기준 수정 필요, /center?demo=1 무로그인 노출.
+다음: 4단계 관리자 화면(요양보호사·어르신별 주간 추이, 전사본/AI 초안/수정본 나란히, 확정·상담 기록).
+
 ## 2026-10-23 — 관리기록 연도·월 검색 및 달력
 
 수급자 관리기록에 연도·월·내용/최근저장자 검색, 초기화, 월 달력의 날짜별 기록 건수와 날짜 선택을 연결했다. 달력 건수는 검색어·보관 보기 조건을 동일하게 적용하고 같은 날짜 복수 기록을 유지한다. 날짜 선택은 해당일 목록 조회이며 추가할 때 선택 날짜를 미리 채운다. 기록 저장 성공 뒤 저장한 날짜를 선택하여 필터 밖으로 사라지는 혼동을 줄인다. 수정 중에는 검색/달력 조건 변경을 막는다. 보관 보기 조건은 초기화해도 유지하며 버튼/문구로 구분한다.

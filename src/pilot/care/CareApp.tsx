@@ -148,7 +148,7 @@ function DemoBanner({ onReset }: { onReset: () => void }) {
   )
 }
 
-function Shell({ demo, onResetDemo, children }: { demo: boolean; onResetDemo: () => void; children: React.ReactNode }) {
+export function Shell({ demo, onResetDemo, children }: { demo: boolean; onResetDemo: () => void; children: React.ReactNode }) {
   return (
     <div className="care-shell">
       {demo && <DemoBanner onReset={onResetDemo} />}
@@ -159,7 +159,7 @@ function Shell({ demo, onResetDemo, children }: { demo: boolean; onResetDemo: ()
   )
 }
 
-function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { className, ...rest } = props
   return (
     <button
@@ -169,7 +169,7 @@ function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
     />
   )
 }
-function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { className, ...rest } = props
   return (
     <button
@@ -180,7 +180,7 @@ function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   )
 }
 
-function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string, pin: string) => Promise<void> }) {
+export function LoginScreen({ demo, onLogin, title = '목표 60초 AI 돌봄보고', subtitle = '60초는 목표 시간이에요. 더 걸려도 괜찮으니 오늘 돌봄 내용을 편하게 들려주세요.' }: { demo: boolean; onLogin: (code: string, pin: string) => Promise<void>; title?: string; subtitle?: string }) {
   const [code, setCode] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -203,9 +203,9 @@ function LoginScreen({ demo, onLogin }: { demo: boolean; onLogin: (code: string,
       <div className="flex flex-col items-center justify-center flex-1 gap-8 py-10">
         <div className="text-center">
           <p className="text-base font-semibold tracking-wide text-teal-600">AI365 CARE DREAM</p>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">목표 60초 AI 돌봄보고</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">{title}</h1>
           <p className="text-slate-500 text-base mt-2 leading-relaxed">
-            60초는 목표 시간이에요. 더 걸려도 괜찮으니 오늘 돌봄 내용을 편하게 들려주세요.
+            {subtitle}
           </p>
           {demo && (
             <p className="text-amber-600 text-xs mt-2 font-bold">

@@ -7,6 +7,7 @@ import { todayKstDateString } from '../_lib/date.js'
 import { STANDARD_SCENARIOS } from '../../shared/statsCalc.js'
 import { listCenterRequestsFor, markRequestsShown, parseCenterResponses, recordCenterResponses } from '../_lib/fieldRequestsStore.js'
 import { reportEvidenceTexts, sanitizeEvidence } from '../../shared/fieldRequests.js'
+import { researchWeeklyGet, researchWeeklySend } from '../_lib/researchCareHandlers.js'
 
 const CARE_DETAIL_COLUMNS = '*'
 
@@ -61,6 +62,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         sendJson(res, 200, await listCenterRequestsFor(supabase, session.participantCode, recipientCode))
         return
       }
+      if (getQuery(req).get('view') === 'weekly') {
+        sendJson(res, 200, await researchWeeklyGet(supabase, session.participantCode, getQuery(req), todayKstDateString()))
+        return
+      }
       const id = getQuery(req).get('id')
       if (id) {
         const { data, error } = await supabase
@@ -95,6 +100,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         const ids = Array.isArray(body.requestIds) ? body.requestIds.filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)) : []
         await markRequestsShown(supabase, session.participantCode, ids)
         sendJson(res, 200, { ok: true })
+        return
+      }
+      if (body.op === 'weekly_send') {
+        sendJson(res, 200, await researchWeeklySend(supabase, session.participantCode, body))
         return
       }
       const recipientCode = String(body.recipientCode ?? '').trim().toUpperCase()
@@ -224,6 +233,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (!existing) throw new ApiError(404, '보고를 찾을 수 없습니다.')
     // 3단계: 제출과 함께 온 센터 요청 답변. 제출 성공 뒤 붙인다(보고 id가 근거). 재시도는 요청 식별자로 한 번만 저장된다.
     const centerResponses = body.submit === true ? parseCenterResponses(body.centerResponses) : []
+    // 연구용 흐름: AI 정리본 없이 원자료 전사본만 제출. 같은 원문으로 다시 오면(응답 유실 재시도) 그대로 돌려준다.
+    const transcriptOnly = body.transcriptOnly === true
+    if (transcriptOnly && existing.status === 'submitted' && body.submit === true && existing.raw_input === body.rawInput) {
+      sendJson(res, 200, { report: existing, centerResponses: [] })
+      return
+    }
     if (existing.status === 'submitted' && body.submit === true && sameFinalReport(existing.caregiver_final_report, body.caregiverFinalReport)) {
       // 보고는 이미 저장됐지만 답변 저장이 실패해 다시 온 재시도 — 답변만 이어서 저장한다.
       const results = await recordCenterResponses(supabase, session.participantCode, id, sanitizeEvidence(centerResponses, reportEvidenceTexts(existing)))
@@ -264,7 +279,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (typeof body.noInformationReport === 'boolean') update.no_information_report = body.noInformationReport
 
     if (body.submit === true) {
-      if (!body.caregiverFinalReport || !isStructuredReport(body.caregiverFinalReport)) {
+      if (!transcriptOnly && (!body.caregiverFinalReport || !isStructuredReport(body.caregiverFinalReport))) {
         throw new ApiError(400, '최종 보고문이 필요합니다.')
       }
       const startedAt = new Date(existing.started_at as string).getTime()
@@ -290,6 +305,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // 남긴다 — "컬럼 없음"처럼 예상된 실패와 그 외 진짜 오류를 구분할 수 있게
     // 원문(돌봄 내용)은 남기지 않고 에러 메시지/코드만 남긴다.
     let finalReport = updated
+    // 연구용 표시 컬럼도 보조 업데이트로 분리한다(마이그레이션 전이어도 원자료 저장은 성공).
+    if (transcriptOnly && body.submit === true) {
+      const marks: Record<string, unknown> = { transcript_only: true }
+      if (body.questionsSource === 'ai' || body.questionsSource === 'rule') marks.ai_questions_source = body.questionsSource
+      const { data: marked, error: markError } = await supabase.from('reports').update(marks).eq('id', id).select(CARE_DETAIL_COLUMNS).maybeSingle()
+      if (!markError && marked) finalReport = marked
+      else if (markError) console.error('transcript_only 저장 실패(원자료 저장은 정상 완료됨):', markError.code, markError.message)
+    }
     if (typeof body.aiFallbackUsed === 'boolean' || body.aiFallbackStage === 'final_report' || body.aiFallbackStage === null) {
       const fallbackUpdate: Record<string, unknown> = {}
       if (typeof body.aiFallbackUsed === 'boolean') fallbackUpdate.ai_fallback_used = body.aiFallbackUsed

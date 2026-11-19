@@ -4,6 +4,7 @@ import { requireAdminOrganization } from '../_lib/auth.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { logAudit } from '../_lib/audit.js'
 import type { StructuredReport } from '../../shared/careTypes.js'
+import { parseWeek, researchWeekView, researchWeeklyReview } from '../_lib/researchAdmin.js'
 
 const LIST_COLUMNS_BASE =
   'id, participant_code, recipient_code, report_type, report_date, status, submitted_at, ' +
@@ -32,6 +33,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const supabase = getSupabaseAdmin()
 
     if (req.method === 'GET') {
+      // 연구용 주간 상태변화: 한 주의 하루 기록(원자료)과 주간 초안·수정본·확정본.
+      if (getQuery(req).get('view') === 'research_week') {
+        sendJson(res, 200, await researchWeekView(supabase, parseWeek(getQuery(req).get('week'))))
+        return
+      }
       const id = getQuery(req).get('id')
       if (id) {
         const { data, error } = await supabase
@@ -100,6 +106,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     // PATCH: 관리자 평가 저장 (1단계: raw, 2단계: ai) 또는 검토(승인/반려, review)
     const body = await readJsonBody(req)
+    if (body.op === 'weekly_review') {
+      const result = await researchWeeklyReview(supabase, body)
+      await logAudit(body.confirm === true ? 'confirm_weekly' : 'edit_weekly', String(body.id))
+      sendJson(res, 200, result)
+      return
+    }
     const id = String(body.id ?? '')
     const stage = body.stage === 'ai' ? 'ai' : body.stage === 'raw' ? 'raw' : body.stage === 'review' ? 'review' : null
     if (!id || !stage) throw new ApiError(400, '요청 형식이 올바르지 않습니다.')

@@ -183,6 +183,8 @@ export function resetDemoData() {
   writeDb(emptyDb())
   try {
     localStorage.removeItem(DEMO_FILES_KEY)
+    localStorage.removeItem('ai365_research_weekly_demo_v1') // demoResearchRepo의 주간 초안
+    localStorage.removeItem('ai365_research_data_demo_v1') // demoResearchAdminRepo의 연구 설정·동의·사전 기록
   } catch {
     // 저장 공간을 쓸 수 없어도 초기화 진행은 막지 않는다.
   }
