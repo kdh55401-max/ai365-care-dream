@@ -202,7 +202,7 @@ export function LoginScreen({ demo, onLogin, title = '목표 60초 AI 돌봄보�
     <Shell demo={demo} onResetDemo={() => undefined}>
       <div className="flex flex-col items-center justify-center flex-1 gap-8 py-10">
         <div className="text-center">
-          <p className="text-base font-semibold tracking-wide text-brand">AI365 CARE DREAM</p>
+          <p className="font-brand text-sm font-semibold tracking-[0.3em] text-brand">AI365 CARE DREAM</p>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">{title}</h1>
           <p className="text-slate-500 text-base mt-2 leading-relaxed">
             {subtitle}
