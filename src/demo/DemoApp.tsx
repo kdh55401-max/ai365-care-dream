@@ -78,9 +78,10 @@ function DemoLogin({ onOk }: { onOk: (pw: string) => void }) {
 }
 
 const STEPS = [
-  { n: '01', who: '요양보호사', title: '말로 기록', body: '어르신 댁 방문을 마치고, 오늘 본 모습을 휴대폰에 대고 편하게 말합니다. 글을 쓰지 않아도 됩니다.' },
-  { n: '02', who: 'AI 돌봄 동료', title: 'AI 확인', body: '들은 내용을 정리하고, 빠진 것이 있으면 한두 가지만 되묻습니다. 예: "식사는 평소보다 얼마나 드셨어요?"' },
-  { n: '03', who: '관리자·사회복지사', title: '관리자 검토', body: '한 주 정리본을 보고 평소와 달라진 점을 확인해 확정합니다. 필요하면 보호자 연락·방문 조정으로 이어집니다.' },
+  { n: '01', who: '요양보호사', title: '돌봄 내용 이야기하기', body: '어르신 댁 방문을 마치고, 오늘 본 모습을 휴대폰에 대고 편하게 말합니다. 글로 적어도 됩니다.' },
+  { n: '02', who: 'AI 돌봄 동료', title: '필요한 사항 확인하기', body: '빠진 것이 있으면 한두 가지만 되묻습니다. 예: "그 변화는 언제부터, 어느 정도였나요?"' },
+  { n: '03', who: '요양보호사', title: '기록 초안 정리하기', body: '한 주의 하루 기록을 날짜별로 묶어 주간 상태변화기록 초안을 만들고, 요양보호사가 고쳐서 보냅니다.' },
+  { n: '04', who: '관리자·사회복지사', title: '관리자 검토·활용하기', body: '원자료와 초안을 보고 확인·수정·확정합니다. 상담 내용과 후속조치도 함께 기록합니다.' },
 ]
 
 function DemoIntro({ onStart }: { onStart: () => void }) {
@@ -96,7 +97,7 @@ function DemoIntro({ onStart }: { onStart: () => void }) {
         센터가 <b>놓치지 않고</b> 확인하게 돕는 기록 도구입니다.
       </p>
 
-      <section className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="쓰는 순서">
+      <section className="mt-8 grid gap-3 sm:grid-cols-2" aria-label="쓰는 순서">
         {STEPS.map((s) => (
           <div key={s.n} className="border border-[#e5e7eb] p-5">
             <p className="font-brand text-sm font-semibold tracking-[0.2em] text-brand">{s.n}</p>
