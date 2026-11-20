@@ -33,7 +33,7 @@ import type { CenterRequestView, CenterResponseResult } from '../../../shared/fi
 import { CenterRequestAnswers, CenterRequestNotice } from './CenterRequests'
 import { missingAnswerDetail, toResponseInputs, type CenterAnswerDraft } from './centerAnswers'
 
-const CENTER_PHONE = import.meta.env.VITE_CENTER_PHONE_NUMBER?.trim() || undefined
+import { CENTER_PHONE, telHref } from '../shared/centerContact'
 
 type Screen =
   | 'home'
@@ -1733,7 +1733,7 @@ function CareApp() {
           </a>
           {CENTER_PHONE && (
             <a
-              href={`tel:${CENTER_PHONE}`}
+              href={telHref(CENTER_PHONE)}
               className="flex items-center justify-center gap-2 w-full min-h-[52px] rounded-3xl text-lg font-bold py-4 bg-white text-slate-900 border-2 border-slate-900 hover:bg-slate-50 transition"
             >
               <PhoneIcon className="w-5 h-5" />

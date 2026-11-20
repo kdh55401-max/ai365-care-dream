@@ -8,6 +8,7 @@ import AdminApp from './pilot/admin/AdminApp.tsx'
 import CenterWorkspace from './center/CenterWorkspace.tsx'
 import Landing from './landing/Landing.tsx'
 import OfficeApp from './office/OfficeApp.tsx'
+import DemoApp from './demo/DemoApp.tsx'
 
 // react-router 등 별도 라우팅 라이브러리를 추가하지 않고, 역할별 업무공간을
 // 경로(pathname)만으로 전환하는 최소 진입점 스위치.
@@ -30,6 +31,8 @@ function Root() {
   }, [])
 
   if (pathname === '/center' || pathname.startsWith('/center/')) return <CenterWorkspace />
+  // /demo  앱 소개·체험(시연용, 비밀번호는 서버 확인). 교수님 등 외부 설명용.
+  if (pathname === '/demo' || pathname.startsWith('/demo/')) return <DemoApp />
   if (pathname === '/office' || pathname.startsWith('/office/')) return <OfficeApp />
   if (pathname.startsWith('/admin')) return <AdminApp />
   // /care = 연구용 요양보호사 화면. 기존 60초 돌봄보고는 /care/classic, 표준상황 연습은 /care/scenario에 보존.

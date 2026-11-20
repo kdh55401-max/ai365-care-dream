@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ApiClientError } from '../shared/api'
 import { useContinuousVoice } from './useContinuousVoice'
+import { GuidelineButton } from './GuidelineBook'
 import { CompanionHeader, type AvatarState } from './AiAvatar'
 import './careConversation.css'
 import { ConversationLog, type ConversationTurn } from './ConversationLog'
@@ -230,7 +231,10 @@ export default function ResearchCareApp() {
           <button role="tab" aria-selected={view === 'weekly'} onClick={() => { voice.cancel(); setView('weekly') }}
             className={`rounded-full px-4 py-2 text-sm font-bold ${view === 'weekly' ? 'bg-brand text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>주간 정리</button>
         </div>
-        <button onClick={logout} className="text-xs font-bold text-slate-500 underline shrink-0">로그아웃</button>
+        <div className="flex items-center gap-3 shrink-0">
+          <GuidelineButton />
+          <button onClick={logout} className="text-xs font-bold text-slate-500 underline">로그아웃</button>
+        </div>
       </div>
 
       {recipients.length === 0 ? (

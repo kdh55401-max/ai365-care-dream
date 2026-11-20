@@ -5,6 +5,7 @@ import { runCareReportTurn, type FollowupTurn } from '../_lib/careReportAi.js'
 import { getSupabaseAdmin } from '../_lib/supabase.js'
 import { todayKstDateString } from '../_lib/date.js'
 import { researchAsk, researchWeeklyPrepare } from '../_lib/researchCareHandlers.js'
+import { handleDemo } from '../_lib/demoChat.js'
 
 interface RawHistoryItem {
   question: string
@@ -21,9 +22,14 @@ function isRawHistoryItem(v: unknown): v is RawHistoryItem {
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await withHandler(res, async () => {
     requireMethod(req, 'POST')
-    const session = await requireCareSession(req)
-
     const body = await readJsonBody(req)
+    // 시연용(/demo) 대화: 요양보호사 로그인 없이 시연 비밀번호로만 쓴다. 저장하지 않는다.
+    // (Vercel 함수 개수 제한 때문에 새 파일을 만들지 않고 이 함수에서 나눈다.)
+    if (body.mode === 'demo-login' || body.mode === 'demo-chat') {
+      sendJson(res, 200, await handleDemo(body))
+      return
+    }
+    const session = await requireCareSession(req)
     // 연구용 흐름: 하루 되묻기(AI 1회), 주간 초안(AI 1회, 이미 있으면 재호출 없음).
     if (body.mode === 'ask') {
       sendJson(res, 200, await researchAsk(getSupabaseAdmin(), session.participantCode, body, todayKstDateString()))

@@ -1,4 +1,4 @@
-const CENTER_PHONE = import.meta.env.VITE_CENTER_PHONE_NUMBER?.trim() || undefined
+import { CENTER_MOBILE, CENTER_PHONE, telHref } from './centerContact'
 
 function PhoneIcon({ className }: { className?: string }) {
   return (
@@ -11,32 +11,24 @@ function PhoneIcon({ className }: { className?: string }) {
   )
 }
 
-/** 모든 /care 화면 상단에 고정 노출하는 센터/119 전화 버튼. */
+/** 모든 /care 화면 상단에 고정 노출하는 센터 전화·센터 휴대폰·119 버튼. */
 export function TopCallBar() {
+  const base = 'flex-1 flex flex-col items-center justify-center min-h-[48px] rounded-2xl text-sm font-bold py-1.5 transition'
   return (
     <div className="flex gap-2 w-full max-w-md mx-auto mb-3">
-      {CENTER_PHONE ? (
-        <a
-          href={`tel:${CENTER_PHONE}`}
-          className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] rounded-2xl
-                     bg-white border-2 border-slate-900 text-slate-900 text-sm font-bold py-2
-                     hover:bg-slate-50 transition"
-        >
-          <PhoneIcon className="w-4 h-4" />
-          센터 전화
-        </a>
-      ) : (
-        <span className="flex-1 flex items-center justify-center min-h-[44px] rounded-2xl border-2 border-slate-300 bg-slate-50 text-slate-600 text-sm font-bold">
-          센터 연락처 미등록
-        </span>
-      )}
-      <a
-        href="tel:119"
-        className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] rounded-2xl
-                   bg-red-600 text-white text-sm font-bold py-2 hover:bg-red-700 transition"
-      >
-        <PhoneIcon className="w-4 h-4" />
-        119 전화
+      <a href={telHref(CENTER_PHONE)} aria-label={'센터 전화 ' + CENTER_PHONE}
+        className={base + ' bg-white border-2 border-brand text-brand hover:bg-brand-tint'}>
+        <span className="flex items-center gap-1"><PhoneIcon className="w-4 h-4" />센터 전화</span>
+        <span className="text-[11px] font-medium">{CENTER_PHONE}</span>
+      </a>
+      <a href={telHref(CENTER_MOBILE)} aria-label={'센터 휴대폰 ' + CENTER_MOBILE}
+        className={base + ' bg-white border-2 border-brand text-brand hover:bg-brand-tint'}>
+        <span className="flex items-center gap-1"><PhoneIcon className="w-4 h-4" />센터 휴대폰</span>
+        <span className="text-[11px] font-medium">{CENTER_MOBILE}</span>
+      </a>
+      <a href="tel:119" className={base + ' bg-red-600 text-white hover:bg-red-700'}>
+        <span className="flex items-center gap-1"><PhoneIcon className="w-4 h-4" />119</span>
+        <span className="text-[11px] font-medium">응급</span>
       </a>
     </div>
   )
